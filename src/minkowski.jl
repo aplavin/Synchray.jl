@@ -37,4 +37,4 @@ photon_k(νcam, n::SVector{3}) = FourFrequency(νcam, (νcam .* n)...)
 
 measured_frequency(k::FourFrequency, u::FourVelocity) = -minkowski_dot(k, u)
 
-doppler_factor(u::FourVelocity, n::SVector{3}) = measured_frequency(photon_k(one(u.t), n), u)
+doppler_factor(u::FourVelocity, n::SVector{3}) = inv(measured_frequency(photon_k(one(u.t), n), u))

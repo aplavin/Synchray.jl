@@ -3,6 +3,49 @@ using TestItemRunner
 @run_package_tests
 
 
+@testitem "Minkowski + Doppler conventions" begin
+	import Synchray as S
+
+	@testset "minkowski_dot basics" begin
+		a = S.FourPosition(2.0, 1.0, 3.0, -4.0)
+		b = S.FourPosition(-1.0, 2.0, 0.5, 7.0)
+		@test S.minkowski_dot(a, b) ≈ S.minkowski_dot(b, a)
+		@test S.minkowski_dot(a, a) ≈ -(a.t^2) + a.x^2 + a.y^2 + a.z^2
+	end
+
+	@testset "FourVelocity normalization" begin
+		β = SVector(0.3, -0.4, 0.1)
+		u = S.FourVelocity(β)
+		@test S.minkowski_dot(u, u) ≈ -1 atol=1e-12
+		@test u.t ≈ inv(sqrt(1 - dot(β, β)))
+	end
+
+	@testset "photon_k is null" begin
+		ν = 2.5
+		n = normalize(SVector(0.2, -0.3, 0.7))
+		k = S.photon_k(ν, n)
+		@test S.minkowski_dot(k, k) ≈ 0 atol=1e-12
+	end
+
+	@testset "Doppler boosting δ convention" begin
+		# Convention locked in by this test:
+		# doppler_factor(u, n) == δ = ν_obs / ν_comoving
+		# For fast motion toward the observer along the photon direction (β ⋅ n > 0): δ >> 1.
+		β = 0.99
+		u_toward = S.FourVelocity(SVector(0.0, 0.0, β))
+		n = SVector(0.0, 0.0, 1.0)
+
+		δ_toward = S.doppler_factor(u_toward, n)
+		@test δ_toward > 1
+		@test δ_toward > 10
+
+		u_away = S.FourVelocity(SVector(0.0, 0.0, -β))
+		δ_away = S.doppler_factor(u_away, n)
+		@test δ_away < 1
+	end
+end
+
+
 @testitem "Uniform slab transfer" begin
     import Synchray as S
 
@@ -18,14 +61,14 @@ using TestItemRunner
 	]
 
 	@testset for (;u0) in cases
-		D = S.doppler_factor(u0, SVector(0, 0, 1))
+		δ = S.doppler_factor(u0, SVector(0, 0, 1))
 		@testset "limits" begin
 			@testset "optically thin" begin
 				# For τ = α D L ≪ 1: I′ ≈ j L′ and I = I′/D^3 ⇒ I ≈ j L / D^2
 				αthin = 1e-6
 				slab = S.UniformSlab(0..L, u0, j0, αthin)
 				Iν_num = S.integrate_ray(slab, SVector(0, 0); νcam, t0=0, nz=2_000)
-				Iν_exact = j0 * L / (D^2)
+				Iν_exact = j0 * L * (δ^2)
 				@test Iν_num ≈ Iν_exact rtol=2e-3
 			end
 
@@ -34,7 +77,7 @@ using TestItemRunner
 				αthick = 1e5
 				slab = S.UniformSlab(0..L, u0, j0, αthick)
 				Iν_num = S.integrate_ray(slab, SVector(0, 0); νcam, t0=0, nz=2_000)
-				Iν_exact = (j0 / αthick) / (D^3)
+				Iν_exact = (j0 / αthick) * (δ^3)
 				@test Iν_num ≈ Iν_exact rtol=2e-3
 			end
 		end
@@ -44,12 +87,12 @@ using TestItemRunner
 
 		# Analytic solution as a cross-check:
 		# - Solve transfer in slab comoving frame: dI'/ds' = j0 - a0 I'
-		# - Convert thickness to comoving path length via Doppler factor D = γ(1-β·n)
-		#   for a ray along +z (n = ẑ): D = doppler_factor(u, ẑ)
-		# - Transform specific intensity back: I_ν = D^{-3} I'_{ν'}
-		L′ = D * L
+		# - Convert thickness to comoving path length via D = ν'/ν = 1/δ
+		#   for a ray along +z (n = ẑ): δ = doppler_factor(u, ẑ)
+		# - Transform specific intensity back: I_ν = δ^{3} I'_{ν'}
+		L′ = L / δ
 		I′ = (j0 / a0) * (1 - exp(-a0 * L′))
-		Iν_exact = I′ / (D^3)
+		Iν_exact = I′ * (δ^3)
 
 		@test Iν_num ≈ Iν_exact rtol=2e-3
 	end
@@ -72,15 +115,15 @@ end
 		S.FourVelocity(SVector(0.5, 0, 0.3)),
 	)
 
-	I_exact(j0, α0, D, ℓ) = α0 == 0 ? (j0 * ℓ) / (D^2) : (j0 / α0) * (1 - exp(-α0 * D * ℓ)) / (D^3)
-	F_exact(j0, α0, D, R) = α0 == 0 ? (4π / 3) * j0 * R^3 / (D^2) : begin
+	I_exact(j0, α0, δ, ℓ) = α0 == 0 ? (j0 * ℓ) * (δ^2) : (j0 / α0) * (1 - exp(-α0 * ℓ / δ)) * (δ^3)
+	F_exact(j0, α0, δ, R) = α0 == 0 ? (4π / 3) * j0 * R^3 * (δ^2) : begin
 		S0 = j0 / α0
-		τ0 = 2 * α0 * D * R
-		(π * R^2 * S0 / (D^3)) * (1 - (2 / (τ0^2)) * (1 - (1 + τ0) * exp(-τ0)))
+		τ0 = 2 * α0 * R / δ
+		(π * R^2 * S0 * (δ^3)) * (1 - (2 / (τ0^2)) * (1 - (1 + τ0) * exp(-τ0)))
 	end
 
 	@testset for u0 in cases
-		D = S.doppler_factor(u0, SVector(0, 0, 1))
+		δ = S.doppler_factor(u0, SVector(0, 0, 1))
 		@testset for α0 in αs
 			sphere = S.UniformSphere(; center, radius=R, u0, jν=j0, αν=α0)
 
@@ -88,7 +131,7 @@ end
 			for b in (0, 0.4R, 0.8R)
 				ℓ = 2 * sqrt(R^2 - b^2)
 				I_num = S.integrate_ray(sphere, SVector(b, 0); νcam, t0=0, nz=256)
-				@test I_num ≈ I_exact(j0, α0, D, ℓ) rtol=6e-3
+				@test I_num ≈ I_exact(j0, α0, δ, ℓ) rtol=6e-3
 			end
 
 			# Missed rays should return zero
@@ -100,7 +143,7 @@ end
 			img = S.render(cam, sphere)
 			dx = step(xs)
 			F_num = sum(img) * dx^2
-			@test F_num ≈ F_exact(j0, α0, D, R) rtol=(α0 == 0 ? 1.6e-2 : 1.2e-2)
+			@test F_num ≈ F_exact(j0, α0, δ, R) rtol=(α0 == 0 ? 1.6e-2 : 1.2e-2)
 		end
 	end
 end
