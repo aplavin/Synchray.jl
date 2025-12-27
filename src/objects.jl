@@ -11,7 +11,7 @@ z_interval(obj::UniformSphere, xy::SVector{2}, νcam, t0) = begin
 	dx, dy = xy[1] - x0, xy[2] - y0
 	r2 = obj.radius^2
 	b2 = dx^2 + dy^2
-	b2 > r2 ? z0..(z0 - eps(z0)) : begin
+	b2 > r2 ? z0..(z0 - eps(float(z0))) : begin
 		dz = √(r2 - b2)
 		(z0 - dz) .. (z0 + dz)
 	end
