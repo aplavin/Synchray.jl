@@ -5,13 +5,15 @@ using Reexport
 @reexport using IntervalSets
 @reexport using Swizzling
 @reexport using LinearAlgebra
+using DispatchDoctor: @stable, @unstable
 
+@stable begin
 include("minkowski.jl")
 include("mediums.jl")
 include("objects.jl")
 include("transfer.jl")
 include("camera.jl")
-include("render.jl")
+end
 
 export AbstractMedium,
 	z_interval, four_velocity,

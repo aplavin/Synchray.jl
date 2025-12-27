@@ -1,6 +1,13 @@
-struct OrthoCamera
-	xs
-	ys
+@kwdef struct OrthoCamera
+	xys
+    nz::Int
+    ν
+    t
+    mapfunc = map
 end
 
-OrthoCamera(xmin, xmax, nx, ymin, ymax, ny) = OrthoCamera(range(xmin, xmax; length=nx), range(ymin, ymax; length=ny))
+@unstable render(cam::OrthoCamera, obj::AbstractMedium) = begin
+	map(cam.xys) do xy::SVector{2}
+		integrate_ray(obj, xy; νcam=cam.ν, t0=cam.t, cam.nz)
+	end
+end
