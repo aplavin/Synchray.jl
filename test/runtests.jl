@@ -6,6 +6,14 @@ using TestItemRunner
 @testitem "Minkowski + Doppler conventions" begin
 	import Synchray as S
 
+	@testset "arithmetics" begin
+		a = S.FourPosition(1, 2, 3, 4)
+		b = S.FourPosition(0.5, -1.0, 2.0, 3.0)
+		@test a + b === S.FourPosition(1.5, 1.0, 5.0, 7.0)
+		@test a - b === S.FourPosition(0.5, 3.0, 1.0, 1.0)
+		@test 2a === S.FourPosition(2, 4, 6, 8)
+	end
+
 	@testset "minkowski_dot basics" begin
 		a = S.FourPosition(2.0, 1.0, 3.0, -4.0)
 		b = S.FourPosition(-1.0, 2.0, 0.5, 7.0)
@@ -49,10 +57,11 @@ end
 @testitem "Uniform slab transfer" begin
     import Synchray as S
 
-	νcam = 2
 	L = 3
 	j0 = 0.7
 	a0 = 1.3
+
+	ray = S.RayZ(; x0=S.FourPosition(0,0,0,0), k=2, nz=2_000)
 
 	cases = [
 		(; u0=S.FourVelocity(SVector(0, 0, 0))),
@@ -67,7 +76,7 @@ end
 				# For τ = α D L ≪ 1: I′ ≈ j L′ and I = I′/D^3 ⇒ I ≈ j L / D^2
 				αthin = 1e-6
 				slab = S.UniformSlab(0..L, u0, j0, αthin)
-				Iν_num = S.integrate_ray(slab, SVector(0, 0); νcam, t0=0, nz=2_000)
+				Iν_num = S.render(ray, slab)
 				Iν_exact = j0 * L * (δ^2)
 				@test Iν_num ≈ Iν_exact rtol=2e-3
 			end
@@ -76,14 +85,14 @@ end
 				# For τ ≫ 1: I′ → S = j/α and I = S/D^3.
 				αthick = 1e5
 				slab = S.UniformSlab(0..L, u0, j0, αthick)
-				Iν_num = S.integrate_ray(slab, SVector(0, 0); νcam, t0=0, nz=2_000)
+				Iν_num = S.render(ray, slab)
 				Iν_exact = (j0 / αthick) * (δ^3)
 				@test Iν_num ≈ Iν_exact rtol=2e-3
 			end
 		end
 
 		slab = S.UniformSlab(0.0..L, u0, j0, a0)
-		Iν_num = S.integrate_ray(slab, SVector(0, 0); νcam, t0=0.0, nz=20_000)
+		Iν_num = S.render(ray, slab)
 
 		# Analytic solution as a cross-check:
 		# - Solve transfer in slab comoving frame: dI'/ds' = j0 - a0 I'
@@ -102,12 +111,14 @@ end
 @testitem "Uniform sphere flux (thin to thick)" begin
 	import Synchray as S
     using RectiGrids
+	using Accessors: @set
 
 	R = 1.3
 	j0 = 0.7
-	νcam = 2
 	center = S.FourPosition(0, 0, 0, 0)
 	αs = (0, 1.2, 12)
+
+	ray = S.RayZ(; x0=S.FourPosition(0,0,0,0), k=2, nz=512)
 
 	cases = (
 		S.FourVelocity(SVector(0, 0, 0)),
@@ -130,16 +141,16 @@ end
 			# Per-ray analytic check
 			for b in (0, 0.4R, 0.8R)
 				ℓ = 2 * sqrt(R^2 - b^2)
-				I_num = S.integrate_ray(sphere, SVector(b, 0); νcam, t0=0, nz=256)
+				I_num = S.render((@set ray.x0.x = b), sphere)
 				@test I_num ≈ I_exact(j0, α0, δ, ℓ) rtol=6e-3
 			end
 
 			# Missed rays should return zero
-			@test S.integrate_ray(sphere, SVector(2R, 0); νcam, t0=0, nz=64) == 0
+			@test S.render((@set ray.x0.x = 2R), sphere) == 0
 
 			# Total (image-plane) flux from a 2D grid: ∫ I(x,y) dx dy
 			xs = range(-R..R, 151)
-			cam = S.OrthoCamera(; xys=grid(SVector, xs, xs), nz=256, ν=νcam, t=0)
+			cam = S.CameraZ(; xys=grid(SVector, xs, xs), ray.nz, ν=2, t=0)
 			img = S.render(cam, sphere)
 			dx = step(xs)
 			F_num = sum(img) * dx^2

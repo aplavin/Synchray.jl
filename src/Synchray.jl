@@ -7,12 +7,12 @@ using Reexport
 @reexport using LinearAlgebra
 using DispatchDoctor: @stable, @unstable
 
-@stable begin
+@stable default_mode="warn" begin
 include("minkowski.jl")
 include("mediums.jl")
 include("objects.jl")
-include("transfer.jl")
 include("camera.jl")
+include("transfer.jl")
 end
 
 export AbstractMedium,

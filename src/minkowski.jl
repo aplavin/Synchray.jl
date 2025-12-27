@@ -21,6 +21,9 @@ struct FourFrequency{T} <: FourVector{T}
     z::T
 end
 
+StaticArrays.similar_type(::Type{TFV}, ::Type{T}, s::Size{(4,)}) where {TFV<:FourVector,T} =
+    Base.typename(TFV).wrapper{T}
+
 # lower(v::FourVector) = typeof(v)(-v.t, @swiz v.xyz)
 # raise(v::FourVector) = lower(v)
 
@@ -30,8 +33,6 @@ FourVelocity(β::SVector{3}) = let
     γ = 1 / √(1 - dot(β, β))
     FourVelocity(γ, (γ * β)...)
 end
-
-photon_k(νcam) = FourFrequency(νcam, zero(νcam), zero(νcam), νcam)
 
 photon_k(νcam, n::SVector{3}) = FourFrequency(νcam, (νcam .* n)...)
 
