@@ -24,6 +24,6 @@ export AbstractMedium,
 	OrthoCamera,
 	integrate_ray,
 	render,
-	FourVector, photon_k, minkowski_dot, measured_frequency
+	FourVector, photon_k, minkowski_dot, measured_frequency, doppler_factor
 
 end
