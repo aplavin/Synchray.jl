@@ -21,8 +21,8 @@ struct FourFrequency{T} <: FourVector{T}
     z::T
 end
 
-lower(v::FourVector) = FourVector(-v.t, @swiz v.xyz)
-raise(v::FourVector) = lower(v)
+# lower(v::FourVector) = typeof(v)(-v.t, @swiz v.xyz)
+# raise(v::FourVector) = lower(v)
 
 minkowski_dot(a::FourVector, b::FourVector) = -a.t * b.t + dot((@swiz a.xyz), (@swiz b.xyz))
 

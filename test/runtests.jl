@@ -10,9 +10,9 @@ using TestItemRunner
 	L = 3.0
 	j0 = 0.7
 	a0 = 1.3
-	slab = S.ConstantSlab(0.0..L, S.FourVelocity(SVector(0,0,0)), j0, a0)
+	slab = S.UniformSlab(0.0..L, S.FourVelocity(SVector(0,0,0)), j0, a0)
 
-	Iν_num = S.integrate_ray(slab, 0.0, 0.0; νcam, t0=0.0, nz=20_000)
+	Iν_num = S.integrate_ray(slab, SVector(0, 0); νcam, t0=0.0, nz=20_000)
 	Δλ = L / S.photon_k(νcam).z
 	Jinv = j0 / (νcam^2)
 	Ainv = a0 * νcam
