@@ -14,11 +14,10 @@ _integrate_ray_step(Iinv, obj, x4, k, Δλ) = begin
 	ν = measured_frequency(k, u)
 	Jinv = emissivity_invariant(obj, x4, ν)
 	Ainv = absorption_invariant(obj, x4, ν)
-	_step_invariant(Iinv, Jinv, Ainv, Δλ)
+	return _step_invariant(Iinv, Jinv, Ainv, Δλ)
 end
 
 integrate_ray(obj::AbstractMedium, ray::RayZ) = begin
-	ν = photon_frequency(ray.k)
 	seg = z_interval(obj, ray)
 
 	k = ray.k
@@ -36,5 +35,6 @@ integrate_ray(obj::AbstractMedium, ray::RayZ) = begin
 		Iinv = _integrate_ray_step(Iinv, obj, x, k, Δλ)
 	end
 
-	ν^3 * Iinv
+	ν = photon_frequency(ray.k)
+	return ν^3 * Iinv
 end
