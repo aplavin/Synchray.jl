@@ -161,8 +161,12 @@ end
 				@test I_num ≈ I_exact(j0, α0, δ, ℓ) rtol=6e-3
 			end
 
-			# Missed rays should return zero
-			@test S.render((@set ray.x0.x = 2R), sphere) == 0
+			# Missed rays should return zero/nan
+			mray = @set ray.x0.x = 2R
+			@test S.render(mray, sphere) == 0
+			@test S.render(mray, sphere, S.OpticalDepth()) == 0
+			@test S.render(mray, sphere, S.SpectralIndex()) |> isnan
+			@test S.render(mray, sphere, (S.Intensity(), S.SpectralIndex())) === (0., NaN)
 
 			# Total (image-plane) flux from a 2D grid: ∫ I(x,y) dx dy
 			xs = range(-R..R, 151)
