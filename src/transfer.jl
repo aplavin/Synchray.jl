@@ -116,7 +116,7 @@ integrate_ray(obj::AbstractMedium, ray::RayZ, what=Intensity()) = begin
     @assert k == SVector(kz, 0, 0, kz)
     k1 = k / kz
 
-	zs = range(seg, ray.nz)
+	zs = range(seg, isempty(seg) ? 0 : ray.nz)
 	Δz = step(zs)
 	Δλ = Δz / kz
 
