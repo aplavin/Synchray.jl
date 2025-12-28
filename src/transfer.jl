@@ -1,7 +1,11 @@
-_step_invariant(Iinv, Jinv, Ainv, Δλ) = begin
-	(Ainv == 0 || Δλ == 0) && return Iinv + Jinv * Δλ
+_integrate_ray_step(Iinv, obj, x4, k, Δλ) = begin
+	u = four_velocity(obj, x4)
+	ν = measured_frequency(k, u)
+	Jinv = emissivity_invariant(obj, x4, ν)
+	Ainv = absorption_invariant(obj, x4, ν)
+
 	Δτ = Ainv * Δλ
-	if abs(Δτ) < 1e-8
+	Iinv = if abs(Δτ) < 1e-8
         Iinv + (Jinv - Ainv * Iinv) * Δλ
 	else
 		E = exp(-Δτ)
@@ -9,15 +13,7 @@ _step_invariant(Iinv, Jinv, Ainv, Δλ) = begin
 	end
 end
 
-_integrate_ray_step(Iinv, obj, x4, k, Δλ) = begin
-	u = four_velocity(obj, x4)
-	ν = measured_frequency(k, u)
-	Jinv = emissivity_invariant(obj, x4, ν)
-	Ainv = absorption_invariant(obj, x4, ν)
-	return _step_invariant(Iinv, Jinv, Ainv, Δλ)
-end
-
-integrate_ray(obj::AbstractMedium, ray::RayZ) = begin
+integrate_ray(obj::AbstractMedium, ray::RayZ, what=Intensity()) = begin
 	seg = z_interval(obj, ray)
 
 	k = ray.k
