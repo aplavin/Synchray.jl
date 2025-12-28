@@ -166,7 +166,7 @@ end
 			@test S.render(mray, sphere) == 0
 			@test S.render(mray, sphere, S.OpticalDepth()) == 0
 			@test S.render(mray, sphere, S.SpectralIndex()) |> isnan
-			@test S.render(mray, sphere, (S.Intensity(), S.SpectralIndex())) === (0., NaN)
+			@test isequal(S.render(mray, sphere, (S.Intensity(), S.SpectralIndex())), (0., NaN))
 
 			# Total (image-plane) flux from a 2D grid: ∫ I(x,y) dx dy
 			xs = range(-R..R, 151)
