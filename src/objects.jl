@@ -15,8 +15,6 @@ z_interval(obj::UniformSphere, ray::RayZ) = begin
 	return (z0 - dz) .. (z0 + dz)
 end
 
-four_velocity(obj::UniformSphere, x4, ν) = obj.u0
-
 four_velocity(obj::UniformSphere, x4) = obj.u0
 
 emissivity(obj::UniformSphere, x4, ν) = obj.jν
@@ -64,7 +62,6 @@ z_interval(obj::MovingUniformSphere, ray::RayZ) = begin
 	return min(z1, z2) .. max(z1, z2)
 end
 
-four_velocity(obj::MovingUniformSphere, x4, ν) = obj.u0
 four_velocity(obj::MovingUniformSphere, x4) = obj.u0
 emissivity(obj::MovingUniformSphere, x4, ν) = obj.jν
 absorption(obj::MovingUniformSphere, x4, ν) = obj.αν
