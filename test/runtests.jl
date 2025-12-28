@@ -213,8 +213,8 @@ end
 			@test I_num ≈ I_exact rtol=2e-3
 
 			@test S.render(ray, @set slab.ne0 *= 2) ≈ 2I_num rtol=2e-3
-
 			@test S.render(ray, @set slab.B0 *= 2) ≈ I_num * (2^((model.p + 1) / 2)) rtol=2e-3
+			@test S.render((@set S.photon_frequency(ray) *= 2), slab) ≈ I_num * (2^(-(model.p - 1) / 2)) rtol=2e-3
 
 			αobs = S.render(ray, slab, S.SpectralIndex())
 			@test αobs ≈ (-(model.p - 1) / 2) atol=2e-4
@@ -229,6 +229,8 @@ end
 			I_exact_thick = (j_thick / α_thick) * (δ^3)
 			@test I_num_thick ≈ I_exact_thick rtol=2e-3
 			@test S.render(ray, slab_thick, S.OpticalDepth()) ≈ (α_thick * (L / δ)) rtol=2e-3
+			@test S.render(ray, slab_thick, S.SpectralIndex()) ≈ 5/2 atol=2e-4
+			@test S.render((@set S.photon_frequency(ray) *= 2), slab_thick) ≈ I_num_thick * (2^(5/2)) rtol=2e-3
 
 			@test S.render(ray, @set slab_thick.ne0 *= 2) ≈ I_num_thick rtol=1e-3
 		end
