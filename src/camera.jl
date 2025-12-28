@@ -18,7 +18,7 @@ _rayz(x0::FourPosition, k::Number, nz::Int) = RayZ(x0, photon_k(k, SVector(0, 0,
    
 photon_frequency(k::FourFrequency) = k.t
 
-rays(cam::CameraZ) = let
+@unstable rays(cam::CameraZ) = let
     x0_base = FourPosition(cam.t, 0, 0, 0)
     k = photon_k(cam.ν, SVector(0, 0, 1))
     map(cam.xys) do xy
