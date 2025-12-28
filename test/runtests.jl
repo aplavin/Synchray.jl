@@ -26,6 +26,9 @@ using TestItemRunner
 		u = S.FourVelocity(β)
 		@test S.minkowski_dot(u, u) ≈ -1 atol=1e-12
 		@test u.t ≈ inv(sqrt(1 - dot(β, β)))
+		@test S.beta(u) ≈ β atol=1e-12
+		@test S.gamma(u) ≈ u.t atol=1e-12
+		@test S.gamma(β) ≈ u.t atol=1e-12
 	end
 
 	@testset "photon_k is null" begin

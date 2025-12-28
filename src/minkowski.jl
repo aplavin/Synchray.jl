@@ -29,8 +29,16 @@ StaticArrays.similar_type(::Type{TFV}, ::Type{T}, s::Size{(4,)}) where {TFV<:Fou
 
 minkowski_dot(a::FourVector, b::FourVector) = -a.t * b.t + dot((@swiz a.xyz), (@swiz b.xyz))
 
+beta(u::FourVector) = begin
+    iszero(u.t) && error("beta(u): undefined for u.t == 0")
+    (@swiz u.xyz) / u.t
+end
+
+gamma(u::FourVelocity) = u.t
+gamma(β::SVector{3}) = inv(√(1 - dot(β, β)))
+
 FourVelocity(β::SVector{3}) = let
-    γ = 1 / √(1 - dot(β, β))
+    γ = gamma(β)
     FourVelocity(γ, (γ * β)...)
 end
 
