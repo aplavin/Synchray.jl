@@ -15,15 +15,8 @@ include("camera.jl")
 include("transfer.jl")
 end
 
-export AbstractMedium,
-	z_interval, four_velocity,
-	emissivity, absorption,
-	emissivity_invariant, absorption_invariant,
-	UniformSphere,
-		UniformSlab,
-	OrthoCamera,
-	integrate_ray,
-	render,
-	FourVector, photon_k, minkowski_dot, measured_frequency, doppler_factor
+# we don't export anything from this module on purpose
+# the user is recommended to do `import Synchray as S`
+# and then access things as `S.SomeType` or `S.some_function`
 
 end
