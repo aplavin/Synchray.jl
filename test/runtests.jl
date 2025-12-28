@@ -102,6 +102,10 @@ end
 		@test Iν_τ_num[1] ≈ Iν_num
 		@test Iν_τ_num[2] ≈ τ_num
 
+		Iν_α_num = S.render(ray, slab, (S.Intensity(), S.SpectralIndex()))
+		@test Iν_α_num[1] ≈ Iν_num
+		@test Iν_α_num[2] ≈ α_num
+
 		# Analytic solution as a cross-check:
 		# - Solve transfer in slab comoving frame: dI'/ds' = j0 - a0 I'
 		# - Convert thickness to comoving path length via D = ν'/ν = 1/δ
