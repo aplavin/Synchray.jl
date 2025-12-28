@@ -6,15 +6,13 @@
 	αν::FA   # comoving absorption α_ν (constant)
 end
 
-z_interval(obj::UniformSphere, xy::SVector{2}, νcam, t0) = begin
-	x0, y0, z0 = obj.center[2], obj.center[3], obj.center[4]
-	dx, dy = xy[1] - x0, xy[2] - y0
+z_interval(obj::UniformSphere, ray::RayZ) = begin
+	z0 = obj.center.z
 	r2 = obj.radius^2
-	b2 = dx^2 + dy^2
-	b2 > r2 ? z0..(z0 - eps(float(z0))) : begin
-		dz = √(r2 - b2)
-		(z0 - dz) .. (z0 + dz)
-	end
+	dxy = (@swiz ray.x0.xy) - (@swiz obj.center.xy)
+	b2 = dot(dxy, dxy)
+	dz = b2 > r2 ? eps(float(z0)) : √(r2 - b2)
+	return (z0 - dz) .. (z0 + dz)
 end
 
 four_velocity(obj::UniformSphere, x4, ν) = obj.u0
@@ -32,7 +30,7 @@ absorption(obj::UniformSphere, x4, ν) = obj.αν
 	a0::TA
 end
 
-z_interval(obj::UniformSlab, xy, νcam, t0) = obj.z
+z_interval(obj::UniformSlab, ray::RayZ) = obj.z
 four_velocity(obj::UniformSlab, x4) = obj.u0
 emissivity(obj::UniformSlab, x4, ν) = obj.j0
 absorption(obj::UniformSlab, x4, ν) = obj.a0

@@ -10,8 +10,8 @@ using DispatchDoctor: @stable, @unstable
 @stable default_mode="warn" begin
 include("minkowski.jl")
 include("mediums.jl")
-include("objects.jl")
 include("camera.jl")
+include("objects.jl")
 include("transfer.jl")
 end
 

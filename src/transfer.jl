@@ -19,7 +19,7 @@ end
 
 integrate_ray(obj::AbstractMedium, ray::RayZ) = begin
 	ν = photon_frequency(ray.k)
-	seg = z_interval(obj, (@swizzle ray.x0.xy), ν, ray.x0.t)
+	seg = z_interval(obj, ray)
 
 	k = ray.k
 	kz = k.z
