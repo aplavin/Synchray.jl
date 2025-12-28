@@ -180,6 +180,62 @@ end
 end
 
 
+@testitem "Synchrotron slab scalings" begin
+	import Synchray as S
+	using Accessors
+
+	L = 2
+	ν = 2.0
+	model = S.PowerLawElectrons(; p=3.2, Cj=0.7, Ca=0.0)
+	ne0 = 1.3
+	B0 = 0.9
+	ray = S.RayZ(; x0=S.FourPosition(0, 0, 0, 0), k=ν, nz=4_000)
+
+	cases = (
+		S.FourVelocity(SVector(0, 0, 0)),
+		S.FourVelocity(SVector(0, 0, 0.3)),
+		S.FourVelocity(SVector(0.3, 0, 0.5)),
+	)
+
+	@testset for u0 in cases
+		δ = S.doppler_factor(u0, SVector(0, 0, 1))
+		ν′ = ν / δ
+
+		slab = S.UniformSynchrotronSlab(; z=0..L, u0, ne0, B0, model)
+
+		@testset "optically thin" begin
+			I_num = S.render(ray, slab)
+			@test I_num > 0
+			@test S.render(ray, slab, S.OpticalDepth()) ≈ 0 atol=1e-12
+
+			(j0, _) = S._synchrotron_coeffs(model, ne0, B0, ν′)
+			I_exact = j0 * L * (δ^2)
+			@test I_num ≈ I_exact rtol=2e-3
+
+			@test S.render(ray, @set slab.ne0 *= 2) ≈ 2I_num rtol=2e-3
+
+			@test S.render(ray, @set slab.B0 *= 2) ≈ I_num * (2^((model.p + 1) / 2)) rtol=2e-3
+
+			αobs = S.render(ray, slab, S.SpectralIndex())
+			@test αobs ≈ (-(model.p - 1) / 2) atol=2e-4
+		end
+
+		@testset "very optically thick" begin
+			model_thick = @set model.Ca = 5e6
+			slab_thick = @set slab.model = model_thick
+			(j_thick, α_thick) = S._synchrotron_coeffs(model_thick, ne0, B0, ν′)
+
+			I_num_thick = S.render(ray, slab_thick)
+			I_exact_thick = (j_thick / α_thick) * (δ^3)
+			@test I_num_thick ≈ I_exact_thick rtol=2e-3
+			@test S.render(ray, slab_thick, S.OpticalDepth()) ≈ (α_thick * (L / δ)) rtol=2e-3
+
+			@test S.render(ray, @set slab_thick.ne0 *= 2) ≈ I_num_thick rtol=1e-3
+		end
+	end
+end
+
+
 # @testitem "_" begin
 #     import Aqua
 #     Aqua.test_all(Synchray)
