@@ -23,6 +23,53 @@ emissivity(obj::UniformSphere, x4, ν) = obj.jν
 absorption(obj::UniformSphere, x4, ν) = obj.αν
 
 
+
+@kwdef struct MovingUniformSphere{TC,TR,TU,FJ,FA} <: AbstractMedium
+	center::TC
+	radius::TR
+	u0::TU
+	jν::FJ   # comoving emissivity j_ν (constant)
+	αν::FA   # comoving absorption α_ν (constant)
+end
+
+z_interval(obj::MovingUniformSphere, ray::RayZ) = begin
+	# Worldtube of a rigid sphere moving with constant 4-velocity u:
+	# for an event x, define Δ = x - center and project it onto the hyperplane
+	# orthogonal to u:  Δ⊥ = Δ + u (u⋅Δ). Points satisfy Δ⊥⋅Δ⊥ ≤ R^2.
+	# For RayZ: x(z) = ray.x0 + z*(1,0,0,1) (since k/kz = (1,0,0,1)).
+	u = obj.u0
+	Δ0 = ray.x0 - obj.center
+	onez = one(Δ0.t)
+	zeroz = zero(Δ0.t)
+	kdir = FourPosition(onez, zeroz, zeroz, onez)
+
+	a = minkowski_dot(u, kdir)
+	b = minkowski_dot(u, Δ0)
+	P0 = Δ0 + u * b
+	P1 = kdir + u * a
+
+	A = minkowski_dot(P1, P1)
+	B = 2 * minkowski_dot(P0, P1)
+	C = minkowski_dot(P0, P0) - obj.radius^2
+	D = B^2 - 4 * A * C
+
+	if !(D > 0) || iszero(A)
+		z0 = obj.center.z
+		return z0 .. (z0 - eps(float(z0)))
+	end
+
+	√D = sqrt(D)
+	z1 = (-B - √D) / (2 * A)
+	z2 = (-B + √D) / (2 * A)
+	return min(z1, z2) .. max(z1, z2)
+end
+
+four_velocity(obj::MovingUniformSphere, x4, ν) = obj.u0
+four_velocity(obj::MovingUniformSphere, x4) = obj.u0
+emissivity(obj::MovingUniformSphere, x4, ν) = obj.jν
+absorption(obj::MovingUniformSphere, x4, ν) = obj.αν
+
+
 @kwdef struct UniformSlab{TZ,TU,TJ,TA} <: AbstractMedium
 	z::TZ
 	u0::TU

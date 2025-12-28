@@ -183,6 +183,69 @@ end
 end
 
 
+@testitem "Moving sphere silhouette (Terrell rotation)" begin
+	import Synchray as S
+
+	R = 1
+	z0 = 3
+
+	βs = (
+		SVector(-0.7, 0.0, 0.0),
+		SVector(0.0, 0.7, 0.0),
+		SVector(0.4, -0.3, 0.0),
+		SVector(0.25, 0.15, 0.5),
+	)
+	t0s = (-1, 0, 0.75)
+
+	@testset for β in βs, t0 in t0s
+		sphere = S.MovingUniformSphere(
+			center=S.FourPosition(0, 0, 0, z0),
+			radius=R,
+			u0=S.FourVelocity(β),
+			jν=1,
+			αν=0,
+		)
+
+		# For an orthographic camera along +z, the set of rays that intersect the moving sphere
+		# is a disk in the image plane (Terrell rotation). Due to light-travel-time, its center
+		# is shifted by
+		#   Δx⃗⊥ = β⃗⊥ (t_cam - t_center + z_center) / (1 - β_z)
+		# for an orthographic camera along +z.
+		s = (t0 - sphere.center.t + sphere.center.z) / (1 - β.z)
+		xc, yc = (@swiz sphere.center.xy) + (@swiz β.xy) * s
+
+		Ixy(x, y) = begin
+			ray = S.RayZ(; x0=S.FourPosition(t0, x, y, 0), k=2, nz=2048)
+			S.render(ray, sphere)
+		end
+
+		@testset "inside/outside support" begin
+			# Well inside: must intersect => positive intensity
+			for (dx, dy) in ((0, 0), (0.3R, 0.4R), (-0.8R, 0), (0, 0.9R))
+				@test Ixy(xc + dx, yc + dy) > 0
+			end
+
+			# Clearly outside: must miss => zero intensity
+			for (dx, dy) in ((1.2R, 0), (0, 1.3R), (0.95R, 0.95R))
+				@test Ixy(xc + dx, yc + dy) == 0
+			end
+		end
+
+		@testset "circular silhouette" begin
+			# Sample angles: just inside should hit, just outside should miss.
+			for θ in range(0, 2π; length=9)[1:end-1]
+				xin = xc + (0.98R) * cos(θ)
+				yin = yc + (0.98R) * sin(θ)
+				xout = xc + (1.02R) * cos(θ)
+				yout = yc + (1.02R) * sin(θ)
+				@test Ixy(xin, yin) > 0
+				@test Ixy(xout, yout) == 0
+			end
+		end
+	end
+end
+
+
 @testitem "Synchrotron slab scalings" begin
 	import Synchray as S
 	using Accessors
