@@ -17,6 +17,14 @@ _rayz(x0::FourPosition, k::Number, nz::Int) = RayZ(x0, photon_k(k, SVector(0, 0,
 
    
 photon_frequency(k::FourFrequency) = k.t
+photon_frequency(ray::RayZ) = photon_frequency(ray.k)
+
+Accessors.set(k::FourFrequency, ::typeof(photon_frequency), ν) = let
+    ν0 = photon_frequency(k)
+    return (ν / ν0) * k
+end
+Accessors.set(ray::RayZ, ::typeof(photon_frequency), ν) = @set photon_frequency(ray.k) = ν
+
 
 @unstable rays(cam::CameraZ) = let
     x0_base = FourPosition(cam.t, 0, 0, 0)

@@ -75,6 +75,14 @@ integrate_ray(obj::AbstractMedium, ray::RayZ, what=Intensity()) = begin
 		acc = _integrate_ray_step(acc, obj, x, k, Δλ, what)
 	end
 
-	ν = photon_frequency(ray.k)
+	ν = photon_frequency(ray)
 	return _postprocess_acc(acc, ν)
+end
+
+integrate_ray(obj::AbstractMedium, ray::RayZ, what::SpectralIndex) = begin
+	ν0 = photon_frequency(ray)
+	I_of_ν(ν) = integrate_ray(obj, (@set photon_frequency(ray) = ν), Intensity())
+	I0 = I_of_ν(ν0)
+	dIdν = ForwardDiff.derivative(I_of_ν, ν0)
+	return iszero(I0) ? zero(I0) : (ν0 / I0) * dIdν
 end

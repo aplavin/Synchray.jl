@@ -96,6 +96,7 @@ end
 		slab = S.UniformSlab(0.0..L, u0, j0, a0)
 		Iν_num = S.render(ray, slab)
 		τ_num = S.render(ray, slab, S.OpticalDepth())
+		α_num = S.render(ray, slab, S.SpectralIndex())
 
 		Iν_τ_num = S.render(ray, slab, (S.Intensity(), S.OpticalDepth()))
 		@test Iν_τ_num[1] ≈ Iν_num
@@ -112,6 +113,9 @@ end
 
 		@test Iν_num ≈ Iν_exact rtol=2e-3
 		@test τ_num ≈ a0 * L′ rtol=2e-3
+
+		# For frequency-independent comoving (j0, a0), the observed I_ν is ν-independent ⇒ α = 0.
+		@test α_num ≈ 0 atol=2e-6
 	end
 end
 

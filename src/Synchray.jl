@@ -5,7 +5,10 @@ using Reexport
 @reexport using IntervalSets
 @reexport using Swizzling
 @reexport using LinearAlgebra
+using Accessors
+using ForwardDiff
 using DispatchDoctor: @stable, @unstable
+
 
 @stable default_mode="warn" begin
 include("minkowski.jl")
