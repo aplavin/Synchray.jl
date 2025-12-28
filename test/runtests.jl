@@ -79,6 +79,7 @@ end
 				Iν_num = S.render(ray, slab)
 				Iν_exact = j0 * L * (δ^2)
 				@test Iν_num ≈ Iν_exact rtol=2e-3
+				@test S.render(ray, slab, S.OpticalDepth()) ≈ 2e-6 rtol=0.5
 			end
 
 			@testset "very optically thick (α ≫ j)" begin
@@ -88,11 +89,17 @@ end
 				Iν_num = S.render(ray, slab)
 				Iν_exact = (j0 / αthick) * (δ^3)
 				@test Iν_num ≈ Iν_exact rtol=2e-3
+				@test S.render(ray, slab, S.OpticalDepth()) ≈ 2e5 rtol=0.5
 			end
 		end
 
 		slab = S.UniformSlab(0.0..L, u0, j0, a0)
 		Iν_num = S.render(ray, slab)
+		τ_num = S.render(ray, slab, S.OpticalDepth())
+
+		Iν_τ_num = S.render(ray, slab, (S.Intensity(), S.OpticalDepth()))
+		@test Iν_τ_num[1] ≈ Iν_num
+		@test Iν_τ_num[2] ≈ τ_num
 
 		# Analytic solution as a cross-check:
 		# - Solve transfer in slab comoving frame: dI'/ds' = j0 - a0 I'
@@ -104,6 +111,7 @@ end
 		Iν_exact = I′ * (δ^3)
 
 		@test Iν_num ≈ Iν_exact rtol=2e-3
+		@test τ_num ≈ a0 * L′ rtol=2e-3
 	end
 end
 

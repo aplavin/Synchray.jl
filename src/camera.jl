@@ -27,10 +27,15 @@ rays(cam::CameraZ) = let
     end
 end
 
-render(ray::RayZ, obj::AbstractMedium) = integrate_ray(obj, ray)
 
-@unstable render(cam::CameraZ, obj::AbstractMedium) = begin
+struct Intensity end
+struct OpticalDepth end
+struct SpectralIndex end
+
+render(ray::RayZ, obj::AbstractMedium, what=Intensity()) = integrate_ray(obj, ray, what)
+
+@unstable render(cam::CameraZ, obj::AbstractMedium, what=Intensity()) = begin
 	cam.mapfunc(rays(cam)) do ray
-		render(ray, obj)
+		render(ray, obj, what)
 	end
 end
