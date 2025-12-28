@@ -11,7 +11,7 @@ z_interval(obj::UniformSphere, ray::RayZ) = begin
 	r2 = obj.radius^2
 	dxy = (@swiz ray.x0.xy) - (@swiz obj.center.xy)
 	b2 = dot(dxy, dxy)
-	dz = b2 > r2 ? eps(float(z0)) : √(r2 - b2)
+	dz = b2 > r2 ? -eps(float(z0)) : √(r2 - b2)
 	return (z0 - dz) .. (z0 + dz)
 end
 

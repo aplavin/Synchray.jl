@@ -116,14 +116,19 @@ integrate_ray(obj::AbstractMedium, ray::RayZ, what=Intensity()) = begin
     @assert k == SVector(kz, 0, 0, kz)
     k1 = k / kz
 
-	zs = range(seg, isempty(seg) ? 0 : ray.nz)
+	zs = range(seg, ray.nz)
 	Δz = step(zs)
 	Δλ = Δz / kz
 
-	acc = _integrate_ray_step(_init_acc(typeof(what), photon_frequency(ray)), obj, ray.x0 + first(zs) * k1, k, Δλ)
-	for z in zs[2:end]
-        x = ray.x0 + z * k1
-		acc = _integrate_ray_step(acc, obj, x, k, Δλ)
+	acc = if isempty(seg)
+		_integrate_ray_step(_init_acc(typeof(what), photon_frequency(ray)), obj, ray.x0 + first(zs) * k1, k, zero(Δλ))
+	else
+		acc = _integrate_ray_step(_init_acc(typeof(what), photon_frequency(ray)), obj, ray.x0 + first(zs) * k1, k, Δλ)
+		for z in zs[2:end]
+			x = ray.x0 + z * k1
+			acc = _integrate_ray_step(acc, obj, x, k, Δλ)
+		end
+		acc
 	end
 
 	ν = photon_frequency(ray)
