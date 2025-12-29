@@ -83,7 +83,7 @@ z_interval(obj::ConicalBKJet, ray::RayZ) = begin
 		end
 	end
 
-    @info "" z_dom repr(cut_vals) repr(roots) repr(inside_segments)
+    # @info "" z_dom repr(cut_vals) repr(roots) repr(inside_segments)
 	if isempty(inside_segments)
 		zz = float(z0)
 		return zz .. (zz - eps(zz))
@@ -97,7 +97,7 @@ end
 four_velocity(obj::ConicalBKJet, x4) = begin
 	r = @swiz x4.xyz
 	s = dot(obj.axis, r)
-	@assert s ≤ 0
+	@assert s ≥ 0
 
 	r2 = dot(r, r)
 	vhat = r / sqrt(r2)
@@ -114,18 +114,18 @@ end
 electron_density(obj::ConicalBKJet, x4) = begin
 	r = @swiz x4.xyz
 	s = dot(obj.axis, r)
+	@assert s ≥ 0
 	(s ∈ obj.s) || return zero(s)
 	_inside_cone(obj.axis, obj.φj, r) || return zero(s)
-	s > 0 || return zero(s)
 	return obj.ne0 * (s / obj.s0)^(obj.ne_exp)
 end
 
 magnetic_field_strength(obj::ConicalBKJet, x4) = begin
 	r = @swiz x4.xyz
 	s = dot(obj.axis, r)
+	@assert s ≥ 0
 	(s ∈ obj.s) || return zero(s)
 	_inside_cone(obj.axis, obj.φj, r) || return zero(s)
-	s > 0 || return zero(s)
 	return obj.B0 * (s / obj.s0)^(obj.B_exp)
 end
 

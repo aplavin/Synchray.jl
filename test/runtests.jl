@@ -378,6 +378,7 @@ end
 
 @testitem "Conical BK jet geometry + scalings" begin
 	import Synchray as S
+	using Synchray: mean; using Synchray.IntervalSets: width
 	using Accessors
 
 	jet = S.ConicalBKJet(; 
@@ -391,29 +392,78 @@ end
 		model=S.PowerLawElectrons(; p=2.5, Cj=1, Ca=1),
 	)
 
-	# Scalings along the axis at s=s0 and s=2s0.
-	x4_1 = S.FourPosition(0, 0, 0, 1)
-	x4_2 = S.FourPosition(0, 0, 0, 2)
-	@test S.electron_density(jet, x4_1) ≈ 2 atol=1e-12
-	@test S.magnetic_field_strength(jet, x4_1) ≈ 3 atol=1e-12
-	@test S.electron_density(jet, x4_2) ≈ 2 * (2^(-2)) atol=1e-12
-	@test S.magnetic_field_strength(jet, x4_2) ≈ 3 * (2^(-1)) atol=1e-12
+	@testset "jet axis along ray" begin
+		# Scalings along the axis at s=s0 and s=2s0.
+		x4_1 = S.FourPosition(0, 0, 0, 1)
+		x4_2 = S.FourPosition(0, 0, 0, 2)
+		@test S.electron_density(jet, x4_1) ≈ 2 atol=1e-12
+		@test S.magnetic_field_strength(jet, x4_1) ≈ 3 atol=1e-12
+		@test S.electron_density(jet, x4_2) ≈ 2 * (2^(-2)) atol=1e-12
+		@test S.magnetic_field_strength(jet, x4_2) ≈ 3 * (2^(-1)) atol=1e-12
 
-	# Outside cone should yield zero microphysics.
-	x4_out = S.FourPosition(0, 3 * 2 * tan(jet.φj), 0, 2)
-	@test S.electron_density(jet, x4_out) == 0
-	@test S.magnetic_field_strength(jet, x4_out) == 0
+		# Outside cone should yield zero microphysics.
+		x4_out = S.FourPosition(0, 3 * 2 * tan(jet.φj), 0, 2)
+		@test S.electron_density(jet, x4_out) == 0
+		@test S.magnetic_field_strength(jet, x4_out) == 0
 
-	ray = S.RayZ(; x0=S.FourPosition(0, 0, 0, 0), k=2, nz=1024)
-	# On-axis ray should see the full truncation segment for axis=ẑ.
-	@test S.z_interval(jet, ray) == jet.s
+		ray = S.RayZ(; x0=S.FourPosition(0, 0, 0, 0), k=2, nz=1024)
+		# On-axis ray should see the full truncation segment for axis=ẑ.
+		@test S.z_interval(jet, ray) == jet.s
+		@test S.render(ray, jet) > 0
+		# Off-axis ray within cone should also see a non-empty segment.
+		xoff = 0.5 * maximum(jet.s) * tan(jet.φj)
+		hit_ray = @set ray.x0.x = xoff
+		@test S.z_interval(jet, hit_ray) ≈ 2.5..5
+		@test S.render(hit_ray, jet) > 0
 
-	# A ray outside the projected cone should miss entirely.
-	xmiss = 1.1 * maximum(jet.s) * tan(jet.φj)
-	miss_ray = @set ray.x0.x = xmiss
-	@test S.render(miss_ray, jet) == 0
-	@test S.render(miss_ray, jet, S.OpticalDepth()) == 0
-	@test S.render(miss_ray, jet, S.SpectralIndex()) |> isnan
+		# A ray outside the projected cone should miss entirely.
+		xmiss = 1.1 * maximum(jet.s) * tan(jet.φj)
+		miss_ray = @set ray.x0.x = xmiss
+		@test S.z_interval(jet, miss_ray) |> isempty
+		@test S.render(miss_ray, jet) == 0
+	end
+	@testset "off-axis viewing angles" begin
+		s_probe = jet.s0
+		smax = maximum(jet.s)
+		ymiss = 1.1 * smax * tan(jet.φj)
+
+		cases = [
+			(; label="small", θ=4 * jet.φj, zpred = >(0)),
+			(; label="large", θ=π / 4, zpred = >(0)),
+			(; label="perpendicular", θ=π / 2, zpred = ∈(0 ± 1.1 * s_probe * tan(jet.φj))),
+			(; label="counterjet", θ=3π/4, zpred = <(0)),
+		]
+
+		@testset for (; label, θ, zpred) in cases
+			axis = SVector(sin(θ), 0, cos(θ))
+			jetθ = @set jet.axis = axis
+
+			# Choose a ray that crosses the jet axis at s = s_probe.
+			x0 = axis.x * s_probe
+			ray_onaxis = S.RayZ(; x0=S.FourPosition(0, x0, 0, 0), k=2, nz=2048)
+			z_cross = axis.z * s_probe
+			x4_cross = S.FourPosition(0, x0, 0, z_cross)
+
+			@test S.electron_density(jetθ, x4_cross) > 0
+
+			zint = S.z_interval(jetθ, ray_onaxis)
+			@test !isempty(zint)
+			@test all(zpred, endpoints(zint))
+			@test z_cross ∈ zint
+			@test S.render(ray_onaxis, jetθ) > 0
+
+			ray_half = @set ray_onaxis.x0.y = 0.5 * s_probe * tan(jet.φj)
+			zint_half = S.z_interval(jetθ, ray_half)
+			@test mean(zint_half) ≈ mean(zint)
+			@test width(zint_half) ≈ √(1 - 0.5^2) * width(zint)  rtol=2e-2
+
+			# A ray with |y| larger than the maximal jet radius must miss, regardless of tilt.
+			ray_miss = @set ray_onaxis.x0.y = ymiss
+			@test S.render(ray_miss, jetθ) == 0
+			@test S.render(ray_miss, jetθ, S.OpticalDepth()) == 0
+			@test S.render(ray_miss, jetθ, S.SpectralIndex()) |> isnan
+		end
+	end
 end
 
 
