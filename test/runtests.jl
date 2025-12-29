@@ -388,7 +388,6 @@ end
 		ne0=2,
 		B0=3,
 		speed_profile=(η -> 0),
-		speed_kind=:beta,
 		model=S.PowerLawElectrons(; p=2.5, Cj=1, Ca=1),
 	)
 
