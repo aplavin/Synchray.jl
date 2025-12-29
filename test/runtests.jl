@@ -245,6 +245,79 @@ end
 end
 
 
+@testitem "Moving ellipsoid rotates (Terrell rotation)" begin
+	import Synchray as S
+	using Accessors
+
+	# Penrose–Terrell result: for an orthographic camera along +z, a rigid body moving
+	# along +x should appear as if it were *rotated* about the y axis by an angle θ
+	# with sin(θ) = βx (plus a Terrell shift in the image plane and a Doppler boost).
+	#
+	# Choose an anisotropic ellipsoid (a ≠ c) so rotation changes the x-profile.
+	# Compare against an analytic chord-length model for the rotated stationary ellipsoid.
+	#
+	# To keep the analytic side trivial, only sample rays with x=0 (through the apparent center):
+	# then the quadratic cross-term vanishes and the chord length is
+	#   ℓ(y) = 2 * √((1 - y^2/b^2) / A),  A = sin^2(θ)/a^2 + cos^2(θ)/c^2.
+
+	z0 = 3
+	sizes = SVector(2.0, 1.0, 0.4)  # (a, b, c)
+
+	βs = (
+		SVector(0.6, 0.0, 0.0),
+		SVector(0.8, 0.0, 0.0),
+		SVector(0.98, 0.0, 0.0),
+	)
+	t0s = (-0.5, 0.25)
+
+	# Sample a few y offsets including near-edge / missed cases.
+	xys = SVector{2}[
+		(0, 0.0),
+		(0, 0.3),
+		(0, 0.7),
+		(0, 1.0),
+		(0, 1.1),
+		(0, -0.8),
+	]
+
+	@testset for t0 in t0s
+		cam = S.CameraZ(; xys, nz=4096, ν=2, t=t0)
+
+		@testset for β in βs
+			ell = S.MovingUniformEllipsoid(
+				center=S.FourPosition(0, 0, 0, z0),
+				sizes=sizes,
+				u0=S.FourVelocity(β),
+				jν=1,
+				αν=0,
+			)
+
+			# Terrell shift for orthographic camera along +z
+			s = (t0 - ell.center.t + ell.center.z) / (1 - β.z)
+			xyc = (@swiz ell.center.xy) + (@swiz β.xy) * s
+
+			δ = S.doppler_factor(ell.u0, SVector(0, 0, 1))
+			θ = asin(β.x)
+			(a, b, c) = sizes
+			sθ, cθ = sincos(θ)
+			A = (sθ^2) / (a^2) + (cθ^2) / (c^2)
+
+			curcam = @set cam.xys[∗] += xyc
+			Icur = S.render(curcam, ell)
+			Iexp = map(xy -> begin
+				(;y) = xy
+				t = 1 - (y^2) / (b^2)
+				ℓ = t > 0 ? 2 * sqrt(t / A) : 0.0
+				(δ^3) * ℓ
+			end, xys)
+			@test count(>(0), Iexp) == 4
+
+			@test Icur ≈ Iexp rtol=3e-3
+		end
+	end
+end
+
+
 @testitem "Synchrotron slab scalings" begin
 	import Synchray as S
 	using Accessors
