@@ -29,16 +29,8 @@ z_interval(obj::ConicalBKJet, ray::RayZ) = begin
 	z0 = ray.x0.z
 
 	# Enforce one-nappe cone from apex: s >= 0 and within obj.s
-	z_s = _z_interval_from_s(obj.axis, obj.s, r0)
-	if isempty(z_s)
-		return z_s
-	end
-	# additionally enforce s >= 0 even if obj.s includes negatives
-	z_spos = _z_interval_from_s(obj.axis, 0 .. Inf, r0)
-	z_dom = intersect(z_s, z_spos)
-	if isempty(z_dom)
-		return z_dom
-	end
+	z_dom = _z_interval_from_s(obj.axis, obj.s, r0)
+	isempty(z_dom) && return z_dom
 
 	# Cone inequality along the ray:
 	#   f(z) = (a⋅r(z))^2 - cos(φj)^2 * |r(z)|^2 ≥ 0,
@@ -55,15 +47,10 @@ z_interval(obj::ConicalBKJet, ray::RayZ) = begin
 	B = 2 * (α * β - c2 * z0)
 	C = α * α - c2 * r02
 
-	zmin = leftendpoint(z_dom)
-	zmax = rightendpoint(z_dom)
-
-	T = promote_type(typeof(zmin), typeof(zmax), typeof(A), typeof(B), typeof(C))
+	T = promote_type(eltype(endpoints(z_dom)), typeof(A), typeof(B), typeof(C))
 	Az = T(A)
 	Bz = T(B)
 	Cz = T(C)
-
-	cut_vals = T[T(zmin), T(zmax)]
 
 	roots = T[]
 	if iszero(Az)
@@ -71,39 +58,39 @@ z_interval(obj::ConicalBKJet, ray::RayZ) = begin
 			push!(roots, -Cz / Bz)
 		end
 	else
-		D = Bz * Bz - 4 * Az * Cz
+		D = Bz^2 - 4 * Az * Cz
 		if D >= 0
-			√D = sqrt(D)
 			push!(roots, (-Bz - √D) / (2 * Az))
 			push!(roots, (-Bz + √D) / (2 * Az))
 		end
 	end
 
+	cut_vals = collect(endpoints(z_dom))
 	for r in roots
-		(r > zmin && r < zmax) && push!(cut_vals, r)
+		r ∈ z_dom && push!(cut_vals, r)
 	end
 	cut_vals = sort(unique(cut_vals))
 
 	f(z) = (Az * z + Bz) * z + Cz
 	s_at(z) = α + β * z
 
-	inside_segments = Tuple{T, T}[]
+	inside_segments = ClosedInterval{T}[]
 	for i in 1:(length(cut_vals) - 1)
-		za = cut_vals[i]
-		zb = cut_vals[i + 1]
-		zmid = (za + zb) / 2
+		zab = cut_vals[i]..cut_vals[i + 1]
+		zmid = mean(zab)
 		if (f(zmid) >= 0) && (s_at(zmid) >= 0)
-			push!(inside_segments, (za, zb))
+			push!(inside_segments, zab)
 		end
 	end
 
+    @info "" z_dom repr(cut_vals) repr(roots) repr(inside_segments)
 	if isempty(inside_segments)
 		zz = float(z0)
 		return zz .. (zz - eps(zz))
 	end
 	# Intersection should be connected for a single-nappe cone; merge defensively.
-	z1 = minimum(first.(inside_segments))
-	z2 = maximum(last.(inside_segments))
+	z1 = minimum(leftendpoint.(inside_segments))
+	z2 = maximum(rightendpoint.(inside_segments))
 	return z1 .. z2
 end
 

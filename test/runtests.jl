@@ -382,7 +382,7 @@ end
 
 	jet = S.ConicalBKJet(; 
 		axis=SVector(0, 0, 1),
-		φj=0.2,
+		φj=0.05,
 		s=0.1..5,
 		s0=1,
 		ne0=2,
@@ -390,19 +390,6 @@ end
 		speed_profile=(η -> 0),
 		model=S.PowerLawElectrons(; p=2.5, Cj=1, Ca=1),
 	)
-
-	ray = S.RayZ(; x0=S.FourPosition(0, 0, 0, 0), k=2, nz=1024)
-
-	# On-axis ray should see the full truncation segment for axis=ẑ.
-	seg = S.z_interval(jet, ray)
-	@test seg == jet.s
-
-	# A ray outside the projected cone should miss entirely.
-	xmiss = 1.1 * maximum(jet.s) * tan(jet.φj)
-	miss_ray = @set ray.x0.x = xmiss
-	@test S.render(miss_ray, jet) == 0
-	@test S.render(miss_ray, jet, S.OpticalDepth()) == 0
-	@test S.render(miss_ray, jet, S.SpectralIndex()) |> isnan
 
 	# Scalings along the axis at s=s0 and s=2s0.
 	x4_1 = S.FourPosition(0, 0, 0, 1)
@@ -416,6 +403,17 @@ end
 	x4_out = S.FourPosition(0, 3 * 2 * tan(jet.φj), 0, 2)
 	@test S.electron_density(jet, x4_out) == 0
 	@test S.magnetic_field_strength(jet, x4_out) == 0
+
+	ray = S.RayZ(; x0=S.FourPosition(0, 0, 0, 0), k=2, nz=1024)
+	# On-axis ray should see the full truncation segment for axis=ẑ.
+	@test S.z_interval(jet, ray) == jet.s
+
+	# A ray outside the projected cone should miss entirely.
+	xmiss = 1.1 * maximum(jet.s) * tan(jet.φj)
+	miss_ray = @set ray.x0.x = xmiss
+	@test S.render(miss_ray, jet) == 0
+	@test S.render(miss_ray, jet, S.OpticalDepth()) == 0
+	@test S.render(miss_ray, jet, S.SpectralIndex()) |> isnan
 end
 
 

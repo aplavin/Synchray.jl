@@ -7,6 +7,7 @@ using Reexport
 @reexport using LinearAlgebra
 using Accessors
 using ForwardDiff
+using Statistics: mean
 using DispatchDoctor: @stable, @unstable
 
 
