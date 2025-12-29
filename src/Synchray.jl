@@ -14,7 +14,8 @@ using DispatchDoctor: @stable, @unstable
 include("minkowski.jl")
 include("mediums.jl")
 include("camera.jl")
-include("objects.jl")
+include("objects/slabs.jl")
+include("objects/spheres.jl")
 include("transfer.jl")
 end
 
