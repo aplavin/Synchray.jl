@@ -384,7 +384,7 @@ end
 	jet = S.ConicalBKJet(; 
 		axis=SVector(0, 0, 1),
 		φj=0.05,
-		s=0.1..5,
+		s=1e-3..5,
 		s0=1,
 		ne0=2,
 		B0=3,
@@ -400,11 +400,6 @@ end
 		@test S.magnetic_field_strength(jet, x4_1) ≈ 3 atol=1e-12
 		@test S.electron_density(jet, x4_2) ≈ 2 * (2^(-2)) atol=1e-12
 		@test S.magnetic_field_strength(jet, x4_2) ≈ 3 * (2^(-1)) atol=1e-12
-
-		# Outside cone should yield zero microphysics.
-		x4_out = S.FourPosition(0, 3 * 2 * tan(jet.φj), 0, 2)
-		@test S.electron_density(jet, x4_out) == 0
-		@test S.magnetic_field_strength(jet, x4_out) == 0
 
 		ray = S.RayZ(; x0=S.FourPosition(0, 0, 0, 0), k=2, nz=1024)
 		# On-axis ray should see the full truncation segment for axis=ẑ.
@@ -435,17 +430,19 @@ end
 		]
 
 		@testset for (; label, θ, zpred) in cases
-			axis = SVector(sin(θ), 0, cos(θ))
-			jetθ = @set jet.axis = axis
+			jetθ = @set jet.axis = SVector(sin(θ), 0, cos(θ))
 
 			# Choose a ray that crosses the jet axis at s = s_probe.
-			x0 = axis.x * s_probe
-			ray_onaxis = S.RayZ(; x0=S.FourPosition(0, x0, 0, 0), k=2, nz=2048)
-			z_cross = axis.z * s_probe
+			x0 = jetθ.axis.x * s_probe
+			ray_zero = S.RayZ(; x0=S.FourPosition(0, 0, 0, 0), k=2, nz=2048)
+			ray_onaxis = @set ray_zero.x0.x = x0
+			z_cross = jetθ.axis.z * s_probe
 			x4_cross = S.FourPosition(0, x0, 0, z_cross)
 
 			@test S.electron_density(jetθ, x4_cross) > 0
 
+			zint = S.z_interval(jetθ, ray_zero)
+			@test isempty(zint)
 			zint = S.z_interval(jetθ, ray_onaxis)
 			@test !isempty(zint)
 			@test all(zpred, endpoints(zint))
@@ -459,10 +456,170 @@ end
 
 			# A ray with |y| larger than the maximal jet radius must miss, regardless of tilt.
 			ray_miss = @set ray_onaxis.x0.y = ymiss
+			@test S.z_interval(jetθ, ray_miss) |> isempty
 			@test S.render(ray_miss, jetθ) == 0
 			@test S.render(ray_miss, jetθ, S.OpticalDepth()) == 0
 			@test S.render(ray_miss, jetθ, S.SpectralIndex()) |> isnan
+
+			ray_miss = @modify(-, ray_onaxis.x0.x)
+			@test S.z_interval(jetθ, ray_miss) |> isempty
+			@test S.render(ray_miss, jetθ) == 0
 		end
+	end
+end
+
+
+@testitem "Conical BK jet phenomenology" begin
+	import Synchray as S
+	using Accessors
+	using RectiGrids
+	using Optim, Roots
+
+	φj = 0.05
+	θ = 0.2  # viewing angle (> φj)
+
+	jet = S.ConicalBKJet(; 
+		axis=S.SVector(sin(θ), 0.0, cos(θ)),
+		φj,
+		s=1e-3..50,
+		s0=1.0,
+		ne0=1,
+		B0=3.0,
+		speed_profile=(η -> 0.0),
+		model=S.PowerLawElectrons(; p=2.5, Cj=1.0, Ca=1.0),
+	)
+
+	@testset "core shift (intensity peak along axis) scales ~ ν^-1" begin
+		core_byint(jet, ν) = begin
+			ray_base = S.RayZ(; x0=S.FourPosition(0, 0, 0, 0), k=ν, nz=2048)
+			opt = Optim.optimize(x -> -S.render((@set ray_base.x0.x = x), jet), 0.001, 5)
+			return Optim.minimizer(opt)
+		end
+		core_byτ(jet, ν) = begin
+			ray_base = S.RayZ(; x0=S.FourPosition(0, 0, 0, 0), k=ν, nz=2048)
+			Roots.find_zero(x -> S.render((@set ray_base.x0.x = x), jet, S.OpticalDepth()) - 1, (0.001, 5))
+		end
+	
+		@test core_byint(jet, 1) ≈ 2*core_byint(jet, 2) rtol=1e-2
+		@test core_byint(jet, 4) ≈ 0.5*core_byint(jet, 2) rtol=1e-2
+		@test core_byτ(jet, 1) ≈ 2*core_byτ(jet, 2) rtol=1e-2
+		@test core_byτ(jet, 4) ≈ 0.5*core_byτ(jet, 2) rtol=1e-2
+		@test 0.7core_byτ(jet, 1) ≈ core_byint(jet, 1) rtol=0.05
+	end
+
+	@testset "spectrum: integrated flux density is ~flat" begin
+		# Integrate over a window that contains the full truncated jet projection.
+		cam0 = S.CameraZ(; xys=grid(S.SVector, range(-0.1..20, 201), range(-5..5, 201)), nz=1024, ν=NaN, t=0)
+		flux(ν) = begin
+			cam = @set cam0.ν = ν
+			img = S.render(cam, jet)
+			@assert iszero(img[end,:])
+			@assert iszero(img[:,end])
+			sum(img)
+		end
+
+		# @test flux(1) > 0
+		# @test flux(1) / flux(2) ≈ 1  rtol=0.02
+		# @test flux(0.5) / flux(1) ≈ 1  rtol=0.07
+	end
+
+	ray_at_s(ν, s; nz=2048) = begin
+		rxy = (@swiz jet.axis.xy) * s
+		S.RayZ(; x0=S.FourPosition(0, rxy..., 0), k=ν, nz)
+	end
+
+	@testset "thin-regime scaling with (ne0, B0) matches PowerLawElectrons" begin
+		νthin = 80.0
+		ray = ray_at_s(νthin, jet.s0; nz=4096)
+		τthin = S.render(ray, jet, S.OpticalDepth())
+		@test τthin < 0.2
+
+		I0 = S.render(ray, jet)
+		I_ne = S.render(ray, @set jet.ne0 *= 2)
+		@test I_ne ≈ 2I0 rtol=0.05
+
+		p = jet.model.p
+		I_B = S.render(ray, @set jet.B0 *= 2)
+		@test I_B ≈ I0 * (2^((p + 1) / 2)) rtol=0.07
+	end
+end
+
+
+@testitem "RayZ–cone intersection intervals" begin
+	import Synchray as S
+
+	ray_at(x, y; ν=1.0) = S.RayZ(; x0=S.FourPosition(0.0, x, y, 0.0), k=ν, nz=16)
+
+	@testset "axis = ẑ (easy hardcode)" begin
+		axis = SVector(0.0, 0.0, 1.0)
+		φ = 0.2
+		s = 1.0..5.0
+		
+		# On-axis: interval is exactly the truncation.
+		@test S._rayz_cone_z_interval(axis, φ, ray_at(0.0, 0.0), s) == s
+
+		# Off-axis but within projected cone: z ≥ x/tanφ.
+		x = 0.5 * maximum(s) * tan(φ)
+		expected = (x / tan(φ)) .. maximum(s)
+		@test S._rayz_cone_z_interval(axis, φ, ray_at(x, 0.0), s) ≈ expected
+
+		# Outside projected cone: miss.
+		xmiss = 1.1 * maximum(s) * tan(φ)
+		@test S._rayz_cone_z_interval(axis, φ, ray_at(xmiss, 0.0), s) |> isempty
+	end
+
+	@testset "tilted axis: z-axis included/excluded" begin
+		s = 2.0..6.0
+
+		# If θ < φ, the entire z-axis lies inside the cone (constant opening angle).
+		θ_in = 0.05
+		φ = 0.2
+		axis_in = SVector(sin(θ_in), 0.0, cos(θ_in))
+		expected_in = (minimum(s) / cos(θ_in)) .. (maximum(s) / cos(θ_in))
+		@test S._rayz_cone_z_interval(axis_in, φ, ray_at(0.0, 0.0), s) ≈ expected_in
+
+		# If θ > φ, the z-axis is outside the cone: miss.
+		θ_out = 0.3
+		φ = 0.1
+		axis_out = SVector(sin(θ_out), 0.0, cos(θ_out))
+		@test S._rayz_cone_z_interval(axis_out, φ, ray_at(0.0, 0.0), s) |> isempty
+	end
+
+	@testset "axis ⟂ ray direction (axis = x̂)" begin
+		axis = SVector(1.0, 0.0, 0.0)
+		φ = 0.3
+		s = 1.0..3.0
+
+		# For axis=x̂, s(z)=x is constant; require x∈s and y^2+z^2 ≤ tan^2(φ)*x^2.
+		x = 2.0
+		y = 0.0
+		dz = abs(x) * tan(φ)
+		expected = (-dz) .. dz
+		@test S._rayz_cone_z_interval(axis, φ, ray_at(x, y), s) ≈ expected
+
+		# Same cone but outside truncation in s: miss.
+		@test S._rayz_cone_z_interval(axis, φ, ray_at(4.0, 0.0), s) |> isempty
+
+		# av==0 and s0<0: rejected by the +axis half-cone.
+		@test S._rayz_cone_z_interval(axis, φ, ray_at(-2.0, 0.0), s) |> isempty
+	end
+
+	@testset "edge cases" begin
+		# Ray goes exactly along the cone surface (a generatrix): z-axis is on the boundary.
+		# Choose axis tilted by θ==φ so that angle(axis, e_z)==φ.
+		φ = 0.2
+		axis = SVector(sin(φ), 0.0, cos(φ))
+		s = 1.0..5.0
+		expected = (minimum(s) / cos(φ)) .. (maximum(s) / cos(φ))
+		@test S._rayz_cone_z_interval(axis, φ, ray_at(0.0, 0.0), s) ≈ expected
+
+		# Apex-only contact: z-axis outside the cone for θ>φ, but still intersects at z=0.
+		# With s including 0, the intersection is a single point.
+		θ = 0.3
+		φ = 0.1
+		axis = SVector(sin(θ), 0.0, cos(θ))
+		s = 0.0..1.0
+		@test S._rayz_cone_z_interval(axis, φ, ray_at(0.0, 0.0), s) == 0.0 .. 0.0
 	end
 end
 

@@ -11,97 +11,87 @@
 	model::Tmodel = PowerLawElectrons(p=2.5)
 end
 
-_inside_cone(axis::SVector{3}, φj, r::SVector{3}) = dot(axis, r)^2 >= cos(φj)^2 * dot(r, r)
-
-_z_interval_from_s(axis::SVector{3}, s_interval, r0::SVector{3}) = begin
-	α = dot(axis, r0)
-	β = axis.z
-	@assert !iszero(axis.z)
-	zmin_s = (leftendpoint(s_interval) - α) / β
-	zmax_s = (rightendpoint(s_interval) - α) / β
-	return min(zmin_s, zmax_s) .. max(zmin_s, zmax_s)
-end
-
-z_interval(obj::ConicalBKJet, ray::RayZ) = begin
-	φj = obj.φj
-
-	r0 = @swizzle ray.x0.xyz
-	z0 = ray.x0.z
-
-	# Enforce one-nappe cone from apex: s >= 0 and within obj.s
-	z_dom = _z_interval_from_s(obj.axis, obj.s, r0)
-	isempty(z_dom) && return z_dom
-
-	# Cone inequality along the ray:
-	#   f(z) = (a⋅r(z))^2 - cos(φj)^2 * |r(z)|^2 ≥ 0,
-	# with r(z) = r0 + z*(0,0,1).
-	# Let α = a⋅r0 and β = a⋅e_z (= a_z). Then
-	#   a⋅r(z) = α + β z
-	#   |r(z)|^2 = |r0|^2 + 2 z0 z + z^2
-	# so f(z) is a quadratic A z^2 + B z + C.
-	α = dot(obj.axis, r0)
-	β = obj.axis.z
-	r02 = dot(r0, r0)
+_rayz_cone_z_interval(axis, φj, ray::RayZ, s) = let
+	# RayZ is a line of sight parameterized by z: r(z) = r0 + z*e_z.
+	# Here we assume the standard camera convention: ray.x0.z == 0 and the cone apex is at the origin.
+	@assert iszero(ray.x0.z)
+	@assert 0 ≤ leftendpoint(s) ≤ rightendpoint(s)
 	c2 = cos(φj)^2
-	A = β * β - c2
-	B = 2 * (α * β - c2 * z0)
-	C = α * α - c2 * r02
+	r0 = @swiz ray.x0.xyz
+	az = axis.z
 
-	T = promote_type(eltype(endpoints(z_dom)), typeof(A), typeof(B), typeof(C))
-	Az = T(A)
-	Bz = T(B)
-	Cz = T(C)
+	# Cone inequality: (a⋅r)^2 ≥ c^2 * (r⋅r).
+	# With r(z)=r0+z*e_z and r0⋅e_z=0:
+	# (α0 + az*z)^2 - c^2*(|r0|^2 + z^2) >= 0
+	α0 = dot(axis, r0)
+	r02 = dot(r0, r0)
+	A = az^2 - c2
+	B = 2 * α0 * az
+	C = α0^2 - c2 * r02
 
-	roots = T[]
-	if iszero(Az)
-		if !iszero(Bz)
-			push!(roots, -Cz / Bz)
-		end
+	emptyseg = let
+		zref = float(ray.x0.z)
+		zref .. (zref - eps(zref))
+	end
+
+	# 1) Restrict to truncation interval in s: s(z) ∈ s.
+	zs = if iszero(az)
+		(α0 ∈ s) ? (-Inf .. Inf) : emptyseg
 	else
-		D = Bz^2 - 4 * Az * Cz
-		if D >= 0
-			push!(roots, (-Bz - √D) / (2 * Az))
-			push!(roots, (-Bz + √D) / (2 * Az))
+		smin, smax = endpoints(s)
+		z1 = (smin - α0) / az
+		z2 = (smax - α0) / az
+		(min(z1, z2) .. max(z1, z2))
+	end
+
+	isempty(zs) && return zs
+
+	# 2) Intersect with the infinite cone (already symmetric); half-cone handled above.
+	# Solve A z^2 + B z + C ≥ 0 and clip to `zs`.
+	z_cone = let
+		D = B^2 - 4 * A * C
+		if iszero(A)
+			# Linear case: B z + C ≥ 0.
+			if iszero(B)
+				(C >= 0) ? (-Inf .. Inf) : emptyseg
+			elseif B > 0
+				(-C / B) .. Inf
+			else
+				(-Inf) .. (-C / B)
+			end
+		elseif D < 0
+			# No real roots: sign is constant (A and C have same sign when D<0).
+			(C >= 0) ? (-Inf .. Inf) : emptyseg
+		else
+			z1 = (-B - √D) / (2 * A)
+			z2 = (-B + √D) / (2 * A)
+			zlo, zhi = minmax(z1, z2)
+			if A < 0
+				zlo .. zhi
+			else
+				# cone interior outside the roots
+				@assert zlo ≤ 0 ≤ zhi  (zlo, zhi)
+				left = (-Inf) .. zlo
+				right = zhi .. Inf
+				# Prefer the side that overlaps `zs`
+				L = zs ∩ left
+				R = zs ∩ right
+				@assert isempty(L) || isempty(R)
+				!isempty(L) ? L : R
+			end
 		end
 	end
 
-	cut_vals = collect(endpoints(z_dom))
-	for r in roots
-		r ∈ z_dom && push!(cut_vals, r)
-	end
-	cut_vals = sort(unique(cut_vals))
-
-	f(z) = (Az * z + Bz) * z + Cz
-	s_at(z) = α + β * z
-
-	inside_segments = ClosedInterval{T}[]
-	for i in 1:(length(cut_vals) - 1)
-		zab = cut_vals[i]..cut_vals[i + 1]
-		zmid = mean(zab)
-		if (f(zmid) >= 0) && (s_at(zmid) >= 0)
-			push!(inside_segments, zab)
-		end
-	end
-
-    # @info "" z_dom repr(cut_vals) repr(roots) repr(inside_segments)
-	if isempty(inside_segments)
-		zz = float(z0)
-		return zz .. (zz - eps(zz))
-	end
-	# Intersection should be connected for a single-nappe cone; merge defensively.
-	z1 = minimum(leftendpoint.(inside_segments))
-	z2 = maximum(rightendpoint.(inside_segments))
-	return z1 .. z2
+	return zs ∩ z_cone
 end
+
+z_interval(obj::ConicalBKJet, ray::RayZ) = _rayz_cone_z_interval(obj.axis, obj.φj, ray, obj.s)
 
 four_velocity(obj::ConicalBKJet, x4) = begin
 	r = @swiz x4.xyz
 	s = dot(obj.axis, r)
-	@assert s ≥ 0
 
-	r2 = dot(r, r)
-	vhat = r / sqrt(r2)
-
+	vhat = normalize(r)
 	# Transverse coordinate η in [0,1]
 	ρ = norm(r - s * obj.axis)
 	tanφ = tan(obj.φj)
@@ -114,18 +104,12 @@ end
 electron_density(obj::ConicalBKJet, x4) = begin
 	r = @swiz x4.xyz
 	s = dot(obj.axis, r)
-	@assert s ≥ 0
-	(s ∈ obj.s) || return zero(s)
-	_inside_cone(obj.axis, obj.φj, r) || return zero(s)
 	return obj.ne0 * (s / obj.s0)^(obj.ne_exp)
 end
 
 magnetic_field_strength(obj::ConicalBKJet, x4) = begin
 	r = @swiz x4.xyz
 	s = dot(obj.axis, r)
-	@assert s ≥ 0
-	(s ∈ obj.s) || return zero(s)
-	_inside_cone(obj.axis, obj.φj, r) || return zero(s)
 	return obj.B0 * (s / obj.s0)^(obj.B_exp)
 end
 
