@@ -5,16 +5,29 @@ Pkg.instantiate()
 outdir = joinpath(@__DIR__, "images")
 isdir(outdir) || mkpath(outdir)
 
+const render_time_log_path = joinpath(@__DIR__, "render_times.txt")
+open(render_time_log_path, "w") do _ end
+
 using Synchray
 import Synchray as S
 using CairoMakie
 using RectiGrids
 using AxisKeysExtra
+using PyFormattedStrings
 
 
-function render_field(obj; extent, npx, nz, ν, t=0.0, what=S.Intensity())
+function render_field(obj; extent, nz=256, npx=512, ν, t=0.0, what=S.Intensity())
     cam = S.CameraZ(; xys=grid(SVector, range(0±extent, npx), range(0±extent, npx)), nz, ν, t)
-    S.render(cam, obj, what)
+
+    result = open(render_time_log_path, "a") do io
+        redirect_stdout(io) do
+            S.render(cam, obj, what)
+            label = f"{nameof(typeof(obj)):27s}, {nameof(typeof(what)):15s}, {npx}px × {nz}"
+            @time label S.render(cam, obj, what)
+        end
+    end
+
+    result
 end
 
 function moving_ellipsoid_image()
@@ -33,8 +46,6 @@ function moving_ellipsoid_image()
                     αν=1e-5,
                 );
                 extent=2.0,
-                npx=256,
-                nz=600,
                 ν=1.0,
                 t=0.0,
                 what=S.Intensity(),
@@ -59,8 +70,6 @@ function synchrotron_sphere_image()
 
     ν = 1.0
     extent = 2.0
-    npx = 220
-    nz = 600
 
     make_obj(Ca) = S.UniformSynchrotronSphere(
         center=S.FourPosition(5.0, 0.0, 0.0, 5.0),
@@ -81,7 +90,7 @@ function synchrotron_sphere_image()
     for (r, reg) in enumerate(regimes), (c, f) in enumerate(fields)
         pos = fig[r,c]
         Axis(pos[1,1]; title="$(reg.name): $(f.name)", aspect=DataAspect())
-        plt = heatmap!(render_field(make_obj(reg.Ca); extent, npx, nz, ν, what=f.what); f.colormap, colorrange=get(f, :colorrange, Makie.automatic))
+        plt = heatmap!(render_field(make_obj(reg.Ca); extent, ν, what=f.what); f.colormap, colorrange=get(f, :colorrange, Makie.automatic))
         Colorbar(pos[1,2], plt)
         hidespines!()
         hidedecorations!()
