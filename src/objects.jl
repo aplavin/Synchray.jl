@@ -22,18 +22,31 @@ absorption(obj::UniformSphere, x4, ν) = obj.αν
 
 
 
-@kwdef struct MovingUniformSphere{TC,TR,TU,FJ,FA} <: AbstractMedium
+@kwdef struct MovingUniformEllipsoid{TC,TSZ,TU,FJ,FA} <: AbstractMedium
 	center::TC
-	radius::TR
+	sizes::TSZ
 	u0::TU
 	jν::FJ   # comoving emissivity j_ν (constant)
 	αν::FA   # comoving absorption α_ν (constant)
 end
 
-z_interval(obj::MovingUniformSphere, ray::RayZ) = begin
-	# Worldtube of a rigid sphere moving with constant 4-velocity u:
-	# for an event x, define Δ = x - center and project it onto the hyperplane
-	# orthogonal to u:  Δ⊥ = Δ + u (u⋅Δ). Points satisfy Δ⊥⋅Δ⊥ ≤ R^2.
+_spatial_in_rest(u, v) = begin
+	β = beta(u)
+	β2 = dot(β, β)
+	xyz = (@swiz v.xyz)
+	if iszero(β2)
+		return xyz
+	end
+	γ = u.t
+	f = ((γ - 1) * dot(β, xyz) / β2 - γ * v.t)
+	return xyz + f * β
+end
+
+z_interval(obj::MovingUniformEllipsoid, ray::RayZ) = begin
+	# Worldtube of a rigid axis-aligned ellipsoid moving with constant 4-velocity u.
+	# In the comoving frame, define Δ⊥ as the displacement orthogonal to u, and require
+	# (Δx/sx)^2 + (Δy/sy)^2 + (Δz/sz)^2 ≤ 1.
+	# `sizes == SVector(R,R,R)` recovers the moving sphere.
 	# For RayZ: x(z) = ray.x0 + z*(1,0,0,1) (since k/kz = (1,0,0,1)).
 	u = obj.u0
 	Δ0 = ray.x0 - obj.center
@@ -46,9 +59,13 @@ z_interval(obj::MovingUniformSphere, ray::RayZ) = begin
 	P0 = Δ0 + u * b
 	P1 = kdir + u * a
 
-	A = minkowski_dot(P1, P1)
-	B = 2 * minkowski_dot(P0, P1)
-	C = minkowski_dot(P0, P0) - obj.radius^2
+	p0 = _spatial_in_rest(u, P0)
+	p1 = _spatial_in_rest(u, P1)
+
+	invsizes2 = inv.(obj.sizes .^ 2)
+	A = sum(invsizes2 .* (p1 .^ 2))
+	B = 2 * sum(invsizes2 .* (p0 .* p1))
+	C = sum(invsizes2 .* (p0 .^ 2)) - one(A)
 	D = B^2 - 4 * A * C
 
 	if !(D > 0) || iszero(A)
@@ -62,9 +79,9 @@ z_interval(obj::MovingUniformSphere, ray::RayZ) = begin
 	return min(z1, z2) .. max(z1, z2)
 end
 
-four_velocity(obj::MovingUniformSphere, x4) = obj.u0
-emissivity(obj::MovingUniformSphere, x4, ν) = obj.jν
-absorption(obj::MovingUniformSphere, x4, ν) = obj.αν
+four_velocity(obj::MovingUniformEllipsoid, x4) = obj.u0
+emissivity(obj::MovingUniformEllipsoid, x4, ν) = obj.jν
+absorption(obj::MovingUniformEllipsoid, x4, ν) = obj.αν
 
 
 @kwdef struct UniformSlab{TZ,TU,TJ,TA} <: AbstractMedium

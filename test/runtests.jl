@@ -185,6 +185,7 @@ end
 
 @testitem "Moving sphere silhouette (Terrell rotation)" begin
 	import Synchray as S
+	using Accessors
 
 	R = 1
 	z0 = 3
@@ -197,50 +198,48 @@ end
 	)
 	t0s = (-1, 0, 0.75)
 
-	@testset for β in βs, t0 in t0s
-		sphere = S.MovingUniformSphere(
-			center=S.FourPosition(0, 0, 0, z0),
-			radius=R,
-			u0=S.FourVelocity(β),
-			jν=1,
-			αν=0,
-		)
+	# Stationary reference: for an orthographic camera (+z), motion should not change the image
+	# apart from:
+	# - a Terrell shift of the apparent center in the image plane, and
+	# - an overall intensity scaling that depends only on the Doppler factor δ.
+	#
+	# We avoid rendering full images: just compare a small set of representative rays.
+	ref_sphere = S.MovingUniformEllipsoid(
+		center=S.FourPosition(0, 0, 0, z0),
+		sizes=SVector(R, R, R),
+		u0=S.FourVelocity(SVector(0, 0, 0)),
+		jν=1,
+		αν=0,
+	)
 
-		# For an orthographic camera along +z, the set of rays that intersect the moving sphere
-		# is a disk in the image plane (Terrell rotation). Due to light-travel-time, its center
-		# is shifted by
-		#   Δx⃗⊥ = β⃗⊥ (t_cam - t_center + z_center) / (1 - β_z)
-		# for an orthographic camera along +z.
-		s = (t0 - sphere.center.t + sphere.center.z) / (1 - β.z)
-		xc, yc = (@swiz sphere.center.xy) + (@swiz β.xy) * s
+	@testset for t0 in t0s
+		cam = S.CameraZ(; xys=SVector{2}[
+			(0, 0), (0.3R, 0.4R), (-0.8R, 0), (0.55R, -0.2R),
+			(1.2R, 0), (0, 1.3R),
+		], nz=2048, ν=2, t=t0)
 
-		Ixy(x, y) = begin
-			ray = S.RayZ(; x0=S.FourPosition(t0, x, y, 0), k=2, nz=2048)
-			S.render(ray, sphere)
-		end
+		Iref = S.render(cam, ref_sphere)
 
-		@testset "inside/outside support" begin
-			# Well inside: must intersect => positive intensity
-			for (dx, dy) in ((0, 0), (0.3R, 0.4R), (-0.8R, 0), (0, 0.9R))
-				@test Ixy(xc + dx, yc + dy) > 0
-			end
+		@testset for β in βs
+			sphere = S.MovingUniformEllipsoid(
+				center=S.FourPosition(0, 0, 0, z0),
+				sizes=SVector(R, R, R),
+				u0=S.FourVelocity(β),
+				jν=1,
+				αν=0,
+			)
 
-			# Clearly outside: must miss => zero intensity
-			for (dx, dy) in ((1.2R, 0), (0, 1.3R), (0.95R, 0.95R))
-				@test Ixy(xc + dx, yc + dy) == 0
-			end
-		end
+			# Terrell shift for orthographic camera along +z
+			s = (t0 - sphere.center.t + sphere.center.z) / (1 - β.z)
+			xyc = (@swiz sphere.center.xy) + (@swiz β.xy) * s
 
-		@testset "circular silhouette" begin
-			# Sample angles: just inside should hit, just outside should miss.
-			for θ in range(0, 2π; length=9)[1:end-1]
-				xin = xc + (0.98R) * cos(θ)
-				yin = yc + (0.98R) * sin(θ)
-				xout = xc + (1.02R) * cos(θ)
-				yout = yc + (1.02R) * sin(θ)
-				@test Ixy(xin, yin) > 0
-				@test Ixy(xout, yout) == 0
-			end
+			δ = S.doppler_factor(sphere.u0, SVector(0, 0, 1))
+			
+			# The apparent brightness profile should match the stationary one, up to a constant factor.
+			# Keep tolerances tight; this should be nearly exact for the same ray discretization.
+			curcam = @set cam.xys[∗] += xyc
+			Icur = S.render(curcam, sphere)
+			@test Icur ≈ δ^3 * Iref rtol=3e-6
 		end
 	end
 end
