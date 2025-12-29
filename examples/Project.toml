@@ -1,0 +1,6 @@
+[deps]
+AxisKeysExtra = "b7a0d2b7-1990-46dc-b5dd-87820ecd1b09"
+CairoMakie = "13f3f980-e62b-5c42-98c6-ff1f3baf88f0"
+Makie = "ee78f7c6-11fb-53f2-987a-cfe4a2b5a57a"
+RectiGrids = "8ac6971d-971d-971d-971d-971d5ab1a71a"
+Synchray = "4dacfd78-acba-4c5e-8916-e152d0905f35"

@@ -111,3 +111,28 @@ four_velocity(obj::UniformSynchrotronSlab, x4) = obj.u0
 electron_density(obj::UniformSynchrotronSlab, x4) = obj.ne0
 magnetic_field_strength(obj::UniformSynchrotronSlab, x4) = obj.B0
 synchrotron_model(obj::UniformSynchrotronSlab) = obj.model
+
+
+@kwdef struct UniformSynchrotronSphere{TC,TR,TU,Tne,TB,TM} <: AbstractSynchrotronMedium
+	center::TC
+	radius::TR
+	u0::TU
+	ne0::Tne
+	B0::TB
+	model::TM
+end
+
+z_interval(obj::UniformSynchrotronSphere, ray::RayZ) = begin
+	z0 = obj.center.z
+	r2 = obj.radius^2
+	dxy = (@swiz ray.x0.xy) - (@swiz obj.center.xy)
+	b2 = dot(dxy, dxy)
+	dz = b2 > r2 ? -eps(float(z0)) : √(r2 - b2)
+	return (z0 - dz) .. (z0 + dz)
+end
+
+four_velocity(obj::UniformSynchrotronSphere, x4) = obj.u0
+
+electron_density(obj::UniformSynchrotronSphere, x4) = obj.ne0
+magnetic_field_strength(obj::UniformSynchrotronSphere, x4) = obj.B0
+synchrotron_model(obj::UniformSynchrotronSphere) = obj.model
