@@ -6,7 +6,8 @@ using Reexport
 @reexport using Swizzling
 @reexport using LinearAlgebra
 @reexport using Unitful
-using Accessors
+@reexport using DataPipes
+@reexport using Accessors
 using ForwardDiff
 using Statistics: mean
 using DispatchDoctor: @stable, @unstable

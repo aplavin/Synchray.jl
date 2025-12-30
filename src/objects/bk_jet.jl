@@ -1,3 +1,11 @@
+struct AngleTrigCached{T}
+	tan::T
+	cos::T
+end
+Base.tan(x::AngleTrigCached) = x.tan
+Base.cos(x::AngleTrigCached) = x.cos
+AngleTrigCached_fromangle(φ) = AngleTrigCached(tan(φ), cos(φ))
+
 @kwdef struct ConicalBKJet{Ta,Tφ,Ts,Ts0,Tne0,TB0,Tneexp,TBexp,Tu,Tmodel} <: AbstractSynchrotronMedium
 	axis::Ta
 	φj::Tφ
@@ -9,6 +17,11 @@
 	B_exp::TBexp = -1
 	speed_profile::Tu
 	model::Tmodel = PowerLawElectrons(p=2.5)
+end
+
+prepare_for_computations(obj::ConicalBKJet) = @p let
+	obj
+	@modify(AngleTrigCached_fromangle, __.φj)
 end
 
 _rayz_cone_z_interval(axis, φj, ray::RayZ, s) = let

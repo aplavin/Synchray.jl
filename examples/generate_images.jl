@@ -114,7 +114,7 @@ function bk_jet_image()
         B0=1.0,
         speed_profile=(η -> 0.995),
         model=S.PowerLawElectrons(; p=2.3, Cj=1.0, Ca=0.1),
-    )
+    ) |> S.prepare_for_computations
 
     views = (
         (name="inside cone", θ=0.5 * φj),
