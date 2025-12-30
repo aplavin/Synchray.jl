@@ -10,13 +10,14 @@ open(render_time_log_path, "w") do _ end
 
 using Synchray
 import Synchray as S
-using CairoMakie
+using MakieExtra; import CairoMakie
 using RectiGrids
 using AxisKeysExtra
 using PyFormattedStrings
+using Accessors
 
 
-function render_field(obj; extent, nz=256, npx=512, ν, t=0.0, what=S.Intensity())
+function render_field(obj; extent, nz=256, npx=256, ν, t=0.0, what=S.Intensity())
     cam = S.CameraZ(; xys=grid(SVector, range(0±extent, npx), range(0±extent, npx)), nz, ν, t)
 
     result = open(render_time_log_path, "a") do io
@@ -99,9 +100,68 @@ function synchrotron_sphere_image()
     fig
 end
 
+function bk_jet_image()
+    φj = 4u"°"
+
+    axis_for_viewing_angle(θ) = normalize(SVector(sin(θ), 0.0, cos(θ)))
+
+    jet0 = S.ConicalBKJet(;
+        axis=SVector(NaN, NaN, NaN),
+        φj,
+        s=(1e-3 .. 50),
+        s0=1.0,
+        ne0=1.0,
+        B0=1.0,
+        speed_profile=(η -> 0.995),
+        model=S.PowerLawElectrons(; p=2.3, Cj=1.0, Ca=0.1),
+    )
+
+    views = (
+        (name="inside cone", θ=0.5 * φj),
+        (name="small angle", θ=3 * φj),
+        (name="large angle", θ=45u"°"),
+        (name="counter-jet-like", θ=180u"°" - 3 * φj),
+    )
+    whats = [
+        (what=S.Intensity(), kwargs=p -> (;colormap=:magma, colorscale=SymLog(1e-4*p))),
+        (what=S.SpectralIndex(), kwargs=p -> (;colormap=:balance, colorrange=(-3, 3))),
+        (what=S.OpticalDepth(), kwargs=p -> (;colormap=:viridis, colorrange=(0, min(6, p)))),
+    ]
+
+    fig = Figure()
+    for (I, (v, what)) in pairs(collect(Iterators.product(views, whats)))
+        pos = fig[Tuple(I)...]
+        Axis(pos[1,1]; title="$(v.name), $(what.what|>typeof|>nameof) (θ=$(v.θ))", aspect=DataAspect(), width=300, height=300)
+        jet = @set jet0.axis = axis_for_viewing_angle(v.θ)
+        img = render_field(jet; extent=3, ν=1, what.what)
+        plt = heatmap!(img; what.kwargs(maximum(img))...)
+        Colorbar(pos[1,2], plt; tickformat=EngTicks(:symbol))
+        hidespines!()
+        hidedecorations!()
+    end
+    resize_to_layout!()
+    save(joinpath(outdir, "bk_jet_thin.png"), fig)
+
+    fig = Figure()
+    jet0 = @set jet0.model.Ca = 9.0
+    for (I, (v, what)) in pairs(collect(Iterators.product(views, whats)))
+        pos = fig[Tuple(I)...]
+        Axis(pos[1,1]; title="$(v.name), $(what.what|>typeof|>nameof) (θ=$(v.θ))", aspect=DataAspect(), width=300, height=300)
+        jet = @set jet0.axis = axis_for_viewing_angle(v.θ)
+        img = render_field(jet; extent=3, ν=1, what.what)
+        plt = heatmap!(img; what.kwargs(maximum(img))...)
+        Colorbar(pos[1,2], plt; tickformat=EngTicks(:symbol))
+        hidespines!()
+        hidedecorations!()
+    end
+    resize_to_layout!()
+    save(joinpath(outdir, "bk_jet_thick.png"), fig)
+end
+
 function main()
     moving_ellipsoid_image()
     synchrotron_sphere_image()
+    bk_jet_image()
 end
 
 main()

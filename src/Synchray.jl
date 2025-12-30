@@ -5,6 +5,7 @@ using Reexport
 @reexport using IntervalSets
 @reexport using Swizzling
 @reexport using LinearAlgebra
+@reexport using Unitful
 using Accessors
 using ForwardDiff
 using Statistics: mean
