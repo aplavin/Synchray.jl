@@ -112,7 +112,7 @@ function bk_jet_image()
         s0=1.0,
         ne0=1.0,
         B0=1.0,
-        speed_profile=(η -> 0.995),
+        speed_profile=(η -> (S.beta, 0.995)),
         model=S.PowerLawElectrons(; p=2.3, Cj=1.0, Ca=0.1),
     ) |> S.prepare_for_computations
 

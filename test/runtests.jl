@@ -388,7 +388,7 @@ end
 		s0=1,
 		ne0=2,
 		B0=3,
-		speed_profile=(η -> 0),
+		speed_profile=(η -> (S.beta, 0)),
 		model=S.PowerLawElectrons(; p=2.5, Cj=1, Ca=1),
 	)
 
@@ -485,7 +485,7 @@ end
 		s0=1.0,
 		ne0=1,
 		B0=3.0,
-		speed_profile=(η -> 0.0),
+		speed_profile=(η -> (S.beta, 0.0)),
 		model=S.PowerLawElectrons(; p=2.5, Cj=1.0, Ca=1.0),
 	)
 

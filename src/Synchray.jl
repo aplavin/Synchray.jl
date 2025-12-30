@@ -8,12 +8,14 @@ using Reexport
 @reexport using Unitful
 @reexport using DataPipes
 @reexport using Accessors
+import AccessorsExtra: construct
 using ForwardDiff
 using Statistics: mean
 using DispatchDoctor: @stable, @unstable
 
 
-@stable default_mode="warn" begin
+@stable default_mode="disable" begin
+include("power.jl")
 include("minkowski.jl")
 include("mediums.jl")
 include("camera.jl")

@@ -43,15 +43,18 @@ _postprocess_acc(acc::AccSpectralIndex, ν, what::Tuple{Intensity,SpectralIndex}
 	return I0, (ν / I0) * dI
 end
 
+const Δτ_THRESHOLD_LINEAR = 1e-2
 
-_integrate_ray_step(acc::AccValue{Intensity}, obj, x4, k, Δλ) = begin
+
+@inline _integrate_ray_step(acc::AccValue{Intensity}, obj, x4, k, Δλ) = begin
 	u = four_velocity(obj, x4)
 	ν = measured_frequency(k, u)
 	(Jinv, Ainv) = emissivity_absorption_invariant(obj, x4, ν)
 
 	Iinv = acc.value
 	Δτ = Ainv * Δλ
-	Iinv = if abs(Δτ) < 1e-8
+	@assert Δτ ≥ 0
+	Iinv = if Δτ < Δτ_THRESHOLD_LINEAR
         Iinv + (Jinv - Ainv * Iinv) * Δλ
 	else
 		E = exp(-Δτ)
@@ -60,7 +63,7 @@ _integrate_ray_step(acc::AccValue{Intensity}, obj, x4, k, Δλ) = begin
 	return AccValue{Intensity}(Iinv)
 end
 
-_integrate_ray_step(acc::AccValue{OpticalDepth}, obj, x4, k, Δλ) = begin
+@inline _integrate_ray_step(acc::AccValue{OpticalDepth}, obj, x4, k, Δλ) = begin
 	u = four_velocity(obj, x4)
 	ν = measured_frequency(k, u)
 	Ainv = absorption_invariant(obj, x4, ν)
@@ -69,7 +72,7 @@ _integrate_ray_step(acc::AccValue{OpticalDepth}, obj, x4, k, Δλ) = begin
 	return AccValue{OpticalDepth}(acc.value + Δτ)
 end
 
-_integrate_ray_step(acc::AccSpectralIndex, obj, x4, k, Δλ) = begin
+@inline _integrate_ray_step(acc::AccSpectralIndex, obj, x4, k, Δλ) = begin
 	u = four_velocity(obj, x4)
 	ν = measured_frequency(k, u) * acc.s
 	Δλ′ = Δλ / acc.s
@@ -78,7 +81,8 @@ _integrate_ray_step(acc::AccSpectralIndex, obj, x4, k, Δλ) = begin
 	Iinv = acc.Iinv
 	Δτ = Ainv * Δλ′
 	Δτ0 = ForwardDiff.value(Δτ)
-	Iinv = if abs(Δτ0) < 1e-8
+	@assert Δτ0 ≥ 0
+	Iinv = if Δτ0 < Δτ_THRESHOLD_LINEAR
 		Iinv + (Jinv - Ainv * Iinv) * Δλ′
 	else
 		E = exp(-Δτ)
@@ -94,7 +98,8 @@ _integrate_ray_step(acc::Tuple{AccValue{Intensity}, AccValue{OpticalDepth}}, obj
 
 	Iinv = acc[1].value
 	Δτ = Ainv * Δλ
-	Iinv = if abs(Δτ) < 1e-8
+	@assert Δτ ≥ 0
+	Iinv = if Δτ < Δτ_THRESHOLD_LINEAR
         Iinv + (Jinv - Ainv * Iinv) * Δλ
 	else
 		E = exp(-Δτ)
@@ -113,13 +118,14 @@ integrate_ray(obj::AbstractMedium, ray::RayZ, what=Intensity()) = begin
     @assert k == SVector(kz, 0, 0, kz)
     k1 = k / kz
 
-	zs = range(seg, isempty(seg) ? 0 : ray.nz)
-	Δz = step(zs)
-	Δλ = Δz / kz
-
 	acc = if isempty(seg)
-		_integrate_ray_step(_init_acc(typeof(what), photon_frequency(ray)), obj, ray.x0 + first(zs) * k1, k, zero(Δλ))
+		z = leftendpoint(seg)
+		_integrate_ray_step(_init_acc(typeof(what), photon_frequency(ray)), obj, ray.x0 + z * k1, k, zero(float(z)))
 	else
+		# zs = range(seg, ray.nz)  # using StepRangeLen constructor directly is faster
+		zs = StepRangeLen(leftendpoint(seg), width(seg) / (ray.nz - 1), ray.nz)
+		Δz = step(zs)
+		Δλ = Δz / kz
 		acc = _integrate_ray_step(_init_acc(typeof(what), photon_frequency(ray)), obj, ray.x0 + first(zs) * k1, k, Δλ)
 		for z in zs[2:end]
 			x = ray.x0 + z * k1

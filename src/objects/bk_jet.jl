@@ -22,6 +22,8 @@ end
 prepare_for_computations(obj::ConicalBKJet) = @p let
 	obj
 	@modify(AngleTrigCached_fromangle, __.φj)
+	@modify(prepare_for_computations, __.model)
+	modify(FixedExponent, __, @o _.ne_exp _.B_exp)
 end
 
 _rayz_cone_z_interval(axis, φj, ray::RayZ, s) = let
@@ -100,30 +102,30 @@ end
 
 z_interval(obj::ConicalBKJet, ray::RayZ) = _rayz_cone_z_interval(obj.axis, obj.φj, ray, obj.s)
 
-four_velocity(obj::ConicalBKJet, x4) = begin
+@inline four_velocity(obj::ConicalBKJet, x4) = begin
 	r = @swiz x4.xyz
 	s = dot(obj.axis, r)
 
-	vhat = normalize(r)
+	vhat = r / √(dot(r, r))
 	# Transverse coordinate η in [0,1]
 	ρ = norm(r - s * obj.axis)
 	tanφ = tan(obj.φj)
 	η = ρ / (s * tanφ)
 
-	β = obj.speed_profile(η)
-	return FourVelocity(β * vhat)
+	(whichspeed, speed) = obj.speed_profile(η)
+	return construct(FourVelocity, whichspeed => speed, direction => vhat)
 end
 
-electron_density(obj::ConicalBKJet, x4) = begin
+@inline electron_density(obj::ConicalBKJet, x4) = begin
 	r = @swiz x4.xyz
 	s = dot(obj.axis, r)
-	return obj.ne0 * (s / obj.s0)^(obj.ne_exp)
+	s > 0 ? obj.ne0 * (s / obj.s0)^(obj.ne_exp) : zero(float(obj.ne0))
 end
 
-magnetic_field_strength(obj::ConicalBKJet, x4) = begin
+@inline magnetic_field_strength(obj::ConicalBKJet, x4) = begin
 	r = @swiz x4.xyz
 	s = dot(obj.axis, r)
-	return obj.B0 * (s / obj.s0)^(obj.B_exp)
+	s > 0 ? obj.B0 * (s / obj.s0)^(obj.B_exp) : zero(float(obj.B0))
 end
 
-synchrotron_model(obj::ConicalBKJet) = obj.model
+@inline synchrotron_model(obj::ConicalBKJet) = obj.model
