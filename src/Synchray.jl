@@ -22,6 +22,7 @@ include("camera.jl")
 include("objects/slabs.jl")
 include("objects/spheres.jl")
 include("objects/bk_jet.jl")
+include("patterns.jl")
 include("transfer.jl")
 end
 

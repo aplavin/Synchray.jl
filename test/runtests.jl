@@ -545,6 +545,87 @@ end
 end
 
 
+@testitem "Jet patterns: wrapper + inertial knot" begin
+	import Synchray as S
+	using Accessors
+
+	jet = S.ConicalBKJet(; 
+		axis=SVector(0, 0, 1),
+		φj=0.05,
+		s=1e-3..10,
+		s0=1,
+		ne0=2,
+		B0=3,
+		speed_profile=(η -> (S.beta, 0)),
+		model=S.PowerLawElectrons(; p=2.5, Cj=1, Ca=1),
+	)
+
+	# A moving knot centered on-axis at s=2.
+	knot = S.InertialEllipsoidalKnot(
+		x_c0=S.FourPosition(0.0, 0.0, 0.0, 2.0),
+		u=S.FourVelocity(SVector(0.0, 0.0, 0.1)),
+		sizing=S.FixedKnotSizing(0.2, 0.5),
+		profile_ne=S.GaussianBump(2.0),
+		profile_B=S.GaussianBump(3.0),
+	)
+
+	jetp = S.ConicalBKJetWithPatterns(jet, (knot,))
+
+	x4c = knot.x_c0
+	@test S.pattern_factor_ne(knot, x4c, jet) ≈ 2.0 atol=1e-12
+	@test S.pattern_factor_B(knot, x4c, jet) ≈ 3.0 atol=1e-12
+	@test S.electron_density(jetp, x4c) ≈ 2 * S.electron_density(jet, x4c)
+	@test S.magnetic_field_strength(jetp, x4c) ≈ 3 * S.magnetic_field_strength(jet, x4c)
+
+	@testset "knot center stays peaked at different lab times" begin
+		center_event_at_lab_time(t) = begin
+			τ = (t - knot.x_c0.t) / knot.u.t
+			knot.x_c0 + knot.u * τ
+		end
+
+		for t in (0.0, 1.0, 5.0)
+			x4ct = center_event_at_lab_time(t)
+			@test x4ct.t ≈ t atol=1e-12
+			@test S._knot_chi(knot, x4ct, jet) ≈ 0 atol=1e-12
+			@test S.pattern_factor_ne(knot, x4ct, jet) ≈ 2.0 atol=1e-12
+			@test S.pattern_factor_B(knot, x4ct, jet) ≈ 3.0 atol=1e-12
+			@test S.electron_density(jetp, x4ct) ≈ 2 * S.electron_density(jet, x4ct)
+			@test S.magnetic_field_strength(jetp, x4ct) ≈ 3 * S.magnetic_field_strength(jet, x4ct)
+		end
+	end
+
+	@testset "off-center transverse offset gives intermediate factors" begin
+		# For motion along +z and a purely transverse offset Δ = (0, a_perp, 0, 0) at the same lab time,
+		# the construction in `_knot_chi` yields Δ_par = 0 and χ = (a_perp^2) / (a_perp^2) = 1.
+		t = 5.0
+		τ = (t - knot.x_c0.t) / knot.u.t
+		x4ct = knot.x_c0 + knot.u * τ
+		a_perp = knot.sizing.a_perp
+		x4off = x4ct + S.FourPosition(0.0, a_perp, 0.0, 0.0)
+		@test S._knot_chi(knot, x4off, jet) ≈ 1 atol=5e-12
+
+		f_ne_expected = 1 + (2.0 - 1) * exp(-1 / 2)
+		f_B_expected = 1 + (3.0 - 1) * exp(-1 / 2)
+		@test S.pattern_factor_ne(knot, x4off, jet) ≈ f_ne_expected atol=1e-12
+		@test S.pattern_factor_B(knot, x4off, jet) ≈ f_B_expected atol=1e-12
+		@test S.electron_density(jetp, x4off) ≈ f_ne_expected * S.electron_density(jet, x4off) atol=1e-12
+		@test S.magnetic_field_strength(jetp, x4off) ≈ f_B_expected * S.magnetic_field_strength(jet, x4off) atol=1e-12
+	end
+
+	# Far from the knot: factors should approach 1.
+	x4far = S.FourPosition(0.0, 0.0, 0.0, 5.0)
+	@test S.pattern_factor_ne(knot, x4far, jet) ≈ 1.0 rtol=0 atol=5e-8
+	@test S.pattern_factor_B(knot, x4far, jet) ≈ 1.0 rtol=0 atol=5e-8
+	@test S.electron_density(jetp, x4far) ≈ S.electron_density(jet, x4far) rtol=0 atol=5e-8
+	@test S.magnetic_field_strength(jetp, x4far) ≈ S.magnetic_field_strength(jet, x4far) rtol=0 atol=5e-8
+
+	# Geometry and flow must remain delegated to the base jet.
+	ray = S.RayZ(; x0=S.FourPosition(0, 0, 0, 0), k=2, nz=128)
+	@test S.z_interval(jetp, ray) == S.z_interval(jet, ray)
+	@test S.four_velocity(jetp, x4c) == S.four_velocity(jet, x4c)
+end
+
+
 @testitem "RayZ–cone intersection intervals" begin
 	import Synchray as S
 
