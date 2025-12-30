@@ -103,7 +103,7 @@ end
 function bk_jet_image()
     φj = 4u"°"
 
-    axis_for_viewing_angle(θ) = normalize(SVector(sin(θ), 0.0, cos(θ)))
+    axis_for_viewing_angle(θ) = SVector(sin(θ), 0.0, cos(θ))
 
     jet0 = S.ConicalBKJet(;
         axis=SVector(NaN, NaN, NaN),
