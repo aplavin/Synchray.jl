@@ -33,10 +33,10 @@ end
 
 function moving_ellipsoid_image()
     βs = [0.0 0.7; 0.9 0.99]
-    fig = Figure(; size=(420 * 2, 360 * 2))
+    fig = Figure()
     for (I, β) in pairs(βs)
         pos = fig[Tuple(I)...]
-        Axis(pos[1,1]; title="β=$(β)", aspect=DataAspect())
+        Axis(pos[1,1]; title="β=$(β)", aspect=DataAspect(), width=300, height=300)
         plt = heatmap!(
             render_field(
                 S.MovingUniformEllipsoid(
@@ -57,6 +57,7 @@ function moving_ellipsoid_image()
         hidespines!()
         hidedecorations!()
     end
+    resize_to_layout!()
     save(joinpath(outdir, "moving_ellipsoid.png"), fig)
     fig
 end
@@ -87,15 +88,16 @@ function synchrotron_sphere_image()
         (name="α", what=S.SpectralIndex(), colormap=:balance, colorrange=(-3, 3)),
     )
 
-    fig = Figure(; size=(420 * length(fields), 360 * length(regimes)))
+    fig = Figure()
     for (r, reg) in enumerate(regimes), (c, f) in enumerate(fields)
         pos = fig[r,c]
-        Axis(pos[1,1]; title="$(reg.name): $(f.name)", aspect=DataAspect())
+        Axis(pos[1,1]; title="$(reg.name): $(f.name)", aspect=DataAspect(), width=300, height=300)
         plt = heatmap!(render_field(make_obj(reg.Ca); extent, ν, what=f.what); f.colormap, colorrange=get(f, :colorrange, Makie.automatic))
         Colorbar(pos[1,2], plt)
         hidespines!()
         hidedecorations!()
     end
+    resize_to_layout!()
     save(joinpath(outdir, "synchrotron_sphere.png"), fig)
     fig
 end
@@ -188,10 +190,10 @@ function bk_jet_1_knot_snapshots_image()
         (name="α", what=S.SpectralIndex(), kwargs=_ -> (; colormap=:balance, colorrange=(-3, 3))),
     ]
 
-    fig = Figure(; size=(420 * length(ts), 360 * length(whats)))
+    fig = Figure()
     for (r, w) in enumerate(whats), (c, t) in enumerate(ts)
         pos = fig[r, c]
-        Axis(pos[1,1]; title="$(w.name), t=$(t)", aspect=DataAspect())
+        Axis(pos[1,1]; title="$(w.name), t=$(t)", aspect=DataAspect(), width=300, height=300)
         img = render_field(jet; extent=3, ν=1, t, what=w.what)
         p = w.what isa S.Intensity ? maximum(img) : 1
         plt = heatmap!(img; w.kwargs(p)...)
