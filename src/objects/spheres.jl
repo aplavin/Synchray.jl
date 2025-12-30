@@ -17,8 +17,7 @@ end
 
 four_velocity(obj::UniformSphere, x4) = obj.u0
 
-emissivity(obj::UniformSphere, x4, ν) = obj.jν
-absorption(obj::UniformSphere, x4, ν) = obj.αν
+emissivity_absorption(obj::UniformSphere, x4, ν) = (obj.jν, obj.αν)
 
 
 
@@ -80,8 +79,7 @@ z_interval(obj::MovingUniformEllipsoid, ray::RayZ) = begin
 end
 
 four_velocity(obj::MovingUniformEllipsoid, x4) = obj.u0
-emissivity(obj::MovingUniformEllipsoid, x4, ν) = obj.jν
-absorption(obj::MovingUniformEllipsoid, x4, ν) = obj.αν
+emissivity_absorption(obj::MovingUniformEllipsoid, x4, ν) = (obj.jν, obj.αν)
 
 
 @kwdef struct UniformSynchrotronSphere{TC,TR,TU,Tne,TB,TM} <: AbstractSynchrotronMedium

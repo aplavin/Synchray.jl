@@ -7,8 +7,7 @@ end
 
 z_interval(obj::UniformSlab, ray::RayZ) = obj.z
 four_velocity(obj::UniformSlab, x4) = obj.u0
-emissivity(obj::UniformSlab, x4, ν) = obj.j0
-absorption(obj::UniformSlab, x4, ν) = obj.a0
+emissivity_absorption(obj::UniformSlab, x4, ν) = (obj.j0, obj.a0)
 
 
 @kwdef struct UniformSynchrotronSlab{TZ,TU,Tne,TB,TM} <: AbstractSynchrotronMedium

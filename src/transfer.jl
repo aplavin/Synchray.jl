@@ -47,8 +47,7 @@ end
 _integrate_ray_step(acc::AccValue{Intensity}, obj, x4, k, Δλ) = begin
 	u = four_velocity(obj, x4)
 	ν = measured_frequency(k, u)
-	Jinv = emissivity_invariant(obj, x4, ν)
-	Ainv = absorption_invariant(obj, x4, ν)
+	(Jinv, Ainv) = emissivity_absorption_invariant(obj, x4, ν)
 
 	Iinv = acc.value
 	Δτ = Ainv * Δλ
@@ -74,8 +73,7 @@ _integrate_ray_step(acc::AccSpectralIndex, obj, x4, k, Δλ) = begin
 	u = four_velocity(obj, x4)
 	ν = measured_frequency(k, u) * acc.s
 	Δλ′ = Δλ / acc.s
-	Jinv = emissivity_invariant(obj, x4, ν)
-	Ainv = absorption_invariant(obj, x4, ν)
+	(Jinv, Ainv) = emissivity_absorption_invariant(obj, x4, ν)
 
 	Iinv = acc.Iinv
 	Δτ = Ainv * Δλ′
@@ -92,8 +90,7 @@ end
 _integrate_ray_step(acc::Tuple{AccValue{Intensity}, AccValue{OpticalDepth}}, obj, x4, k, Δλ) = begin
 	u = four_velocity(obj, x4)
 	ν = measured_frequency(k, u)
-	Jinv = emissivity_invariant(obj, x4, ν)
-	Ainv = absorption_invariant(obj, x4, ν)
+	(Jinv, Ainv) = emissivity_absorption_invariant(obj, x4, ν)
 
 	Iinv = acc[1].value
 	Δτ = Ainv * Δλ
