@@ -15,6 +15,8 @@ _init_acc(::Type{Tuple{Intensity,SpectralIndex}}, ν0) = _init_acc(SpectralIndex
 _init_acc(::Type{SpectralIndex}, ν0) = begin
 	ν0f = float(ν0)
 	DT = typeof(ForwardDiff.Tag(_integrate_ray_step, typeof(ν0f)))
+	# ForwardDiff trick for ∂/∂ν (then convert to ∂/∂lnν downstream):
+	# represent a dimensionless scale s = 1 + ε/ν₀ so that d(ν·s)/dε|₀ = 1.
 	s = ForwardDiff.Dual{DT}(one(ν0f), inv(ν0f))
 	Iinv = ForwardDiff.Dual{DT}(zero(ν0f), zero(ν0f))
 	AccSpectralIndex(Iinv, s, DT)
@@ -23,14 +25,19 @@ end
 
 _postprocess_acc(acc::Tuple, ν, what::Tuple) = map((a, w) -> _postprocess_acc(a, ν, w), acc, what)
 _postprocess_acc(Iinv::AccValue{Intensity}, ν, what::Intensity) = Iinv.value * ν^3
+# Optical depth is dimensionless and (with 𝓐 ≡ α_ν·ν and τ = ∫𝓐 dλ) is already
+# the quantity used in transfer; unlike intensity, it does not require a ν³ conversion.
 _postprocess_acc(τ::AccValue{OpticalDepth}, ν, what::OpticalDepth) = τ.value
 _postprocess_acc(acc::AccSpectralIndex, ν, what::SpectralIndex) = begin
 	(;Iinv, DT) = acc
 	Iinv0 = ForwardDiff.value(DT, Iinv)
 	dIinv = ForwardDiff.extract_derivative(DT, Iinv)
 
+	# Frequency conversion (invariant → ordinary): I_ν = ν³ 𝓘.
+	# Therefore dI_ν/dν = ν³ d𝓘/dν + 3ν² 𝓘.
 	I0 = Iinv0 * ν^3
 	dI = dIinv * ν^3 + Iinv0 * (3 * ν^2)
+	# Spectral index (radio convention): α(ν) ≡ d ln I_ν / d ln ν = (ν/I_ν)·(dI_ν/dν).
 	return (ν / I0) * dI
 end
 _postprocess_acc(acc::AccSpectralIndex, ν, what::Tuple{Intensity,SpectralIndex}) = begin
@@ -38,6 +45,7 @@ _postprocess_acc(acc::AccSpectralIndex, ν, what::Tuple{Intensity,SpectralIndex}
 	Iinv0 = ForwardDiff.value(DT, Iinv)
 	dIinv = ForwardDiff.extract_derivative(DT, Iinv)
 
+	# Same math as above, but also return I_ν itself.
 	I0 = Iinv0 * ν^3
 	dI = dIinv * ν^3 + Iinv0 * (3 * ν^2)
 	return I0, (ν / I0) * dI
@@ -48,10 +56,13 @@ const Δτ_THRESHOLD_LINEAR = 1e-2
 
 @inline _integrate_ray_step(acc::AccValue{Intensity}, obj, x4, k, Δλ) = begin
 	u = four_velocity(obj, x4)
-	ν = measured_frequency(k, u)
+	ν = comoving_frequency(k, u)
 	(Jinv, Ainv) = emissivity_absorption_invariant(obj, x4, ν)
 
 	Iinv = acc.value
+	# Invariant transfer: 𝓘 ≡ I_ν/ν³, 𝓙 ≡ j_ν/ν², 𝓐 ≡ α_ν·ν
+	# d𝓘/dλ = 𝓙 − 𝓐 𝓘, so over a step Δλ with constant coeffs:
+	# Δτ = 𝓐Δλ and 𝓘_out = 𝓘_in e^(−Δτ) + (𝓙/𝓐)(1−e^(−Δτ)).
 	Δτ = Ainv * Δλ
 	@assert Δτ ≥ 0
 	Iinv = if Δτ < Δτ_THRESHOLD_LINEAR
@@ -65,16 +76,22 @@ end
 
 @inline _integrate_ray_step(acc::AccValue{OpticalDepth}, obj, x4, k, Δλ) = begin
 	u = four_velocity(obj, x4)
-	ν = measured_frequency(k, u)
+	ν = comoving_frequency(k, u)
 	Ainv = absorption_invariant(obj, x4, ν)
 
+	# Optical depth accumulation uses the invariant absorption 𝓐 = α_ν·ν:
+	# τ = ∫ 𝓐 dλ, discretized as Σ (𝓐 Δλ).
+	# The frame/Doppler factor is already inside 𝓐Δλ via ν′ = −k⋅u and Δλ = Δz/kᶻ:
+	# for k = ν_obs(1,0,0,1), Δτ = (α′_ν ν′)(Δz/ν_obs) = α′_ν (Δz/δ), δ ≡ ν_obs/ν′.
 	Δτ = Ainv * Δλ
 	return AccValue{OpticalDepth}(acc.value + Δτ)
 end
 
 @inline _integrate_ray_step(acc::AccSpectralIndex, obj, x4, k, Δλ) = begin
 	u = four_velocity(obj, x4)
-	ν = measured_frequency(k, u) * acc.s
+	# Spectral index via AD: scale ν by s and rescale affine step.
+	# Since k ∝ ν, scaling ν→ν·s implies λ-steps scale as Δλ→Δλ/s.
+	ν = comoving_frequency(k, u) * acc.s
 	Δλ′ = Δλ / acc.s
 	(Jinv, Ainv) = emissivity_absorption_invariant(obj, x4, ν)
 
@@ -93,7 +110,7 @@ end
 
 _integrate_ray_step(acc::Tuple{AccValue{Intensity}, AccValue{OpticalDepth}}, obj, x4, k, Δλ) = begin
 	u = four_velocity(obj, x4)
-	ν = measured_frequency(k, u)
+	ν = comoving_frequency(k, u)
 	(Jinv, Ainv) = emissivity_absorption_invariant(obj, x4, ν)
 
 	Iinv = acc[1].value
@@ -116,6 +133,8 @@ integrate_ray(obj::AbstractMedium, ray::RayZ, what=Intensity()) = begin
 	k = ray.k
 	kz = k.z
     @assert k == SVector(kz, 0, 0, kz)
+	# Ray parameterization: k ∥ (1,0,0,1) so events satisfy x(z) = x₀ + z·(1,0,0,1).
+	# With k = ν_cam·(1,0,0,1), we have kᶻ = ν_cam and Δλ = Δz / kᶻ.
     k1 = k / kz
 
 	acc = if isempty(seg)
@@ -128,6 +147,7 @@ integrate_ray(obj::AbstractMedium, ray::RayZ, what=Intensity()) = begin
 		Δλ = Δz / kz
 		acc = _integrate_ray_step(_init_acc(typeof(what), photon_frequency(ray)), obj, ray.x0 + first(zs) * k1, k, Δλ)
 		for z in zs[2:end]
+			# Spacetime stepping along the null ray: x(z) = x₀ + z·k̂, with k̂ = (1,0,0,1).
 			x = ray.x0 + z * k1
 			acc = _integrate_ray_step(acc, obj, x, k, Δλ)
 		end
