@@ -518,9 +518,9 @@ end
 			sum(img)
 		end
 
-		# @test flux(1) > 0
-		# @test flux(1) / flux(2) ≈ 1  rtol=0.02
-		# @test flux(0.5) / flux(1) ≈ 1  rtol=0.07
+		@test flux(1) > 0
+		@test flux(1) / flux(2) ≈ 1  rtol=0.02
+		@test flux(0.5) / flux(1) ≈ 1  rtol=0.07
 	end
 
 	ray_at_s(ν, s; nz=2048) = begin
