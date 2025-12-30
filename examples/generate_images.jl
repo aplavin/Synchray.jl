@@ -158,10 +158,57 @@ function bk_jet_image()
     save(joinpath(outdir, "bk_jet_thick.png"), fig)
 end
 
+function bk_jet_1_knot_snapshots_image()
+    φj = 4u"°"
+    θ = 3 * φj  # "small viewing angle", same as in bk_jet_image
+
+    base_jet = S.ConicalBKJet(;
+        axis = SVector(sin(θ), 0, cos(θ)),
+        φj,
+        s=(1e-3 .. 50),
+        s0=1,
+        ne0=1,
+        B0=1,
+        speed_profile=(η -> (S.beta, 0.995)),
+        model=S.PowerLawElectrons(; p=2.3, Cj=1, Ca=1),
+    )
+
+    knot = let
+        x_c0 = S.FourPosition(0, (0.1 * base_jet.axis)...)
+        u = S.FourVelocity(0.995 * base_jet.axis)
+        sizing = S.CrossSectionKnotSizing(0.3, 0.5)
+        S.InertialEllipsoidalKnot(; x_c0, u, sizing, profile_ne=S.GaussianBump(100), profile_B=nothing)
+    end
+
+    jet = S.ConicalBKJetWithPatterns(base_jet, (knot,)) |> S.prepare_for_computations
+
+    ts = [0, 0.1, 0.25]
+    whats = [
+        (name="Intensity", what=S.Intensity(), kwargs=p -> (; colormap=:magma, colorscale=SymLog(1e-4 * p))),
+        (name="α", what=S.SpectralIndex(), kwargs=_ -> (; colormap=:balance, colorrange=(-3, 3))),
+    ]
+
+    fig = Figure(; size=(420 * length(ts), 360 * length(whats)))
+    for (r, w) in enumerate(whats), (c, t) in enumerate(ts)
+        pos = fig[r, c]
+        Axis(pos[1,1]; title="$(w.name), t=$(t)", aspect=DataAspect())
+        img = render_field(jet; extent=3, ν=1, t, what=w.what)
+        p = w.what isa S.Intensity ? maximum(img) : 1
+        plt = heatmap!(img; w.kwargs(p)...)
+        Colorbar(pos[1,2], plt; tickformat=EngTicks(:symbol))
+        hidespines!()
+        hidedecorations!()
+    end
+    resize_to_layout!()
+    save(joinpath(outdir, "bk_jet_1_knot_snapshots.png"), fig)
+    fig
+end
+
 function main()
     moving_ellipsoid_image()
     synchrotron_sphere_image()
     bk_jet_image()
+    bk_jet_1_knot_snapshots_image()
 end
 
 main()
