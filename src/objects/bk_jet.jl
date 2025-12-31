@@ -104,6 +104,26 @@ end
 
 z_interval(obj::ConicalBKJet, ray::RayZ) = _rayz_cone_z_interval(obj.axis, obj.φj, ray, obj.s)
 
+"""
+	is_inside_jet(jet::ConicalBKJet, x4::FourPosition) -> Bool
+
+Return whether the spacetime event `x4` lies inside the truncated conical jet volume.
+
+The check uses only the spatial part `r = x4.xyz`:
+
+- longitudinal coordinate `s = jet.axis ⋅ r` must lie in `jet.s` (truncation)
+- transverse distance from the axis must satisfy `ρ ≤ s * tan(φj)` (cone boundary)
+
+Boundary points count as inside.
+"""
+@inline is_inside_jet(jet::ConicalBKJet, x4::FourPosition) = begin
+	r = @swiz x4.xyz
+	s = dot(jet.axis, r)
+	(s ∈ jet.s) || return false
+	ρ = norm(r - s * jet.axis)
+	return ρ ≤ s * tan(jet.φj)
+end
+
 @inline four_velocity(obj::ConicalBKJet, x4) = begin
 	r = @swiz x4.xyz
 	s = dot(obj.axis, r)

@@ -318,6 +318,46 @@ end
 end
 
 
+@testitem "Jet point queries helpers" begin
+	import Synchray as S
+
+	@testset "event_on_camera_ray matches RayZ convention" begin
+		cam = S.CameraZ(; xys=SVector{2}[(0.0, 0.0)], nz=8, ν=1.0, t=2.0)
+		r = SVector(0.5, -0.25, 3.0)
+		x4 = S.event_on_camera_ray(cam, r)
+		@test x4 == S.FourPosition(cam.t + r.z, r.x, r.y, r.z)
+	end
+
+	@testset "is_inside_jet (boundary inclusive)" begin
+		φj = 0.2
+		jet = S.ConicalBKJet(;
+			axis=SVector(0.0, 0.0, 1.0),
+			φj,
+			s=0.0..10.0,
+			s0=1.0,
+			ne0=1.0,
+			B0=1.0,
+			speed_profile=(η -> (S.beta, 0.0)),
+		)
+
+		s = 5.0
+		ρmax = s * tan(φj)
+		x_inside = S.FourPosition(0.0, 0.5 * ρmax, 0.0, s)
+		x_boundary = S.FourPosition(0.0, ρmax, 0.0, s)
+		x_outside = S.FourPosition(0.0, 1.01 * ρmax, 0.0, s)
+		x_below = S.FourPosition(0.0, 0.0, 0.0, -1.0)
+
+		@test S.is_inside_jet(jet, x_inside)
+		@test S.is_inside_jet(jet, x_boundary)
+		@test !S.is_inside_jet(jet, x_outside)
+		@test !S.is_inside_jet(jet, x_below)
+
+		jetp = S.ConicalBKJetWithPatterns(jet, ())
+		@test S.is_inside_jet(jetp, x_inside) == S.is_inside_jet(jet, x_inside)
+	end
+end
+
+
 @testitem "Synchrotron slab scalings" begin
 	import Synchray as S
 	using Accessors

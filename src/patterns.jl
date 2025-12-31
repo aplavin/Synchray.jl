@@ -87,6 +87,8 @@ end
 @inline z_interval(obj::ConicalBKJetWithPatterns, ray::RayZ) = z_interval(obj.base, ray)
 @inline four_velocity(obj::ConicalBKJetWithPatterns, x4) = four_velocity(obj.base, x4)
 
+@inline is_inside_jet(obj::ConicalBKJetWithPatterns, x4::FourPosition) = is_inside_jet(obj.base, x4)
+
 @inline electron_density(obj::ConicalBKJetWithPatterns, x4) =
 	electron_density(obj.base, x4) * pattern_factor_ne(obj.patterns, x4, obj.base)
 

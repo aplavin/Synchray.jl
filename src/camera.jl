@@ -42,6 +42,23 @@ render(ray::RayZ, obj::AbstractMedium, what=Intensity()) = integrate_ray(obj, ra
 	end
 end
 
+"""
+    event_on_camera_ray(cam::CameraZ, r; t_obs=cam.t) -> FourPosition
+
+Return the spacetime event `x4` on the camera's (orthographic, +z) null ray that passes
+through spatial point `r = (x, y, z)`, at observer time `t_obs`.
+
+This matches the internal `RayZ` convention used in transfer:
+
+- The camera screen is at `z=0`.
+- Rays propagate along `+z` with `x(z) = x0 + z*(1,0,0,1)`.
+
+Therefore for a fixed observer time `t_obs` on the screen, the corresponding emission
+event at depth `z` is `t = t_obs + z`.
+"""
+@inline event_on_camera_ray(cam::CameraZ, r::SVector{3}; t_obs=cam.t) =
+    FourPosition(t_obs + r.z, r.x, r.y, r.z)
+
 # XXX: ideally, should just be the below (split rays() vs render()),
 # but somehow it results in a lot of allocations for map(mapview(...))
 
