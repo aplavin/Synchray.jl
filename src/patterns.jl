@@ -138,13 +138,18 @@ Physical meaning:
   of radiating electrons comoving with the flow.
 - If used as `profile_B`, this can represent a localized magnetic-field enhancement.
 """
-struct GaussianBump{Tf} <: AbstractKnotProfile
+@kwdef struct GaussianBump{Tf} <: AbstractKnotProfile
 	f_peak::Tf
+	χ_threshold::Tf = 4^2
 end
+GaussianBump(f_peak, χ_threshold) = GaussianBump(promote(f_peak, χ_threshold)...)
+GaussianBump(f_peak) = GaussianBump(; f_peak=float(f_peak))
 
 # In the knot frame, χ is an ellipsoidal “radius-squared” and this is a Gaussian in χ.
-@inline (g::GaussianBump)(χ) = one(χ) + (g.f_peak - one(χ)) * exp(-χ / 2)
-
+@inline (g::GaussianBump)(χ) =
+	χ < g.χ_threshold ?
+		1 + (g.f_peak - 1) * exp(-χ / 2) :
+		one(float(g.f_peak))
 
 """
     InertialEllipsoidalKnot
