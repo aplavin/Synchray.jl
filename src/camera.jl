@@ -26,24 +26,36 @@ end
 Accessors.set(ray::RayZ, ::typeof(photon_frequency), ν) = @set photon_frequency(ray.k) = ν
 
 
-@unstable rays(cam::CameraZ) = let
-    x0_base = FourPosition(cam.t, 0, 0, 0)
-    k = photon_k(cam.ν, SVector(0, 0, 1))
-    map(cam.xys) do xy
-        x0 = x0_base + FourPosition(0, xy..., 0)
-        RayZ(x0, k, cam.nz)
-    end
-end
-
-
 struct Intensity end
 struct OpticalDepth end
 struct SpectralIndex end
 
 render(ray::RayZ, obj::AbstractMedium, what=Intensity()) = integrate_ray(obj, ray, what)
 
-@unstable render(cam::CameraZ, obj::AbstractMedium, what=Intensity()) = begin
-	cam.mapfunc(rays(cam)) do ray
+@unstable render(cam::CameraZ, obj::AbstractMedium, what=Intensity()) = let
+    x0_base = FourPosition(cam.t, 0, 0, 0)
+    k = photon_k(cam.ν, SVector(0, 0, 1))
+	cam.mapfunc(cam.xys) do xy
+        x0 = x0_base + FourPosition(0, xy..., 0)
+        ray = RayZ(x0, k, cam.nz)
 		render(ray, obj, what)
 	end
 end
+
+# XXX: ideally, should just be the below (split rays() vs render()),
+# but somehow it results in a lot of allocations for map(mapview(...))
+
+# @unstable rays(cam::CameraZ) = let
+#     x0_base = FourPosition(cam.t, 0, 0, 0)
+#     k = photon_k(cam.ν, SVector(0, 0, 1))
+#     mapview(cam.xys) do xy
+#         x0 = x0_base + FourPosition(0, xy..., 0)
+#         RayZ(x0, k, cam.nz)
+#     end
+# end
+
+# @unstable render(cam::CameraZ, obj::AbstractMedium, what=Intensity()) = begin
+# 	cam.mapfunc(rays(cam)) do ray
+# 		render(ray, obj, what)
+# 	end
+# end
