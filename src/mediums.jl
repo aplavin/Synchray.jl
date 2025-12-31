@@ -27,6 +27,25 @@ end
 @inline absorption(obj::AbstractMedium, x4, ν) = emissivity_absorption(obj, x4, ν)[2]
 
 
+"""
+		PowerLawElectrons(; p, γmin=1, γmax=Inf, Cj=nothing, Ca=nothing)
+
+Stage-1 (angle-averaged, Stokes-I) synchrotron electron model.
+
+Normalization:
+
+- If `Cj`/`Ca` are not provided, they are computed from standard cgs synchrotron
+	coefficients (Rybicki–Lightman-style `c₅(p)`/`c₆(p)`) combined with the chosen
+	power-law normalization, so the model is *physically normalized*.
+- If `Cj` and `Ca` are provided explicitly, the model acts as a pure scaling law.
+
+Physical-unit interpretation:
+
+- The core transfer code operates in code units (plain numbers). For physically
+	meaningful results with the default normalization, inputs must be consistent with
+	cgs conventions for the microphysics (e.g. `n_e` in cm⁻³, `|B′|` in Gauss, `ν` in Hz),
+	typically via the Unitful boundary helpers (`withunits`).
+"""
 # --- Synchrotron (Stage 1: angle-averaged Stokes I) ---
 struct PowerLawElectrons{Tp,Tγ,TC}
 	p::Tp
@@ -86,12 +105,17 @@ end
 end
 
 @inline _synchrotron_coeffs(model::PowerLawElectrons, n_e, B, ν) = let
-	# Stage 1 (angle-averaged) power-law synchrotron scaling, in the comoving frame.
-	# This returns (j_ν, α_ν) with frequency ν measured in the plasma rest frame.
+	# Stage 1 (angle-averaged) power-law synchrotron, in the comoving frame.
+	# Returns (j_ν, α_ν) with ν measured in the plasma rest frame.
 	#
-	# Implemented laws:
+	# Implemented scaling:
 	#   j_ν = Cj · n_e · B^((p+1)/2) · ν^(-(p-1)/2)
 	#   α_ν = Ca · n_e · B^((p+2)/2) · ν^(-(p+4)/2)
+	#
+	# Notes on normalization:
+	# - If `model.Cj`/`model.Ca` were auto-derived (see `PowerLawElectrons(...)`), then
+	#   interpreting `n_e`, `B`, `ν` as (cm⁻³, Gauss, Hz) yields cgs-normalized coefficients.
+	# - If `Cj`/`Ca` were provided explicitly, this is a unitless scaling law.
 	#
 	# Algebraic factorization used below:
 	#   common ≡ (B/ν)^(p/2)

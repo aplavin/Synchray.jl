@@ -469,7 +469,7 @@ end
 end
 
 
-@testitem "Unitful boundary API (draft; ConicalBKJet)" begin
+@testitem "Unitful boundary API (ConicalBKJet)" begin
 	import Synchray as S
 	using Unitful, UnitfulAstro
 	using RectiGrids
