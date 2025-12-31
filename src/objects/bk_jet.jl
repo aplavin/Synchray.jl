@@ -216,7 +216,7 @@ end
 	r = @swiz x4.xyz
 	s = dot(obj.axis, r)
 
-	vhat = r / √(dot(r, r))
+	vhat = iszero(r) ? zero(r) : r / √(dot(r, r))
 	# Transverse coordinate η in [0,1]
 	ρ = norm(r - s * obj.axis)
 	tanφ = tan(obj.φj)
