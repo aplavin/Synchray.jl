@@ -212,29 +212,28 @@ ray_contribution_profile(obj::AbstractMedium, ray::RayZ) = begin
 	Δz = step(zs)
 	Δλ = Δz / kz
 
-	Δτ = Vector{float(typeof(Δλ))}(undef, length(zs))
-	dIinv_source = similar(Δτ)
-
-	for (i, z) in pairs(zs)
+	profile₁ = map(StructArray(; z=zs)) do (;z)
 		x4 = ray.x0 + z * k1
 		u = four_velocity(obj, x4)
 		ν = comoving_frequency(k, u)
 		(Jinv, Ainv) = emissivity_absorption_invariant(obj, x4, ν)
-		Δτᵢ = Ainv * Δλ
-		@assert Δτᵢ ≥ 0
-		Δτ[i] = Δτᵢ
-		dIinv_source[i] = if Δτᵢ < Δτ_THRESHOLD_LINEAR
+		Δτ = Ainv * Δλ
+		@assert Δτ ≥ 0
+		dIinv_source = if Δτ < Δτ_THRESHOLD_LINEAR
 			Jinv * Δλ
 		else
-			( Jinv / Ainv ) * (1 - exp(-Δτᵢ))
+			( Jinv / Ainv ) * (1 - exp(-Δτ))
 		end
+		(; z, x4, Δτ, dIinv_source)
 	end
 
 	# τ_front[i] = Σ_{j>i} Δτ[j]
-	τ_front = reverse(cumsum(reverse(Δτ))) .- Δτ
+	profile₂ = @insert profile₁.τ_front = reverse(cumsum(reverse(profile₁.Δτ))) .- profile₁.Δτ
 
-	dIν_to_obs = map(dIinv_source, τ_front) do dI, τf
-		dI * exp(-τf) * νobs^3
-	end
-	return StructArray(; zs, Δτ, dIν_to_obs)
+	profile₃ = @insert profile₂.dIν_to_obs =
+		map(profile₂) do (; dIinv_source, τ_front)
+			dIinv_source * exp(-τ_front) * νobs^3
+		end
+
+	return profile₃
 end
