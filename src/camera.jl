@@ -32,14 +32,49 @@ struct SpectralIndex end
 
 render(ray::RayZ, obj::AbstractMedium, what=Intensity()) = integrate_ray(obj, ray, what)
 
-@unstable render(cam::CameraZ, obj::AbstractMedium, what=Intensity()) = let
+_boundary_mask(img) = begin
+    inside = map(x -> iszero(x) || isnan(x), img) |> Matrix
+    IXs = CartesianIndices(inside)
+    map(IXs) do I
+        neighbors = filter(∈(IXs), I .+ CartesianIndices((-1:1, -1:1)))
+        !allequal(inside[neighbors])
+    end
+end
+
+_mean_samples(samples) = mean(skip(isnan, samples))
+_mean_samples(samples::AbstractArray{<:Tuple}) = ntuple(i -> mean(s -> s[i], samples), length(first(samples)))
+
+@unstable render(cam::CameraZ, obj::AbstractMedium, what=Intensity(); adaptive_supersampling=false) = let
     x0_base = FourPosition(cam.t, 0, 0, 0)
     k = photon_k(cam.ν, SVector(0, 0, 1))
-	cam.mapfunc(cam.xys) do xy
-        x0 = x0_base + FourPosition(0, xy..., 0)
-        ray = RayZ(x0, k, cam.nz)
+    ray_base = RayZ(x0_base, k, cam.nz)
+	img = cam.mapfunc(cam.xys) do xy
+        ray = @set ray_base.x0 += FourPosition(0, xy..., 0)
 		render(ray, obj, what)
 	end
+
+    adaptive_supersampling === false && return img
+    n = adaptive_supersampling::Int
+    @assert n ≥ 2
+
+    steps = map(step, axiskeys(cam.xys))
+
+    boundary = _boundary_mask(img)
+
+    offs(n, d) = range(0 ± 0.7 * d, length=n)
+    oxs, oys = offs.(n, steps)
+
+    for I in findall(boundary)
+        xy0 = cam.xys[I]
+        samples = map(grid(SVector, oxs, oys)) do oxy
+            xy = xy0 + oxy
+            ray = @set ray_base.x0 += FourPosition(0, xy..., 0)
+            render(ray, obj, what)
+        end
+        img[I] = _mean_samples(samples)
+    end
+
+    img
 end
 
 """

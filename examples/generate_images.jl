@@ -1,6 +1,6 @@
 import Pkg
 Pkg.activate(@__DIR__)
-Pkg.instantiate()
+Pkg.resolve()
 
 outdir = joinpath(@__DIR__, "images")
 isdir(outdir) || mkpath(outdir)
@@ -17,14 +17,14 @@ using PyFormattedStrings
 using Accessors
 
 
-function render_field(obj; extent, nz=256, npx=256, ν, t=0.0, what=S.Intensity())
+function render_field(obj; extent, nz=256, npx=256, ν, t=0.0, what=S.Intensity(), adaptive_supersampling=false)
     cam = S.CameraZ(; xys=grid(SVector, range(0±extent, npx), range(0±extent, npx)), nz, ν, t)
 
     result = open(render_time_log_path, "a") do io
         redirect_stdout(io) do
-            S.render(cam, obj, what)
+            S.render(cam, obj, what; adaptive_supersampling)
             label = f"{nameof(typeof(obj)):27s}, {nameof(typeof(what)):15s}, {npx}px × {nz}"
-            @time label S.render(cam, obj, what)
+            @time label S.render(cam, obj, what; adaptive_supersampling)
         end
     end
 
@@ -144,20 +144,22 @@ function bk_jet_image()
     resize_to_layout!()
     save(joinpath(outdir, "bk_jet_thin.png"), fig)
 
-    fig = Figure()
-    jet0 = @set jet0.model.Ca = 9.0
-    for (I, (v, what)) in pairs(collect(Iterators.product(views, whats)))
-        pos = fig[Tuple(I)...]
-        Axis(pos[1,1]; title="$(v.name), $(what.what|>typeof|>nameof) (θ=$(v.θ))", aspect=DataAspect(), width=300, height=300)
-        jet = @set jet0.axis = axis_for_viewing_angle(v.θ)
-        img = render_field(jet; extent=3, ν=1, what.what)
-        plt = heatmap!(img; what.kwargs(maximum(img))...)
-        Colorbar(pos[1,2], plt; tickformat=EngTicks(:symbol))
-        hidespines!()
-        hidedecorations!()
+    for adaptive_supersampling in (false, 4)
+        fig = Figure()
+        jet0 = @set jet0.model.Ca = 9.0
+        for (I, (v, what)) in pairs(collect(Iterators.product(views, whats)))
+            pos = fig[Tuple(I)...]
+            Axis(pos[1,1]; title="$(v.name), $(what.what|>typeof|>nameof) (θ=$(v.θ))", aspect=DataAspect(), width=300, height=300)
+            jet = @set jet0.axis = axis_for_viewing_angle(v.θ)
+            img = render_field(jet; extent=3, ν=1, what.what, adaptive_supersampling)
+            plt = heatmap!(img; what.kwargs(maximum(img))...)
+            Colorbar(pos[1,2], plt; tickformat=EngTicks(:symbol))
+            hidespines!()
+            hidedecorations!()
+        end
+        resize_to_layout!()
+        save(joinpath(outdir, adaptive_supersampling!==false ? "bk_jet_thick_ss.png" : "bk_jet_thick.png"), fig)
     end
-    resize_to_layout!()
-    save(joinpath(outdir, "bk_jet_thick.png"), fig)
 end
 
 function bk_jet_1_knot_snapshots_image()

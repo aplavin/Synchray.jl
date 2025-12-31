@@ -183,6 +183,44 @@ end
 end
 
 
+@testitem "Adaptive supersampling: boundary pixels" begin
+	import Synchray as S
+	using RectiGrids
+
+	R = 1.0
+	sphere = S.UniformSphere(
+		center=S.FourPosition(0.0, 0.0, 0.0, 0.0),
+		radius=R,
+		u0=S.FourVelocity(SVector(0.0, 0.0, 0.0)),
+		jν=1.0,
+		αν=0.0,
+	)
+
+	# Grid chosen so one pixel center lies near the boundary but still inside.
+	xs = range(-1.2..1.2, 9)  # step == 0.3, includes x=0.9 and y=0
+	cam = S.CameraZ(; xys=grid(SVector, xs, xs), nz=512, ν=1.0, t=0.0)
+
+	img0 = S.render(cam, sphere)
+	img3 = S.render(cam, sphere; adaptive_supersampling=3)
+	@test !(img3 ≈ img0)
+
+	ix(x) = findfirst(y -> isapprox(y, x; atol=1e-12), xs)
+	Icenter = img0[ix(0.0), ix(0.0)]
+	@test img3[ix(0.0), ix(0.0)] ≈ Icenter rtol=0 atol=1e-12
+
+	# Edge-adjacent pixel should be reduced due to partial coverage.
+	Iedge0 = img0[ix(0.9), ix(0.0)]
+	Iedge3 = img3[ix(0.9), ix(0.0)]
+	@test Iedge0 > 0
+	@test Iedge3 > 0
+	@test Iedge3 < Iedge0
+
+	# Fully outside remains zero.
+	@test img0[ix(1.2), ix(0.0)] == 0
+	@test img3[ix(1.2), ix(0.0)] == 0
+end
+
+
 @testitem "Moving sphere silhouette (Terrell rotation)" begin
 	import Synchray as S
 	using Accessors
