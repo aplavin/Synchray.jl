@@ -13,6 +13,7 @@ import AccessorsExtra: construct
 using ForwardDiff
 import SpecialFunctions
 using Statistics: mean
+using StructArrays
 using DispatchDoctor: @stable, @unstable
 
 

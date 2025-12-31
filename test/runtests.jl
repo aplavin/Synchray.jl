@@ -358,6 +358,42 @@ end
 end
 
 
+@testitem "Ray contribution profiles" begin
+	import Synchray as S
+
+	# Simple, constant-coefficient medium: UniformSlab.
+	L = 3.0
+	j0 = 0.7
+	a0 = 1.3
+	slab = S.UniformSlab(0.0..L, S.FourVelocity(SVector(0.0, 0.0, 0.0)), j0, a0)
+
+	ray = S.RayZ(; x0=S.FourPosition(0.0, 0.0, 0.0, 0.0), k=2.0, nz=2048)
+
+	prof = S.ray_contribution_profile(slab, ray)
+	Iν = S.render(ray, slab, S.Intensity())
+	τ = S.render(ray, slab, S.OpticalDepth())
+
+	@test Iν > 0
+	@test τ > 0
+	@test sum(prof.Δτ) ≈ τ rtol=2e-3
+	@test sum(prof.dIν_to_obs) ≈ Iν rtol=2e-3
+
+	@testset "missed rays return empty/zero" begin
+		R = 1.3
+		sphere = S.UniformSphere(; center=S.FourPosition(0.0, 0.0, 0.0, 0.0), radius=R, u0=S.FourVelocity(SVector(0.0, 0.0, 0.0)), jν=1.0, αν=2.0)
+		miss_ray = S.RayZ(; x0=S.FourPosition(0.0, 2R, 0.0, 0.0), k=2.0, nz=256)
+
+		prof_miss = S.ray_contribution_profile(sphere, miss_ray)
+		@test isempty(prof_miss.zs)
+		@test isempty(prof_miss.Δτ)
+		@test isempty(prof_miss.dIν_to_obs)
+
+		@test S.render(miss_ray, sphere, S.Intensity()) == 0
+		@test S.render(miss_ray, sphere, S.OpticalDepth()) == 0
+	end
+end
+
+
 @testitem "Synchrotron slab scalings" begin
 	import Synchray as S
 	using Accessors

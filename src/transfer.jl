@@ -157,3 +157,84 @@ integrate_ray(obj::AbstractMedium, ray::RayZ, what=Intensity()) = begin
 	ν = photon_frequency(ray)
 	return _postprocess_acc(acc, ν, what)
 end
+
+
+"""
+	ray_contribution_profile(obj, ray) -> NamedTuple
+
+Compute the *per-ray* contribution of each ray step (indexed by the internal z-grid)
+to the final observed intensity at the camera.
+
+This is a diagnostic helper for questions like:
+
+- "How much does a point at depth z contribute to the current image pixel?"
+
+Mathematically, for each step i the returned `dIinv_to_obs[i]` is the invariant source
+term for that step, attenuated by the optical depth *in front of it* (toward the observer):
+
+    dIinv_to_obs[i] = dIinv_source[i] * exp(-τ_front[i])
+
+The discretization intentionally matches `integrate_ray` (same z-grid, same Δλ, and the
+same linear-vs-exact handling for small Δτ).
+
+Returns a NamedTuple with:
+
+- `zs`: z-grid used for stepping
+- `Δτ`: per-step invariant optical-depth increments (same indexing as `zs`)
+- `τ_front`: cumulative optical depth in front of each step (τ from next step to exit)
+- `dIinv_source`: per-step invariant source contribution before front attenuation
+- `dIinv_to_obs`: per-step invariant contribution to the final pixel
+- `dIν_to_obs`: same as `dIinv_to_obs`, converted to ordinary intensity via ν³
+"""
+ray_contribution_profile(obj::AbstractMedium, ray::RayZ) = begin
+	seg = z_interval(obj, ray)
+	k = ray.k
+	kz = k.z
+	@assert k == SVector(kz, 0, 0, kz)
+	k1 = k / kz
+
+	νobs = photon_frequency(ray)
+	FT = float(eltype(ray.x0))
+
+	if isempty(seg)
+		z = leftendpoint(seg)
+		zs = StepRangeLen(FT(z), FT(1), 0)
+		Δτ = FT[]
+		τ_front = FT[]
+		dIinv_source = FT[]
+		dIinv_to_obs = FT[]
+		dIν_to_obs = FT[]
+		return StructArray(; zs, Δτ, dIν_to_obs)
+	end
+
+	# Same z-grid and step sizing as integrate_ray.
+	zs = StepRangeLen(leftendpoint(seg), width(seg) / (ray.nz - 1), ray.nz)
+	Δz = step(zs)
+	Δλ = Δz / kz
+
+	Δτ = Vector{float(typeof(Δλ))}(undef, length(zs))
+	dIinv_source = similar(Δτ)
+
+	for (i, z) in pairs(zs)
+		x4 = ray.x0 + z * k1
+		u = four_velocity(obj, x4)
+		ν = comoving_frequency(k, u)
+		(Jinv, Ainv) = emissivity_absorption_invariant(obj, x4, ν)
+		Δτᵢ = Ainv * Δλ
+		@assert Δτᵢ ≥ 0
+		Δτ[i] = Δτᵢ
+		dIinv_source[i] = if Δτᵢ < Δτ_THRESHOLD_LINEAR
+			Jinv * Δλ
+		else
+			( Jinv / Ainv ) * (1 - exp(-Δτᵢ))
+		end
+	end
+
+	# τ_front[i] = Σ_{j>i} Δτ[j]
+	τ_front = reverse(cumsum(reverse(Δτ))) .- Δτ
+
+	dIν_to_obs = map(dIinv_source, τ_front) do dI, τf
+		dI * exp(-τf) * νobs^3
+	end
+	return StructArray(; zs, Δτ, dIν_to_obs)
+end
