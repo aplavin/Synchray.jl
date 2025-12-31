@@ -44,14 +44,16 @@ _rayz_cone_z_interval(axis, φj, ray::RayZ, s) = let
 	B = 2 * α0 * az
 	C = α0^2 - c2 * r02
 
+	FT = eltype(ray.x0) |> float
 	emptyseg = let
-		zref = float(ray.x0.z)
+		zref = FT(ray.x0.z)
 		zref .. (zref - eps(zref))
 	end
+	infseg = FT(-Inf) .. FT(Inf)
 
 	# 1) Restrict to truncation interval in s: s(z) ∈ s.
 	zs = if iszero(az)
-		(α0 ∈ s) ? (-Inf .. Inf) : emptyseg
+		(α0 ∈ s) ? infseg : emptyseg
 	else
 		smin, smax = endpoints(s)
 		z1 = (smin - α0) / az
@@ -68,15 +70,15 @@ _rayz_cone_z_interval(axis, φj, ray::RayZ, s) = let
 		if iszero(A)
 			# Linear case: B z + C ≥ 0.
 			if iszero(B)
-				(C >= 0) ? (-Inf .. Inf) : emptyseg
+				(C >= 0) ? infseg : emptyseg
 			elseif B > 0
-				(-C / B) .. Inf
+				(-C / B) .. infseg.right
 			else
-				(-Inf) .. (-C / B)
+				infseg.left .. (-C / B)
 			end
 		elseif D < 0
 			# No real roots: sign is constant (A and C have same sign when D<0).
-			(C >= 0) ? (-Inf .. Inf) : emptyseg
+			(C >= 0) ? infseg : emptyseg
 		else
 			z1 = (-B - √D) / (2 * A)
 			z2 = (-B + √D) / (2 * A)
@@ -86,8 +88,8 @@ _rayz_cone_z_interval(axis, φj, ray::RayZ, s) = let
 			else
 				# cone interior outside the roots
 				@assert zlo ≤ 0 ≤ zhi  (zlo, zhi)
-				left = (-Inf) .. zlo
-				right = zhi .. Inf
+				left = infseg.left .. zlo
+				right = zhi .. infseg.right
 				# Prefer the side that overlaps `zs`
 				L = zs ∩ left
 				R = zs ∩ right

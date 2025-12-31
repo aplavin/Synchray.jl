@@ -482,10 +482,10 @@ end
 		axis=S.SVector(sin(θ), 0.0, cos(θ)),
 		φj,
 		s=1e-3..50,
-		s0=1.0,
-		ne0=1,
-		B0=3.0,
-		speed_profile=(η -> (S.beta, 0.0)),
+		s0=1.,
+		ne0=1.,
+		B0=3.,
+		speed_profile=(η -> (S.beta, 0f0)),
 		model=S.PowerLawElectrons(; p=2.5, Cj=1.0, Ca=1.0),
 	)
 
@@ -523,6 +523,21 @@ end
 		@test flux(0.5) / flux(1) ≈ 1  rtol=0.07
 	end
 
+	@testset "float64 vs float32" begin
+		cam64 = S.CameraZ(; xys=grid(S.SVector, range(0.01..0.1, 2), range(-0.001..0.001, 2)), nz=20, ν=2., t=0.)
+		cam32 = S.to_float_type(Float32, cam64)
+
+		jet64 = jet
+		jet32 = S.to_float_type(Float32, S.prepare_for_computations(jet64))
+
+		f64 = S.render(cam64, jet64)
+		f32 = S.render(cam32, jet32)
+		@test eltype(f64) == Float64
+		@test eltype(f32) == Float32
+		@test all(>(0), f64)
+		@test f32 ≈ f64  rtol=1e-5
+	end
+
 	ray_at_s(ν, s; nz=2048) = begin
 		rxy = (@swiz jet.axis.xy) * s
 		S.RayZ(; x0=S.FourPosition(0, rxy..., 0), k=ν, nz)
@@ -547,6 +562,7 @@ end
 
 @testitem "Jet patterns: wrapper + inertial knot" begin
 	import Synchray as S
+	using RectiGrids
 	using Accessors
 
 	jet = S.ConicalBKJet(; 
@@ -623,6 +639,21 @@ end
 	ray = S.RayZ(; x0=S.FourPosition(0, 0, 0, 0), k=2, nz=128)
 	@test S.z_interval(jetp, ray) == S.z_interval(jet, ray)
 	@test S.four_velocity(jetp, x4c) == S.four_velocity(jet, x4c)
+
+	@testset "float64 vs float32" begin
+		cam64 = S.CameraZ(; xys=grid(S.SVector, range(0.01..0.1, 2), range(-0.001..0.001, 2)), nz=20, ν=2., t=0.)
+		cam32 = S.to_float_type(Float32, cam64)
+
+		jet64 = jetp
+		jet32 = S.to_float_type(Float32, S.prepare_for_computations(jet64))
+
+		f64 = S.render(cam64, jet64)
+		f32 = S.render(cam32, jet32)
+		@test eltype(f64) == Float64
+		@test eltype(f32) == Float32
+		@test all(>(0), f64)
+		@test f32 ≈ f64  rtol=1e-5
+	end
 end
 
 
