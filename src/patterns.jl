@@ -44,18 +44,12 @@ Notes:
 """
 function pattern_factor_B end
 
-@inline pattern_factor_ne(patterns::Tuple, x4, jet) =
-	mapreduce(p -> pattern_factor_ne(p, x4, jet), *, patterns; init=one(x4.t))
+@inline pattern_factor_ne(patterns, x4, jet) =
+	pattern_factor_ne(only(patterns), x4, jet)
+	# prod(p -> pattern_factor_ne(p, x4, jet), patterns)
 
-@inline pattern_factor_B(patterns::Tuple, x4, jet) =
-	mapreduce(p -> pattern_factor_B(p, x4, jet), *, patterns; init=one(x4.t))
-
-@inline pattern_factor_ne(patterns::AbstractVector, x4, jet) =
-	mapreduce(p -> pattern_factor_ne(p, x4, jet), *, patterns; init=one(x4.t))
-
-@inline pattern_factor_B(patterns::AbstractVector, x4, jet) =
-	mapreduce(p -> pattern_factor_B(p, x4, jet), *, patterns; init=one(x4.t))
-
+@inline pattern_factor_B(patterns, x4, jet) =
+	prod(p -> pattern_factor_B(p, x4, jet), patterns)
 
 """Validate that a pattern configuration is physically/semantically allowed for a given jet."""
 validate_pattern(::AbstractJetPattern, jet) = nothing
@@ -201,9 +195,9 @@ end
 
 
 # Return sizes in the order (a_par, a_perp) to match the variables used in `_knot_chi`.
-_knot_sizes(sizing::FixedKnotSizing, tau, x_c, jet::ConicalBKJet) = (sizing.a_parallel, sizing.a_perp)
+@inline _knot_sizes(sizing::FixedKnotSizing, tau, x_c, jet::ConicalBKJet) = (sizing.a_parallel, sizing.a_perp)
 
-_knot_sizes(sizing::CrossSectionKnotSizing, tau, x_c, jet::ConicalBKJet) = begin
+@inline _knot_sizes(sizing::CrossSectionKnotSizing, tau, x_c, jet::ConicalBKJet) = begin
 	# Compute rest-frame (a_parallel, a_perp) from the *current* center position.
 	# Intuitively: as the knot moves outward, it expands to keep a fixed fraction
 	# of the local jet radius.
@@ -226,9 +220,7 @@ end
 	# is along β = beta(u) (β̂ = β/|β|), and which lives in the knot rest space:
 	# u⋅e_par = 0 and e_par⋅e_par = 1 (signature (-,+,+,+)).
 	β = beta(u)
-	β2 = dot(β, β)
-	@assert β2 > 0
-	βmag = sqrt(β2)
+	βmag = √dot(β, β)
 	βhat = β / βmag
 	γ = u.t
 	return FourPosition(γ * βmag, (γ * βhat)...)
@@ -240,18 +232,14 @@ end
 	# Overall (metric signature (-,+,+,+)):
 	# 1) Find the knot proper time τ such that x_c = x_c0 + u τ is simultaneous with x4
 	#    in the knot rest frame (so u⋅(x4 - x_c) = 0).
-	# 2) Form the rest-space displacement Δ_rest by projecting away any component along u.
-	#    (Analytically Δc is already orthogonal; the projection is a numerical guard.)
-	# 3) Decompose Δ_rest into components parallel/transverse to the knot principal axis
+	# 2) Decompose Δ_rest into components parallel/transverse to the knot principal axis
 	#    (taken to be the direction of motion) and evaluate the axisymmetric ellipsoidal
 	#    quadratic form.
 	Δ0 = x4 - knot.x_c0  # displacement from reference center event x_c0 to x4
 	τ = -minkowski_dot(knot.u, Δ0)  # simultaneity proper time τ*(x4) = -u⋅(x4 - x_c0)
 	x_c = knot.x_c0 + knot.u * τ  # center event x_c(τ) simultaneous with x4 in knot frame
-	Δc = x4 - x_c  # displacement from the simultaneous center event to x4 (u⋅Δc ≈ 0)
-	Δ_rest = _project_orthogonal(knot.u, Δc)  # rest-space displacement (orthogonal to u)
-	# XXX: if this never fails, should just skip _project_orthogonal and use Δc directly?..
-	@assert Δc ≈ Δ_rest
+	Δ_rest = Δc = x4 - x_c  # displacement from the simultaneous center event to x4 (u⋅Δc ≈ 0)
+	# should be orthogonal to u
 
 	e_par = _knot_velocity_axis(knot.u)  # unit principal axis in the knot rest space
 
