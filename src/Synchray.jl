@@ -6,10 +6,12 @@ using Reexport
 @reexport using Swizzling
 @reexport using LinearAlgebra
 @reexport using Unitful
+using Unitful: AbstractQuantity
 @reexport using DataPipes
 @reexport using Accessors
 import AccessorsExtra: construct
 using ForwardDiff
+import SpecialFunctions
 using Statistics: mean
 using DispatchDoctor: @stable, @unstable
 
@@ -24,6 +26,7 @@ include("objects/spheres.jl")
 include("objects/bk_jet.jl")
 include("patterns.jl")
 include("transfer.jl")
+include("units.jl")
 
 
 to_float_type(::Type{TF}, obj) where {TF<:AbstractFloat} =
