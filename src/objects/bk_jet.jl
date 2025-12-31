@@ -19,7 +19,7 @@ AngleTrigCached_fromangle(φ) = AngleTrigCached(tan(φ), cos(φ))
 	model::Tmodel = PowerLawElectrons(p=2.5)
 end
 
-prepare_for_computations(obj::ConicalBKJet) = @p let
+@unstable prepare_for_computations(obj::ConicalBKJet) = @p let
 	obj
 	@modify(AngleTrigCached_fromangle, __.φj)
 	@modify(prepare_for_computations, __.model)

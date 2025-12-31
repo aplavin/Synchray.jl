@@ -1,7 +1,7 @@
 import FastPower
 
 struct FixedExponent{P} end
-FixedExponent(p) = FixedExponent{p}()
+@unstable FixedExponent(p) = FixedExponent{p}()
 @inline _half(x::Real) = x / 2
 @inline _half(::FixedExponent{x}) where {x} = FixedExponent{x / 2}()
 

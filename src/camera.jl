@@ -11,11 +11,11 @@ struct RayZ{TX<:FourPosition, TK<:FourFrequency}
     k::TK
     nz::Int
 end
-RayZ(; x0, k, nz::Int) = _rayz(x0, k, nz)
-_rayz(x0::FourPosition, k::FourFrequency, nz::Int) = RayZ(x0, k, nz)
-_rayz(x0::FourPosition, k::Number, nz::Int) = RayZ(x0, photon_k(k, SVector(0, 0, 1)), nz)
+RayZ(; x0, k, nz::Int) = _ray_z(x0, k, nz)
+_ray_z(x0::FourPosition, k::FourFrequency, nz::Int) = RayZ(x0, k, nz)
+_ray_z(x0::FourPosition, k::Number, nz::Int) = RayZ(x0, photon_k(k, SVector(0, 0, 1)), nz)
 
-   
+
 photon_frequency(k::FourFrequency) = k.t
 photon_frequency(ray::RayZ) = photon_frequency(ray.k)
 

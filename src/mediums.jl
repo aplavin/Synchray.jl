@@ -36,7 +36,7 @@ end
 	Ca::TCa = 1
 end
 
-prepare_for_computations(model::PowerLawElectrons) = @modify(FixedExponent, model.p)
+@unstable prepare_for_computations(model::PowerLawElectrons) = @modify(FixedExponent, model.p)
 
 @inline _synchrotron_coeffs(model::PowerLawElectrons, n_e, B, ν) = let
 	# Stage 1 (angle-averaged) power-law synchrotron scaling, in the comoving frame.

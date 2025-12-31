@@ -79,7 +79,7 @@ function ConicalBKJetWithPatterns(base::ConicalBKJet, patterns)
 	return ConicalBKJetWithPatterns{typeof(base), typeof(patterns)}(base, patterns)
 end
 
-prepare_for_computations(obj::ConicalBKJetWithPatterns) = @p let
+@unstable prepare_for_computations(obj::ConicalBKJetWithPatterns) = @p let
 	obj
 	@modify(prepare_for_computations, __.base)
 end
@@ -238,7 +238,7 @@ end
 	Δ0 = x4 - knot.x_c0  # displacement from reference center event x_c0 to x4
 	τ = -minkowski_dot(knot.u, Δ0)  # simultaneity proper time τ*(x4) = -u⋅(x4 - x_c0)
 	x_c = knot.x_c0 + knot.u * τ  # center event x_c(τ) simultaneous with x4 in knot frame
-	Δ_rest = Δc = x4 - x_c  # displacement from the simultaneous center event to x4 (u⋅Δc ≈ 0)
+	Δ_rest = x4 - x_c  # displacement from the simultaneous center event to x4 (u⋅Δc ≈ 0)
 	# should be orthogonal to u
 
 	e_par = _knot_velocity_axis(knot.u)  # unit principal axis in the knot rest space
