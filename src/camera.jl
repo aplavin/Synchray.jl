@@ -59,6 +59,20 @@ event at depth `z` is `t = t_obs + z`.
 @inline event_on_camera_ray(cam::CameraZ, r::SVector{3}; t_obs=cam.t) =
     FourPosition(t_obs + r.z, r.x, r.y, r.z)
 
+"""
+    camera_ray_anchor(x4::FourPosition) -> FourPosition
+
+Convert a lab-frame event `x4 = (t, x, y, z)` to the corresponding camera-ray anchor
+event on the screen plane `z=0` for the (orthographic, +z) camera convention.
+
+The returned event has:
+
+- the same image-plane coordinates `(x, y)` (i.e. the pixel that sees `x4`),
+- `z = 0`,
+- the *camera time* (observer time on the screen) `t_cam = t - z`.
+"""
+@inline camera_ray_anchor(x4::FourPosition) = FourPosition(x4.t - x4.z, x4.x, x4.y, 0)
+
 # XXX: ideally, should just be the below (split rays() vs render()),
 # but somehow it results in a lot of allocations for map(mapview(...))
 

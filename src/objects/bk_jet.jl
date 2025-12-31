@@ -104,6 +104,94 @@ end
 
 z_interval(obj::ConicalBKJet, ray::RayZ) = _rayz_cone_z_interval(obj.axis, obj.φj, ray, obj.s)
 
+@inline _rotate_minimal(a::SVector{3}, b::SVector{3}, v::SVector{3}) = begin
+	# Assumes a and b are already unit vectors.
+	c = dot(a, b)
+	vx = cross(a, b)
+	s = norm(vx)
+
+	# Rodrigues rotation formula for the minimal rotation mapping â -> b̂.
+	# Special-case (anti)parallel vectors for numerical stability.
+	if s < √eps(s)
+		if c > 0
+			return v
+		else
+			# 180° rotation: axis is not unique; pick a deterministic one perpendicular to â.
+			# Since in this codepath â is typically ẑ, choosing ŷ keeps the "tilt about y" intuition.
+			axis = abs(a.y) < 0.9 ? SVector(0.0, 1.0, 0.0) : SVector(1.0, 0.0, 0.0)
+			k = normalize(cross(a, axis))
+			# For θ = π: R(v) = v - 2 k×(k×v) = 2(k⋅v)k - v.
+			return 2 * dot(k, v) * k - v
+		end
+	end
+
+	k = vx / s
+	# v_rot = v cosθ + (k×v) sinθ + k(k⋅v)(1-cosθ)
+	return v * c + cross(k, v) * s + k * dot(k, v) * (1 - c)
+end
+
+"""
+	jet_rotation_matrix(axis) -> SMatrix{3,3}
+
+Return the 3×3 rotation matrix `R` implementing the jet coordinate convention:
+
+- minimal rotation from the lab frame that maps the lab `ẑ` axis to `axis`.
+
+The matrix columns are the lab-frame images of the jet basis vectors:
+
+- first column: `ex` in lab coordinates
+- second column: `ey` in lab coordinates
+- third column: `ez == axis` in lab coordinates
+
+Therefore:
+
+- lab → jet coordinates: `r_jet = R' * r_lab`
+- jet → lab coordinates: `r_lab = R * r_jet`
+"""
+@inline jet_rotation_matrix(axis::SVector{3}) = begin
+	ẑ = SVector(0, 0, 1)
+	x̂ = SVector(1, 0, 0)
+	ŷ = SVector(0, 1, 0)
+
+	ex = _rotate_minimal(ẑ, axis, x̂)
+	ey = _rotate_minimal(ẑ, axis, ŷ)
+	ez = axis
+	
+	return hcat(ex, ey, ez)
+end
+jet_rotation_matrix(jet::ConicalBKJet) = jet_rotation_matrix(jet.axis)
+
+"""
+	jet_basis(axis) -> (ex, ey, ez)
+
+Construct an orthonormal right-handed spatial basis where `ez` points along `axis`.
+
+Convention: **minimal rotation from lab frame**.
+Apply the smallest 3D rotation that maps lab `ẑ` to the jet axis, and rotate lab `x̂`
+and `ŷ` by the same rotation. This makes the jet frame as close to the lab frame as
+possible while enforcing `ez ∥ axis`.
+"""
+@inline jet_basis(axis::SVector{3}) = eachcol(jet_rotation_matrix(axis))
+jet_basis(jet::ConicalBKJet) = jet_basis(jet.axis)
+
+"""
+	lab_to_jet_coords(axis, r) -> SVector{3}
+
+Convert a lab-frame spatial 3-position `r` to jet coordinates `(x, y, z)` defined by
+`jet_basis(axis)`.
+"""
+@inline lab_to_jet_coords(axis::SVector{3}, r::SVector{3}) = jet_rotation_matrix(axis)' * r
+lab_to_jet_coords(jet::ConicalBKJet, r::SVector{3}) = lab_to_jet_coords(jet.axis, r)
+
+"""
+	jet_to_lab_coords(axis, rjet) -> SVector{3}
+
+Convert a jet-frame spatial 3-position `rjet` back to lab coordinates.
+This is the inverse of `lab_to_jet_coords`.
+"""
+@inline jet_to_lab_coords(axis::SVector{3}, rjet::SVector{3}) = jet_rotation_matrix(axis) * rjet
+jet_to_lab_coords(jet::ConicalBKJet, rjet::SVector{3}) = jet_to_lab_coords(jet.axis, rjet)
+
 """
 	is_inside_jet(jet::ConicalBKJet, x4::FourPosition) -> Bool
 

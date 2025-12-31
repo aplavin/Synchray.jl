@@ -358,6 +358,47 @@ end
 end
 
 
+@testitem "Coordinate transform helpers" begin
+	import Synchray as S
+
+	@testset "lab <-> jet coords roundtrip" begin
+		axis = normalize(SVector(0.2, -0.7, 0.4))
+		r = SVector(1.1, -0.3, 2.7)
+		rj = S.lab_to_jet_coords(axis, r)
+		r2 = S.jet_to_lab_coords(axis, rj)
+		@test r2 ≈ r atol=1e-12
+		@test rj.z ≈ dot(r, axis) atol=1e-12
+	end
+
+	@testset "jet_basis is minimal rotation from lab" begin
+		@testset for θ in [0, 0.1, π/2, deg2rad(175)]
+			# Axis tilted by θ around lab-y: expect ey == ŷ and (ex, ez) rotated by θ.
+			axis = normalize(SVector(sin(θ), 0, cos(θ)))
+			(ex, ey, ez) = S.jet_basis(axis)
+			@test ez ≈ axis
+			@test ey ≈ SVector(0, 1, 0)
+			@test ex ≈ SVector(cos(θ), 0, -sin(θ))
+
+			# Axis tilted by θ around lab-x: expect ex == x̂ and (ey, ez) rotated by θ.
+			axis = normalize(SVector(0, sin(θ), cos(θ)))
+			(ex, ey, ez) = S.jet_basis(axis)
+			@test ez ≈ axis
+			@test ex ≈ SVector(1, 0, 0)
+			@test ey ≈ SVector(0, cos(θ), -sin(θ))
+		end
+	end
+
+	@testset "lab <-> camera-ray anchor roundtrip" begin
+		x4 = S.FourPosition(7.5, -0.2, 1.1, 3.0)
+		x0 = S.camera_ray_anchor(x4)
+		@test x0.z == 0
+		@test x0.x == x4.x
+		@test x0.y == x4.y
+		@test x0.t == x4.t - x4.z
+	end
+end
+
+
 @testitem "Ray contribution profiles" begin
 	import Synchray as S
 
