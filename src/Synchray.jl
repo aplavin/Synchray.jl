@@ -9,7 +9,7 @@ using Reexport
 using Unitful: AbstractQuantity
 @reexport using DataPipes
 @reexport using Accessors
-import AccessorsExtra: construct
+@reexport import AccessorsExtra: construct
 using ForwardDiff
 import SpecialFunctions
 using Statistics: mean

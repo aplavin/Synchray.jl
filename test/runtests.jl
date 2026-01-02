@@ -637,6 +637,14 @@ end
 		speed_profile=(η -> (S.beta, 0.0)),
 		model=S.PowerLawElectrons(; p=2.5),
 	)
+	knot = S.withunits(S.InertialEllipsoidalKnot;
+		x_c0=S.FourPosition(0.0u"pc", 0.0u"pc", 0u"pc", 0u"pc"),
+		# x_c0=S.FourPosition(0.0u"yr", 0.0u"pc", 0u"pc", 2u"pc"),
+		u=construct(S.FourVelocity, S.gamma=>10, S.direction=>jet.axis),
+		sizing=S.CrossSectionKnotSizing(0.1, 0.5),
+		profile_ne=S.GaussianBump(100),
+		profile_B=nothing
+	)
 
 	@test jet.model.Cj ≈ 1.7e-18 rtol=1e-3
 	@test jet.model.Ca ≈ 7.20e13 rtol=1e-3

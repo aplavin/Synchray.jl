@@ -27,6 +27,15 @@ withunits(::Type{ConicalBKJet}; kws...) = let
 	)
 end
 
+withunits(::Type{InertialEllipsoidalKnot}; kws...) = let
+	kws = NamedTuple(kws)
+	InertialEllipsoidalKnot(;
+		kws...,
+		x_c0=_u_to_code(kws.x_c0, UCTX.L0),
+		# u=_u_to_code(kws.u, UCTX.c),
+	)
+end
+
 withunits(::Type{CameraZ}; kws...) = let
     kws = NamedTuple(kws)
 	CameraZ(;
@@ -41,3 +50,8 @@ end
 withunits(::typeof(render), cam, obj, what; kwargs...) = _upost_render(render(cam, obj, what; kwargs...), what)
 
 _upost_render(result, ::Intensity) = result * UCTX.Iν0
+_upost_render(result, ::OpticalDepth) = result  # dimensionless
+_upost_render(result, ::SpectralIndex) = result  # dimensionless
+_upost_render(result, what::Tuple) = ntuple(length(what)) do i
+	_upost_render(getindex(result, i), what[i])
+end
