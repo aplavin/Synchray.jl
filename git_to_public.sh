@@ -12,7 +12,7 @@ cd "$tmp/Synchray.jl"
 # This rewrites commit hashes; pushing requires --force.
 
 git filter-branch --force --prune-empty --tag-name-filter cat \
-  --index-filter 'git rm -r --cached --ignore-unmatch DESIGN.md PLAN.md USECASES.md publish.sh' \
+  --index-filter 'git rm -r --cached --ignore-unmatch DESIGN.md PLAN.md USECASES.md git_to_public.sh' \
     --env-filter '
 ts=$(git show -s --format=%at "$GIT_COMMIT")
 ym=$(date -u -r "$ts" +%Y-%m)
