@@ -239,3 +239,53 @@ end
 end
 
 @inline synchrotron_model(obj::ConicalBKJet) = obj.model
+
+
+
+
+
+
+"""
+    ConicalBKJetWithPatterns
+
+Wrapper medium that represents:
+
+    (ConicalBKJet baseline) × (multiplicative pattern factors)
+
+Design intent:
+
+- Delegate geometry and kinematics to `base` (same `z_interval`, same `four_velocity`).
+- Apply patterns only to comoving `electron_density` and `magnetic_field_strength`.
+"""
+struct ConicalBKJetWithPatterns{Tbase, Tpatterns} <: AbstractSynchrotronMedium
+	base::Tbase
+	patterns::Tpatterns
+end
+
+function ConicalBKJetWithPatterns(base::ConicalBKJet, patterns)
+	for p in patterns
+		validate_pattern(p, base)
+	end
+	return ConicalBKJetWithPatterns{typeof(base), typeof(patterns)}(base, patterns)
+end
+
+@unstable prepare_for_computations(obj::ConicalBKJetWithPatterns) = @p let
+	obj
+	@modify(prepare_for_computations, __.base)
+end
+
+@inline z_interval(obj::ConicalBKJetWithPatterns, ray::RayZ) = z_interval(obj.base, ray)
+@inline four_velocity(obj::ConicalBKJetWithPatterns, x4) = four_velocity(obj.base, x4)
+
+@inline is_inside_jet(obj::ConicalBKJetWithPatterns, x4::FourPosition) = is_inside_jet(obj.base, x4)
+@inline jet_basis(obj::ConicalBKJetWithPatterns) = jet_basis(obj.base)
+@inline lab_to_jet_coords(obj::ConicalBKJetWithPatterns, r::SVector{3}) = lab_to_jet_coords(obj.base, r)
+@inline jet_to_lab_coords(obj::ConicalBKJetWithPatterns, rjet::SVector{3}) = jet_to_lab_coords(obj.base, rjet)
+
+@inline electron_density(obj::ConicalBKJetWithPatterns, x4) =
+	electron_density(obj.base, x4) * pattern_factor_ne(obj.patterns, x4, obj.base)
+
+@inline magnetic_field_strength(obj::ConicalBKJetWithPatterns, x4) =
+	magnetic_field_strength(obj.base, x4) * pattern_factor_B(obj.patterns, x4, obj.base)
+
+@inline synchrotron_model(obj::ConicalBKJetWithPatterns) = synchrotron_model(obj.base)

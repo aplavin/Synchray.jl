@@ -54,51 +54,6 @@ function pattern_factor_B end
 """Validate that a pattern configuration is physically/semantically allowed for a given jet."""
 validate_pattern(::AbstractJetPattern, jet) = nothing
 
-
-"""
-    ConicalBKJetWithPatterns
-
-Wrapper medium that represents:
-
-    (ConicalBKJet baseline) × (multiplicative pattern factors)
-
-Design intent:
-
-- Delegate geometry and kinematics to `base` (same `z_interval`, same `four_velocity`).
-- Apply patterns only to comoving `electron_density` and `magnetic_field_strength`.
-"""
-struct ConicalBKJetWithPatterns{Tbase, Tpatterns} <: AbstractSynchrotronMedium
-	base::Tbase
-	patterns::Tpatterns
-end
-
-function ConicalBKJetWithPatterns(base::ConicalBKJet, patterns)
-	for p in patterns
-		validate_pattern(p, base)
-	end
-	return ConicalBKJetWithPatterns{typeof(base), typeof(patterns)}(base, patterns)
-end
-
-@unstable prepare_for_computations(obj::ConicalBKJetWithPatterns) = @p let
-	obj
-	@modify(prepare_for_computations, __.base)
-end
-
-@inline z_interval(obj::ConicalBKJetWithPatterns, ray::RayZ) = z_interval(obj.base, ray)
-@inline four_velocity(obj::ConicalBKJetWithPatterns, x4) = four_velocity(obj.base, x4)
-
-@inline is_inside_jet(obj::ConicalBKJetWithPatterns, x4::FourPosition) = is_inside_jet(obj.base, x4)
-
-@inline electron_density(obj::ConicalBKJetWithPatterns, x4) =
-	electron_density(obj.base, x4) * pattern_factor_ne(obj.patterns, x4, obj.base)
-
-@inline magnetic_field_strength(obj::ConicalBKJetWithPatterns, x4) =
-	magnetic_field_strength(obj.base, x4) * pattern_factor_B(obj.patterns, x4, obj.base)
-
-@inline synchrotron_model(obj::ConicalBKJetWithPatterns) = synchrotron_model(obj.base)
-
-abstract type AbstractKnotSizing end
-
 """
 Explicit fixed rest-frame semi-axes `(a_perp, a_parallel)`.
 
@@ -108,9 +63,9 @@ Notes:
 - Internally, knot geometry is often handled as `(a_par, a_perp)` to match the
   variable names used in the ellipsoidal form `χ = (Δ_par^2/a_par^2) + (Δ_perp^2/a_perp^2)`.
 """
-struct FixedKnotSizing{Ta_perp, Ta_parallel} <: AbstractKnotSizing
-	a_perp::Ta_perp
-	a_parallel::Ta_parallel
+struct FixedKnotSizing{Ta}
+	a_perp::Ta
+	a_parallel::Ta
 end
 
 """
@@ -124,12 +79,10 @@ This sizing chooses
 
 so the knot occupies a fixed fraction of the local jet cross-section.
 """
-struct CrossSectionKnotSizing{Tf_perp, Tq} <: AbstractKnotSizing
-	f_perp::Tf_perp
-	q::Tq
+struct CrossSectionKnotSizing{Tf}
+	f_perp::Tf
+	q::Tf
 end
-
-abstract type AbstractKnotProfile end
 
 """
 A smooth bump with `f(χ=0) == f_peak` and `f(χ→∞) → 1`.
@@ -140,7 +93,7 @@ Physical meaning:
   of radiating electrons comoving with the flow.
 - If used as `profile_B`, this can represent a localized magnetic-field enhancement.
 """
-@kwdef struct GaussianBump{Tf} <: AbstractKnotProfile
+@kwdef struct GaussianBump{Tf}
 	f_peak::Tf
 	χ_threshold::Tf = 4^2
 end
