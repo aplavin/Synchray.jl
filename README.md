@@ -2,7 +2,9 @@
 
 Special-relativistic raytracing and radiative transfer for synchrotron emission, aimed at studing astrophysical jets. Renders images with an orthographic camera.
 
----
+https://github.com/user-attachments/assets/cefc650b-6309-4de4-b8bc-60788f9e0cbf
+
+*Code for this example: https://plav.in/Synchray/viewing_angle (notebook).*
 
 Current content: SR, straight rays, synchrotron Stokes I, variety of built-in objects.
 
