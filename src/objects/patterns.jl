@@ -147,16 +147,16 @@ _validate_knot_causality(sizing::CrossSectionKnotSizing, u::FourVelocity, jet::C
 	return nothing
 end
 
-validate_pattern(knot::InertialEllipsoidalKnot, jet::ConicalBKJet) = begin
+validate_pattern(knot::InertialEllipsoidalKnot, jet::Union{ConicalBKJet,ConicalJet}) = begin
 	knot.sizing isa CrossSectionKnotSizing && _validate_knot_causality(knot.sizing, knot.u, jet)
 	return nothing
 end
 
 
 # Return sizes in the order (a_par, a_perp) to match the variables used in `_knot_chi`.
-@inline _knot_sizes(sizing::FixedKnotSizing, tau, x_c, jet::ConicalBKJet) = (sizing.a_parallel, sizing.a_perp)
+@inline _knot_sizes(sizing::FixedKnotSizing, tau, x_c, jet::Union{ConicalBKJet,ConicalJet}) = (sizing.a_parallel, sizing.a_perp)
 
-@inline _knot_sizes(sizing::CrossSectionKnotSizing, tau, x_c, jet::ConicalBKJet) = begin
+@inline _knot_sizes(sizing::CrossSectionKnotSizing, tau, x_c, jet::Union{ConicalBKJet,ConicalJet}) = begin
 	# Compute rest-frame (a_parallel, a_perp) from the *current* center position.
 	# Intuitively: as the knot moves outward, it expands to keep a fixed fraction
 	# of the local jet radius.
@@ -185,7 +185,7 @@ end
 	return FourPosition(γ * βmag, γ * βhat)
 end
 
-@inline _knot_chi(knot::InertialEllipsoidalKnot, x4::FourPosition, jet::ConicalBKJet) = begin
+@inline _knot_chi(knot::InertialEllipsoidalKnot, x4::FourPosition, jet::Union{ConicalBKJet,ConicalJet}) = begin
 	# Compute the ellipsoidal “radius-squared” χ(x) in the knot rest frame.
 	#
 	# Overall (metric signature (-,+,+,+)):
@@ -212,13 +212,13 @@ end
 end
 
 
-@inline pattern_factor_ne(knot::InertialEllipsoidalKnot, x4::FourPosition, jet::ConicalBKJet) = begin
+@inline pattern_factor_ne(knot::InertialEllipsoidalKnot, x4::FourPosition, jet::Union{ConicalBKJet,ConicalJet}) = begin
 	knot.profile_ne === nothing && return one(x4.t)
 	χ = _knot_chi(knot, x4, jet)
 	return knot.profile_ne(χ)
 end
 
-@inline pattern_factor_B(knot::InertialEllipsoidalKnot, x4::FourPosition, jet::ConicalBKJet) = begin
+@inline pattern_factor_B(knot::InertialEllipsoidalKnot, x4::FourPosition, jet::Union{ConicalBKJet,ConicalJet}) = begin
 	knot.profile_B === nothing && return one(x4.t)
 	χ = _knot_chi(knot, x4, jet)
 	return knot.profile_B(χ)

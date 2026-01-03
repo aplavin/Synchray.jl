@@ -93,4 +93,27 @@
 		@test all(>(0), f64)
 		@test f32 ≈ f64  rtol=1e-5
 	end
+
+	@testset "ConicalJet renders match for patterns" begin
+		cj = S.ConicalJet(;
+			axis=jet.axis,
+			φj=jet.φj,
+			s=jet.s,
+			speed_profile=jet.speed_profile,
+			model=jet.model,
+			ne=S.PowerLawS(jet.ne_exp; val0=jet.ne0, s0=jet.s0),
+			B=S.BFieldSpec(S.PowerLawS(jet.B_exp; val0=jet.B0, s0=jet.s0), S.ScalarField(), b -> S.FullyTangled(b)),
+		)
+
+		cjp = S.ConicalJetWithPatterns(cj, (knot,))
+		cjpp = S.prepare_for_computations(cjp)
+		cam = S.CameraZ(; xys=grid(S.SVector, range(0.01..0.1, 6), range(-0.001..0.001, 6)), nz=50, ν=2., t=0.)
+
+		img_bk = S.render(cam, jetp)
+		img_cj = S.render(cam, cjp)
+		img_cjpp = S.render(cam, cjpp)
+		@test !(img_cj ≈ S.render(cam, cj))
+		@test img_cj ≈ img_bk
+		@test img_cjpp ≈ img_bk
+	end
 end
