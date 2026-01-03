@@ -31,14 +31,14 @@ abstract type AbstractSynchrotronMedium <: AbstractMedium end
 abstract type AbstractMagneticField end
 
 """Magnetic field that is isotropically tangled on unresolved scales (direction averaged)."""
-struct FullyTangled{T} <: AbstractMagneticField
+struct FullyTangled{T<:Number} <: AbstractMagneticField
 	strength::T
 end
 Base.:≈(a::FullyTangled, b::FullyTangled; kwargs...) = isapprox(a.strength, b.strength; kwargs...)
 Base.:*(a::Number, b::FullyTangled) = FullyTangled(a * b.strength)
 
 """Magnetic field with a preferred direction and partial ordering parameter κ."""
-struct PartiallyTangled{Tb,Tκ} <: AbstractMagneticField
+struct PartiallyTangled{Tb<:SVector{3},Tκ<:Number} <: AbstractMagneticField
 	b::Tb
 	kappa::Tκ
 end
