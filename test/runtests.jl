@@ -489,7 +489,7 @@ end
 		miss_ray = S.RayZ(; x0=S.FourPosition(0.0, 2R, 0.0, 0.0), k=2.0, nz=256)
 
 		prof_miss = S.ray_contribution_profile(sphere, miss_ray)
-		@test isempty(prof_miss.zs)
+		@test isempty(prof_miss.z)
 		@test isempty(prof_miss.Δτ)
 		@test isempty(prof_miss.dIν_to_obs)
 
@@ -733,7 +733,7 @@ end
 
 	@testset "spectrum: integrated flux density is ~flat" begin
 		# Integrate over a window that contains the full truncated jet projection.
-		cam0 = S.CameraZ(; xys=grid(S.SVector, range(-0.1..20, 201), range(-5..5, 201)), nz=1024, ν=NaN, t=0)
+		cam0 = S.CameraZ(; xys=grid(S.SVector, range(-0.1..20, 201), range(-5..5, 201)), nz=20, ν=NaN, t=0)
 		flux(ν) = begin
 			cam = @set cam0.ν = ν
 			img = S.render(cam, jet)
@@ -790,12 +790,12 @@ end
 	using Accessors
 
 	jet = S.ConicalBKJet(; 
-		axis=SVector(0, 0, 1),
+		axis=SVector(0., 0, 1),
 		φj=0.05,
 		s=1e-3..10,
-		s0=1,
-		ne0=2,
-		B0=3,
+		s0=1.,
+		ne0=2.,
+		B0=3.,
 		speed_profile=(η -> (S.beta, 0)),
 		model=S.PowerLawElectrons(; p=2.5, Cj=1, Ca=1),
 	)

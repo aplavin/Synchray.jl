@@ -196,19 +196,8 @@ ray_contribution_profile(obj::AbstractMedium, ray::RayZ) = begin
 	νobs = photon_frequency(ray)
 	FT = float(eltype(ray.x0))
 
-	if isempty(seg)
-		z = leftendpoint(seg)
-		zs = StepRangeLen(FT(z), FT(1), 0)
-		Δτ = FT[]
-		τ_front = FT[]
-		dIinv_source = FT[]
-		dIinv_to_obs = FT[]
-		dIν_to_obs = FT[]
-		return StructArray(; zs, Δτ, dIν_to_obs)
-	end
-
 	# Same z-grid and step sizing as integrate_ray.
-	zs = StepRangeLen(leftendpoint(seg), width(seg) / (ray.nz - 1), ray.nz)
+	zs = StepRangeLen(leftendpoint(seg), width(seg) / (ray.nz - 1), isempty(seg) ? 0 : ray.nz)
 	Δz = step(zs)
 	Δλ = Δz / kz
 

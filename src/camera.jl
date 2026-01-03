@@ -32,7 +32,7 @@ struct SpectralIndex end
 
 render(ray::RayZ, obj::AbstractMedium, what=Intensity()) = integrate_ray(obj, ray, what)
 
-_boundary_mask(img) = begin
+@unstable _boundary_mask(img) = begin
     inside = map(x -> iszero(x) || isnan(x), img) |> Matrix
     IXs = CartesianIndices(inside)
     map(IXs) do I

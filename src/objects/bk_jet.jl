@@ -114,7 +114,7 @@ z_interval(obj::ConicalBKJet, ray::RayZ) = _rayz_cone_z_interval(obj.axis, obj.�
 	# Special-case (anti)parallel vectors for numerical stability.
 	if s < √eps(s)
 		if c > 0
-			return v
+			return float(v)
 		else
 			# 180° rotation: axis is not unique; pick a deterministic one perpendicular to â.
 			# Since in this codepath â is typically ẑ, choosing ŷ keeps the "tilt about y" intuition.

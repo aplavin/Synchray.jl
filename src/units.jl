@@ -47,7 +47,7 @@ withunits(::Type{CameraZ}; kws...) = let
 end
 
 
-withunits(::typeof(render), cam, obj, what; kwargs...) = _upost_render(render(cam, obj, what; kwargs...), what)
+@unstable withunits(::typeof(render), cam, obj, what; kwargs...) = _upost_render(render(cam, obj, what; kwargs...), what)
 
 _upost_render(result, ::Intensity) = result * UCTX.Iν0
 _upost_render(result, ::OpticalDepth) = result  # dimensionless

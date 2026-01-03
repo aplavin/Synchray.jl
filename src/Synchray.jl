@@ -33,12 +33,12 @@ include("transfer.jl")
 include("units.jl")
 
 
-to_float_type(::Type{TF}, obj) where {TF<:AbstractFloat} =
+@unstable to_float_type(::Type{TF}, obj) where {TF<:AbstractFloat} =
     @modify(x -> to_float_type(TF, x), obj[∗ₚ])
-to_float_type(::Type{TF}, x::AbstractArray) where {TF<:AbstractFloat} =
+@unstable to_float_type(::Type{TF}, x::AbstractArray) where {TF<:AbstractFloat} =
     # XXX: can be more efficient for RectiGrids
     map(y -> to_float_type(TF, y), x)
-to_float_type(::Type{TF}, x::AbstractFloat) where {TF<:AbstractFloat} = TF(x)
+@unstable to_float_type(::Type{TF}, x::AbstractFloat) where {TF<:AbstractFloat} = TF(x)
 
 end
 
