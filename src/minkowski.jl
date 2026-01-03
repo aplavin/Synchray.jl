@@ -14,7 +14,7 @@ struct FourVelocity{T} <: FourVector{T}
     z::T
 end
 
-struct FourWavevector{T} <: FourVector{T}
+struct FourFrequency{T} <: FourVector{T}
     t::T
     x::T
     y::T
@@ -130,14 +130,14 @@ end
 """
     photon_k(ν, n)
 
-Photon 4-wavevector (4-frequency) in the lab/camera frame for a ray traveling in spatial
+Photon 4-frequency in the lab/camera frame for a ray traveling in spatial
 direction `n` (unit 3-vector) with frequency ν:
 
 ```
 k = (ν, ν n)
 ```
 """
-@inline photon_k(νcam, n::SVector{3}) = FourWavevector(νcam, (νcam .* n)...)
+@inline photon_k(νcam, n::SVector{3}) = FourFrequency(νcam, (νcam * n)...)
 
 """
     comoving_frequency(k, u)
@@ -150,7 +150,7 @@ Frequency in the comoving (rest) frame of an observer with 4-velocity `u`:
 
 With the code's metric convention, this is implemented as `-minkowski_dot(k, u)`.
 """
-@inline comoving_frequency(k::FourWavevector, u::FourVelocity) = -minkowski_dot(k, u)
+@inline comoving_frequency(k::FourFrequency, u::FourVelocity) = -minkowski_dot(k, u)
 
 """
     doppler_factor(u, n)
