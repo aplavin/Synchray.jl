@@ -79,7 +79,7 @@ function synchrotron_sphere_image()
         u0=S.FourVelocity(SVector(0.0, 0.0, 0.0)),
         ne0=1.0,
         B0=1.0,
-        model=S.PowerLawElectrons(; p=2.5, Cj=1.0, Ca),
+        model=S.AngleAveragedPowerLawElectrons(; p=2.5, Cj=1.0, Ca),
     )
 
     fields = (
@@ -115,7 +115,7 @@ function bk_jet_image()
         ne0=1.0,
         B0=1.0,
         speed_profile=(η -> (S.beta, 0.995)),
-        model=S.PowerLawElectrons(; p=2.3, Cj=1.0, Ca=0.1),
+        model=S.AngleAveragedPowerLawElectrons(; p=2.3, Cj=1.0, Ca=0.1),
     ) |> S.prepare_for_computations
 
     views = (
@@ -174,7 +174,7 @@ function bk_jet_1_knot_snapshots_image()
         ne0=1,
         B0=1,
         speed_profile=(η -> (S.beta, 0.995)),
-        model=S.PowerLawElectrons(; p=2.3, Cj=1, Ca=1),
+        model=S.AngleAveragedPowerLawElectrons(; p=2.3, Cj=1, Ca=1),
     )
 
     knot = let

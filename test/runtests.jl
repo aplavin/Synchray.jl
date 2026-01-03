@@ -505,7 +505,7 @@ end
 
 	L = 2
 	ν = 2.0
-	model = S.PowerLawElectrons(; p=3.2, Cj=0.7, Ca=0.0)
+	model = S.AngleAveragedPowerLawElectrons(; p=3.2, Cj=0.7, Ca=0.0)
 	ne0 = 1.3
 	B0 = 0.9
 	ray = S.RayZ(; x0=S.FourPosition(0, 0, 0, 0), k=ν, nz=4_000)
@@ -570,7 +570,7 @@ end
 		ne0=2,
 		B0=3,
 		speed_profile=(η -> (S.beta, 0)),
-		model=S.PowerLawElectrons(; p=2.5, Cj=1, Ca=1),
+		model=S.AngleAveragedPowerLawElectrons(; p=2.5, Cj=1, Ca=1),
 	)
 
 	@testset "jet axis along ray" begin
@@ -663,7 +663,7 @@ end
 		ne0=2u"cm^-3",
 		B0=3u"Gauss",
 		speed_profile=(η -> (S.beta, 0.0)),
-		model=S.PowerLawElectrons(; p=2.5),
+		model=S.AngleAveragedPowerLawElectrons(; p=2.5),
 	)
 	knot = S.withunits(S.InertialEllipsoidalKnot;
 		x_c0=S.FourPosition(0.0u"pc", 0.0u"pc", 0u"pc", 0u"pc"),
@@ -710,7 +710,7 @@ end
 		ne0=1.,
 		B0=3.,
 		speed_profile=(η -> (S.beta, 0f0)),
-		model=S.PowerLawElectrons(; p=2.5, Cj=1.0, Ca=1.0),
+		model=S.AngleAveragedPowerLawElectrons(; p=2.5, Cj=1.0, Ca=1.0),
 	)
 
 	@testset "core shift (intensity peak along axis) scales ~ ν^-1" begin
@@ -767,7 +767,7 @@ end
 		S.RayZ(; x0=S.FourPosition(0, rxy..., 0), k=ν, nz)
 	end
 
-	@testset "thin-regime scaling with (ne0, B0) matches PowerLawElectrons" begin
+	@testset "thin-regime scaling with (ne0, B0) matches AngleAveragedPowerLawElectrons" begin
 		νthin = 80.0
 		ray = ray_at_s(νthin, jet.s0; nz=4096)
 		τthin = S.render(ray, jet, S.OpticalDepth())
@@ -797,7 +797,7 @@ end
 		ne0=2.,
 		B0=3.,
 		speed_profile=(η -> (S.beta, 0)),
-		model=S.PowerLawElectrons(; p=2.5, Cj=1, Ca=1),
+		model=S.AngleAveragedPowerLawElectrons(; p=2.5, Cj=1, Ca=1),
 	)
 
 	# A moving knot centered on-axis at s=2.

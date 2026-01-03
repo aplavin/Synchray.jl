@@ -1,5 +1,5 @@
 """
-		PowerLawElectrons(; p, γmin=1, γmax=Inf, Cj=nothing, Ca=nothing)
+		AngleAveragedPowerLawElectrons(; p, γmin=1, γmax=Inf, Cj=nothing, Ca=nothing)
 
 Stage-1 (angle-averaged, Stokes-I) synchrotron electron model.
 
@@ -30,7 +30,7 @@ Physical-unit interpretation:
 	typically via the Unitful boundary helpers (`withunits`).
 """
 # --- Synchrotron (Stage 1: angle-averaged Stokes I) ---
-struct PowerLawElectrons{Tp,Tγ,TC}
+struct AngleAveragedPowerLawElectrons{Tp,Tγ,TC}
 	p::Tp
 	γmin::Tγ
 	γmax::Tγ
@@ -38,7 +38,7 @@ struct PowerLawElectrons{Tp,Tγ,TC}
 	Ca::TC
 end
 
-function PowerLawElectrons(; p, γmin=1, γmax=Inf, Cj=nothing, Ca=nothing)
+function AngleAveragedPowerLawElectrons(; p, γmin=1, γmax=Inf, Cj=nothing, Ca=nothing)
 	if isnothing(Cj) || isnothing(Ca)
 		@assert isnothing(Cj) && isnothing(Ca)
 		K_per_ne = _K_per_ne(p, γmin, γmax)
@@ -46,10 +46,10 @@ function PowerLawElectrons(; p, γmin=1, γmax=Inf, Cj=nothing, Ca=nothing)
 		Cj = c5 * K_per_ne
 		Ca = c6 * K_per_ne
 	end
-	return PowerLawElectrons(p, promote(γmin, γmax)..., promote(Cj, Ca)...)
+	return AngleAveragedPowerLawElectrons(p, promote(γmin, γmax)..., promote(Cj, Ca)...)
 end
 
-@unstable prepare_for_computations(model::PowerLawElectrons) = @modify(FixedExponent, model.p)
+@unstable prepare_for_computations(model::AngleAveragedPowerLawElectrons) = @modify(FixedExponent, model.p)
 
 # Average of sin^q θ for isotropically distributed directions.
 #
@@ -93,7 +93,7 @@ end
 	return c5, c6
 end
 
-@inline _synchrotron_coeffs(model::PowerLawElectrons, n_e, B, ν) = let
+@inline _synchrotron_coeffs(model::AngleAveragedPowerLawElectrons, n_e, B, ν) = let
 	# Stage 1 (angle-averaged) power-law synchrotron, in the comoving frame.
 	# Returns (j_ν, α_ν) with ν measured in the plasma rest frame.
 	#
@@ -102,7 +102,7 @@ end
 	#   α_ν = Ca · n_e · B^((p+2)/2) · ν^(-(p+4)/2)
 	#
 	# Notes on normalization:
-	# - If `model.Cj`/`model.Ca` were auto-derived (see `PowerLawElectrons(...)`), then
+	# - If `model.Cj`/`model.Ca` were auto-derived (see `AngleAveragedPowerLawElectrons(...)`), then
 	#   interpreting `n_e`, `B`, `ν` as (cm⁻³, Gauss, Hz) yields cgs-normalized coefficients.
 	# - If `Cj`/`Ca` were provided explicitly, this is a unitless scaling law.
 	#
