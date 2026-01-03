@@ -184,7 +184,7 @@ function bk_jet_1_knot_snapshots_image()
         S.InertialEllipsoidalKnot(; x_c0, u, sizing, profile_ne=S.GaussianBump(100), profile_B=nothing)
     end
 
-    jet = S.ConicalBKJetWithPatterns(base_jet, (knot,)) |> S.prepare_for_computations
+    jet = S.JetWithPatterns(base_jet, (knot,)) |> S.prepare_for_computations
 
     ts = [0, 0.1, 0.25]
     whats = [

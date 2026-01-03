@@ -15,6 +15,54 @@ Contract:
 abstract type AbstractJetPattern end
 
 """
+    JetWithPatterns
+
+Wrapper medium that represents:
+
+    (base medium) × (multiplicative pattern factors)
+
+Design intent:
+
+- Delegate geometry and kinematics to `base`.
+- Apply patterns only to comoving `electron_density` and `magnetic_field`.
+"""
+struct JetWithPatterns{Tbase, Tpatterns} <: AbstractSynchrotronMedium
+	base::Tbase
+	patterns::Tpatterns
+end
+
+function JetWithPatterns(base::Union{ConicalBKJet,ConicalJet}, patterns)
+	for p in patterns
+		validate_pattern(p, base)
+	end
+	return JetWithPatterns{typeof(base), typeof(patterns)}(base, patterns)
+end
+
+@unstable prepare_for_computations(obj::JetWithPatterns) = @p let
+	obj
+	@modify(prepare_for_computations, __.base)
+end
+
+@inline z_interval(obj::JetWithPatterns, ray::RayZ) = z_interval(obj.base, ray)
+@inline four_velocity(obj::JetWithPatterns, x4) = four_velocity(obj.base, x4)
+
+@inline is_inside_jet(obj::JetWithPatterns, x4::FourPosition) = is_inside_jet(obj.base, x4)
+@inline jet_basis(obj::JetWithPatterns) = jet_basis(obj.base)
+@inline lab_to_jet_coords(obj::JetWithPatterns, r::SVector{3}) = lab_to_jet_coords(obj.base, r)
+@inline jet_to_lab_coords(obj::JetWithPatterns, rjet::SVector{3}) = jet_to_lab_coords(obj.base, rjet)
+
+@inline electron_density(obj::JetWithPatterns, x4) =
+	electron_density(obj.base, x4) * pattern_factor_ne(obj.patterns, x4, obj.base)
+
+@inline magnetic_field(obj::JetWithPatterns, x4) = begin
+	field = magnetic_field(obj.base, x4)
+	f = pattern_factor_B(obj.patterns, x4, obj.base)
+	return field * f
+end
+
+@inline synchrotron_model(obj::JetWithPatterns) = synchrotron_model(obj.base)
+
+"""
     pattern_factor_ne(pattern, x4, jet) -> f
 
 Dimensionless multiplicative factor applied to the *comoving* proper electron density

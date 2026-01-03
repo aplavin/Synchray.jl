@@ -24,7 +24,7 @@
 		profile_B=S.GaussianBump(3.0),
 	)
 
-	jetp = S.ConicalBKJetWithPatterns(jet, (knot,))
+	jetp = S.JetWithPatterns(jet, (knot,))
 
 	x4c = knot.x_c0
 	@test S.pattern_factor_ne(knot, x4c, jet) ≈ 2.0
@@ -105,7 +105,7 @@
 			B=S.BFieldSpec(S.PowerLawS(jet.B_exp; val0=jet.B0, s0=jet.s0), S.ScalarField(), b -> S.FullyTangled(b)),
 		)
 
-		cjp = S.ConicalJetWithPatterns(cj, (knot,))
+		cjp = S.JetWithPatterns(cj, (knot,))
 		cjpp = S.prepare_for_computations(cjp)
 		cam = S.CameraZ(; xys=grid(S.SVector, range(0.01..0.1, 6), range(-0.001..0.001, 6)), nz=50, ν=2., t=0.)
 

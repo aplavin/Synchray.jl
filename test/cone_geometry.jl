@@ -111,7 +111,7 @@ end
 		@test !S.is_inside_jet(jet, x_outside)
 		@test !S.is_inside_jet(jet, x_below)
 
-		jetp = S.ConicalBKJetWithPatterns(jet, ())
+		jetp = S.JetWithPatterns(jet, ())
 		@test S.is_inside_jet(jetp, x_inside) == S.is_inside_jet(jet, x_inside)
 	end
 end
