@@ -28,7 +28,24 @@ end
 
 abstract type AbstractSynchrotronMedium <: AbstractMedium end
 
+abstract type AbstractMagneticField end
+
+"""Magnetic field that is isotropically tangled on unresolved scales (direction averaged)."""
+struct FullyTangled{T} <: AbstractMagneticField
+	strength::T
+end
+Base.:≈(a::FullyTangled, b::FullyTangled; kwargs...) = isapprox(a.strength, b.strength; kwargs...)
+Base.:*(a::Number, b::FullyTangled) = FullyTangled(a * b.strength)
+
+"""Magnetic field with a preferred direction and partial ordering parameter κ."""
+struct PartiallyTangled{Tb,Tκ} <: AbstractMagneticField
+	b::Tb
+	kappa::Tκ
+end
+
+PartiallyTangled(b; kappa) = PartiallyTangled(b, kappa)
+
 @inline emissivity_absorption(obj::AbstractSynchrotronMedium, x4, ν) =
 	_synchrotron_coeffs(
 		synchrotron_model(obj),
-		electron_density(obj, x4), magnetic_field_strength(obj, x4), ν)
+		electron_density(obj, x4), magnetic_field(obj, x4), ν)

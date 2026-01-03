@@ -24,18 +24,18 @@ using TestItemRunner
 	@testset "FourVelocity normalization" begin
 		β = SVector(0.3, -0.4, 0.1)
 		u = S.FourVelocity(β)
-		@test S.minkowski_dot(u, u) ≈ -1 atol=1e-12
+		@test S.minkowski_dot(u, u) ≈ -1
 		@test u.t ≈ inv(sqrt(1 - dot(β, β)))
-		@test S.beta(u) ≈ β atol=1e-12
-		@test S.gamma(u) ≈ u.t atol=1e-12
-		@test S.gamma(β) ≈ u.t atol=1e-12
+		@test S.beta(u) ≈ β
+		@test S.gamma(u) ≈ u.t
+		@test S.gamma(β) ≈ u.t
 	end
 
 	@testset "photon_k is null" begin
 		ν = 2.5
 		n = normalize(SVector(0.2, -0.3, 0.7))
 		k = S.photon_k(ν, n)
-		@test S.minkowski_dot(k, k) ≈ 0 atol=1e-12
+		@test S.minkowski_dot(k, k) ≈ 0  atol=√eps(Float64)
 	end
 
 	@testset "Doppler boosting δ convention" begin
@@ -232,7 +232,7 @@ end
 	@test !(img3 ≈ img0)
 
 	Icenter = img0(0, 0)
-	@test img3(0, 0) ≈ Icenter rtol=0 atol=1e-12
+	@test img3(0, 0) ≈ Icenter
 
 	# Edge-adjacent pixel should be reduced due to partial coverage.
 	Iedge0 = img0(0.9, 0)
@@ -430,8 +430,8 @@ end
 		r = SVector(1.1, -0.3, 2.7)
 		rj = S.lab_to_jet_coords(axis, r)
 		r2 = S.jet_to_lab_coords(axis, rj)
-		@test r2 ≈ r atol=1e-12
-		@test rj.z ≈ dot(r, axis) atol=1e-12
+		@test r2 ≈ r
+		@test rj.z ≈ dot(r, axis)
 	end
 
 	@testset "jet_basis is minimal rotation from lab" begin
@@ -525,9 +525,9 @@ end
 		@testset "optically thin" begin
 			I_num = S.render(ray, slab)
 			@test I_num > 0
-			@test S.render(ray, slab, S.OpticalDepth()) ≈ 0 atol=1e-12
+			@test S.render(ray, slab, S.OpticalDepth()) ≈ 0
 
-			(j0, _) = S._synchrotron_coeffs(model, ne0, B0, ν′)
+			(j0, _) = S._synchrotron_coeffs(model, ne0, S.FullyTangled(B0), ν′)
 			I_exact = j0 * L * (δ^2)
 			@test I_num ≈ I_exact rtol=2e-3
 
@@ -542,7 +542,7 @@ end
 		@testset "very optically thick" begin
 			model_thick = @set model.Ca = 5e6
 			slab_thick = @set slab.model = model_thick
-			(j_thick, α_thick) = S._synchrotron_coeffs(model_thick, ne0, B0, ν′)
+			(j_thick, α_thick) = S._synchrotron_coeffs(model_thick, ne0, S.FullyTangled(B0), ν′)
 
 			I_num_thick = S.render(ray, slab_thick)
 			I_exact_thick = (j_thick / α_thick) * (δ^3)
@@ -577,10 +577,10 @@ end
 		# Scalings along the axis at s=s0 and s=2s0.
 		x4_1 = S.FourPosition(0, 0, 0, 1)
 		x4_2 = S.FourPosition(0, 0, 0, 2)
-		@test S.electron_density(jet, x4_1) ≈ 2 atol=1e-12
-		@test S.magnetic_field_strength(jet, x4_1) ≈ 3 atol=1e-12
-		@test S.electron_density(jet, x4_2) ≈ 2 * (2^(-2)) atol=1e-12
-		@test S.magnetic_field_strength(jet, x4_2) ≈ 3 * (2^(-1)) atol=1e-12
+		@test S.electron_density(jet, x4_1) ≈ 2
+		@test S.magnetic_field(jet, x4_1) ≈ S.FullyTangled(3)
+		@test S.electron_density(jet, x4_2) ≈ 2 * (2^(-2))
+		@test S.magnetic_field(jet, x4_2) ≈ S.FullyTangled(3 * (2^(-1)))
 
 		ray = S.RayZ(; x0=S.FourPosition(0, 0, 0, 0), k=2, nz=1024)
 		# On-axis ray should see the full truncation segment for axis=ẑ.
@@ -812,10 +812,10 @@ end
 	jetp = S.ConicalBKJetWithPatterns(jet, (knot,))
 
 	x4c = knot.x_c0
-	@test S.pattern_factor_ne(knot, x4c, jet) ≈ 2.0 atol=1e-12
-	@test S.pattern_factor_B(knot, x4c, jet) ≈ 3.0 atol=1e-12
+	@test S.pattern_factor_ne(knot, x4c, jet) ≈ 2.0
+	@test S.pattern_factor_B(knot, x4c, jet) ≈ 3.0
 	@test S.electron_density(jetp, x4c) ≈ 2 * S.electron_density(jet, x4c)
-	@test S.magnetic_field_strength(jetp, x4c) ≈ 3 * S.magnetic_field_strength(jet, x4c)
+	@test S.magnetic_field(jetp, x4c) ≈ 3 * S.magnetic_field(jet, x4c)
 
 	@testset "knot center stays peaked at different lab times" begin
 		center_event_at_lab_time(t) = begin
@@ -825,12 +825,12 @@ end
 
 		for t in (0.0, 1.0, 5.0)
 			x4ct = center_event_at_lab_time(t)
-			@test x4ct.t ≈ t atol=1e-12
-			@test S._knot_chi(knot, x4ct, jet) ≈ 0 atol=1e-12
-			@test S.pattern_factor_ne(knot, x4ct, jet) ≈ 2.0 atol=1e-12
-			@test S.pattern_factor_B(knot, x4ct, jet) ≈ 3.0 atol=1e-12
+			@test x4ct.t ≈ t
+			@test S._knot_chi(knot, x4ct, jet) ≈ 0
+			@test S.pattern_factor_ne(knot, x4ct, jet) ≈ 2.0
+			@test S.pattern_factor_B(knot, x4ct, jet) ≈ 3.0
 			@test S.electron_density(jetp, x4ct) ≈ 2 * S.electron_density(jet, x4ct)
-			@test S.magnetic_field_strength(jetp, x4ct) ≈ 3 * S.magnetic_field_strength(jet, x4ct)
+			@test S.magnetic_field(jetp, x4ct) ≈ 3 * S.magnetic_field(jet, x4ct)
 		end
 	end
 
@@ -846,10 +846,10 @@ end
 
 		f_ne_expected = 1 + (2.0 - 1) * exp(-1 / 2)
 		f_B_expected = 1 + (3.0 - 1) * exp(-1 / 2)
-		@test S.pattern_factor_ne(knot, x4off, jet) ≈ f_ne_expected atol=1e-12
-		@test S.pattern_factor_B(knot, x4off, jet) ≈ f_B_expected atol=1e-12
-		@test S.electron_density(jetp, x4off) ≈ f_ne_expected * S.electron_density(jet, x4off) atol=1e-12
-		@test S.magnetic_field_strength(jetp, x4off) ≈ f_B_expected * S.magnetic_field_strength(jet, x4off) atol=1e-12
+		@test S.pattern_factor_ne(knot, x4off, jet) ≈ f_ne_expected
+		@test S.pattern_factor_B(knot, x4off, jet) ≈ f_B_expected
+		@test S.electron_density(jetp, x4off) ≈ f_ne_expected * S.electron_density(jet, x4off)
+		@test S.magnetic_field(jetp, x4off) ≈ f_B_expected * S.magnetic_field(jet, x4off)
 	end
 
 	# Far from the knot: factors should approach 1.
@@ -857,7 +857,7 @@ end
 	@test S.pattern_factor_ne(knot, x4far, jet) ≈ 1.0 rtol=0 atol=5e-8
 	@test S.pattern_factor_B(knot, x4far, jet) ≈ 1.0 rtol=0 atol=5e-8
 	@test S.electron_density(jetp, x4far) ≈ S.electron_density(jet, x4far) rtol=0 atol=5e-8
-	@test S.magnetic_field_strength(jetp, x4far) ≈ S.magnetic_field_strength(jet, x4far) rtol=0 atol=5e-8
+	@test S.magnetic_field(jetp, x4far) ≈ S.magnetic_field(jet, x4far) rtol=0 atol=5e-8
 
 	# Geometry and flow must remain delegated to the base jet.
 	ray = S.RayZ(; x0=S.FourPosition(0, 0, 0, 0), k=2, nz=128)

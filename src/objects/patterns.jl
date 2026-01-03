@@ -8,7 +8,7 @@ at events `x4` that already lie on the ray worldline, with `x4.t` being **lab ti
 
 Contract:
 
-- Patterns should usually modify only `electron_density` and/or `magnetic_field_strength`
+- Patterns should usually modify only `electron_density` and/or `magnetic_field`
 	(both are comoving/proper quantities in this codebase).
 - Patterns should not change jet geometry (`z_interval`) or bulk flow (`four_velocity`).
 """
@@ -32,8 +32,7 @@ function pattern_factor_ne end
 """
     pattern_factor_B(pattern, x4, jet) -> f
 
-Dimensionless multiplicative factor applied to the *comoving* magnetic-field strength
-`magnetic_field_strength(jet, x4)`.
+Dimensionless multiplicative factor applied to the *comoving* magnetic-field strength.
 
 Return `1` for no modification.
 

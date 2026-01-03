@@ -22,5 +22,5 @@ z_interval(obj::UniformSynchrotronSlab, ray::RayZ) = obj.z
 four_velocity(obj::UniformSynchrotronSlab, x4) = obj.u0
 
 electron_density(obj::UniformSynchrotronSlab, x4) = obj.ne0
-magnetic_field_strength(obj::UniformSynchrotronSlab, x4) = obj.B0
+magnetic_field(obj::UniformSynchrotronSlab, x4) = FullyTangled(obj.B0)
 synchrotron_model(obj::UniformSynchrotronSlab) = obj.model

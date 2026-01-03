@@ -103,5 +103,5 @@ end
 four_velocity(obj::UniformSynchrotronSphere, x4) = obj.u0
 
 electron_density(obj::UniformSynchrotronSphere, x4) = obj.ne0
-magnetic_field_strength(obj::UniformSynchrotronSphere, x4) = obj.B0
+magnetic_field(obj::UniformSynchrotronSphere, x4) = FullyTangled(obj.B0)
 synchrotron_model(obj::UniformSynchrotronSphere) = obj.model

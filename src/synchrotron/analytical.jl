@@ -93,7 +93,7 @@ end
 	return c5, c6
 end
 
-@inline _synchrotron_coeffs(model::AngleAveragedPowerLawElectrons, n_e, B, ν) = let
+@inline _synchrotron_coeffs(model::AngleAveragedPowerLawElectrons, n_e, field::FullyTangled, ν) = let
 	# Stage 1 (angle-averaged) power-law synchrotron, in the comoving frame.
 	# Returns (j_ν, α_ν) with ν measured in the plasma rest frame.
 	#
@@ -111,6 +111,7 @@ end
 	#   j_ν = Cj · n_e · common · √B · √ν
 	#   α_ν = Ca · n_e · common · B · ν^-2
 	(;p, Cj, Ca) = model
+	B = field.strength
 	invν = inv(ν)
 	B_over_ν = B * invν
 	common = B_over_ν^_half(p)

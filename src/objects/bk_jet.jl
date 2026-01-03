@@ -232,18 +232,13 @@ end
 	s > 0 ? obj.ne0 * (s / obj.s0)^(obj.ne_exp) : zero(float(obj.ne0))
 end
 
-@inline magnetic_field_strength(obj::ConicalBKJet, x4) = begin
+@inline magnetic_field(obj::ConicalBKJet, x4) = begin
 	r = @swiz x4.xyz
 	s = dot(obj.axis, r)
-	s > 0 ? obj.B0 * (s / obj.s0)^(obj.B_exp) : zero(float(obj.B0))
+	strength = s > 0 ? obj.B0 * (s / obj.s0)^(obj.B_exp) : zero(float(obj.B0))
+	return FullyTangled(strength)
 end
-
 @inline synchrotron_model(obj::ConicalBKJet) = obj.model
-
-
-
-
-
 
 """
     ConicalBKJetWithPatterns
@@ -255,7 +250,7 @@ Wrapper medium that represents:
 Design intent:
 
 - Delegate geometry and kinematics to `base` (same `z_interval`, same `four_velocity`).
-- Apply patterns only to comoving `electron_density` and `magnetic_field_strength`.
+- Apply patterns only to comoving `electron_density` and `magnetic_field`.
 """
 struct ConicalBKJetWithPatterns{Tbase, Tpatterns} <: AbstractSynchrotronMedium
 	base::Tbase
@@ -285,7 +280,10 @@ end
 @inline electron_density(obj::ConicalBKJetWithPatterns, x4) =
 	electron_density(obj.base, x4) * pattern_factor_ne(obj.patterns, x4, obj.base)
 
-@inline magnetic_field_strength(obj::ConicalBKJetWithPatterns, x4) =
-	magnetic_field_strength(obj.base, x4) * pattern_factor_B(obj.patterns, x4, obj.base)
+@inline magnetic_field(obj::ConicalBKJetWithPatterns, x4) = begin
+	field = magnetic_field(obj.base, x4)
+	f = pattern_factor_B(obj.patterns, x4, obj.base)
+	return FullyTangled(field.strength * f)
+end
 
 @inline synchrotron_model(obj::ConicalBKJetWithPatterns) = synchrotron_model(obj.base)
