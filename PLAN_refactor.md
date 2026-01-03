@@ -37,8 +37,6 @@ These new models must work with the (updated) signature:
 Suggested minimal set:
 
 - `AngleAveragedPowerLawElectrons` (renamed current default; no behavior change).
-- `FixedViewingAnglePowerLawElectrons(; p, θBn, ...)` (diagnostic model): treat $B_\perp = |B'|\sin\theta_{Bn}$ with user‑supplied $\theta_{Bn}$.
-	- This model intentionally ignores the direction information in `k'` and is useful as a controlled sanity check.
 
 3) Angle-dependent microphysics plumbing
 
