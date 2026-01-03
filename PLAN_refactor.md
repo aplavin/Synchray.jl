@@ -60,7 +60,7 @@ Minimal representation choice (ties into the `magnetic_field(obj, x4)` rename):
 	- `magnetic_field(obj, x4) -> FullyTangled(strength)`
 	- i.e. return only the scalar comoving amplitude, wrapped to make the “tangled/angle‑averaged” assumption explicit.
 - For new direction-aware models, allow `magnetic_field(obj, x4)` to return either:
-	- `PartiallyTangled(field_vector; kappa)` where `field_vector` is the comoving ordered field vector (e.g. `SVector{3}`), or
+	- `TangledOrderedMixture(field_vector; kappa)` where `field_vector` is the comoving ordered field vector (e.g. `SVector{3}`), or
 	- just `field_vector::SVector` for fully ordered fields.
 
 Then the model derives
@@ -71,11 +71,11 @@ Then the model derives
 
 **Tangled/partially ordered fields**
 
-- Introduce a minimal “ordering/tangledness” parameter $\kappa$.
-	- For now, keep $\kappa$ constant per object/model (OK for performance and matches “same object → same return type”).
-	- Natural convention (Fisher/concentration-style): $\kappa=0$ isotropic/tangled; $\kappa\to\infty$ fully ordered.
-- The angle-dependent Stokes‑I model should consume only $(field, k', n_e)$, and compute $\nu'$, $\mu$, and the needed angle averages internally.
-	- It can implement $\langle\sin^q\theta_{Bn}\rangle(\mu, \kappa)$ via lookup/caching inside `prepare_for_computations(model)` when that becomes performance-critical.
+- Next step: replace the current heuristic mixture parameter with an explicit smooth angular distribution
+
+	- e.g. a von Mises / Fisher(-like) distribution over field directions with a true concentration parameter.
+	- The angle-dependent Stokes‑I model should still consume only `(field, k', n_e)` and compute $\nu'$, $\mu$ (and any angle averages) internally.
+	- If performance matters, cache/lookup $\langle\sin^q\theta_{Bn}\rangle$ as a function of the chosen concentration parameter inside `prepare_for_computations(model)`.
 
 **Electron pitch-angle (velocity) distribution plumbing**
 
@@ -96,8 +96,7 @@ What the direction-aware `_synchrotron_coeffs` should receive (minimal):
 
 **Incremental rollout**
 
-- First milestone: partially ordered/tangledness via $\kappa$.
-- Second milestone: explicit pitch-angle distributions for electron anisotropy.
+- First milestone: explicit pitch-angle distributions for electron anisotropy.
 
 3) Keep “patterns” as they are
 

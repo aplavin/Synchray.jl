@@ -283,7 +283,7 @@ end
 @inline magnetic_field(obj::ConicalBKJetWithPatterns, x4) = begin
 	field = magnetic_field(obj.base, x4)
 	f = pattern_factor_B(obj.patterns, x4, obj.base)
-	return FullyTangled(field.strength * f)
+	return field * f
 end
 
 @inline synchrotron_model(obj::ConicalBKJetWithPatterns) = synchrotron_model(obj.base)

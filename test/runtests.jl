@@ -578,6 +578,104 @@ end
 end
 
 
+@testitem "Ordered-field synchrotron (minimal)" begin
+	import Synchray as S
+	using Accessors
+
+	L = 2
+	ν = 2.0
+	p = 3.2
+	model = S.OrderedPowerLawElectrons(; p, Cj=0.7, Ca=0)
+	ne0 = 1.3
+	B0 = 0.9
+
+	ray = S.RayZ(; x0=S.FourPosition(0, 0, 0, 0), k=ν, nz=4_000)
+	u0 = S.FourVelocity(SVector(0, 0, 0))
+	k′ = S.photon_k(ν, SVector(0, 0, 1))
+
+	@testset "B parallel to photon => zero emissivity" begin
+		slab = S.UniformSynchrotronSlab(; z=0..L, u0, ne0, B0=SVector(0, 0, B0), model)
+		I = S.render(ray, slab)
+		@test I ≈ 0
+		(j, α) = S._synchrotron_coeffs(model, ne0, slab.B0, k′)
+		@test j ≈ 0
+		@test α ≈ 0
+	end
+
+	@testset "B ⟂ photon => thin-slab analytic limit" begin
+		slab = S.UniformSynchrotronSlab(; z=0..L, u0, ne0, B0=SVector(B0, 0, 0), model)
+		I_num = S.render(ray, slab)
+		(j, _) = S._synchrotron_coeffs(model, ne0, slab.B0, k′)
+		I_exact = j * L
+		@test I_num ≈ I_exact  rtol=1e-3
+	end
+
+	@testset "sin(theta) scaling" begin
+		slab_perp = S.UniformSynchrotronSlab(; z=0..L, u0, ne0, B0=SVector(B0, 0, 0), model)
+		I_perp = S.render(ray, slab_perp)
+
+		slab_45 = @set slab_perp.B0 = B0 * normalize(SVector(1, 0, 1))
+
+		expected = (1 / sqrt(2))^((p + 1) / 2)
+		@test (S.render(ray, slab_45) / I_perp) ≈ expected
+	end
+end
+
+
+@testitem "TangledOrderedMixture magnetic field" begin
+	import Synchray as S
+
+	p = 3.2
+	ne0 = 1.3
+	B0 = 0.9
+	ν = 2.0
+	k′ = S.photon_k(ν, SVector(0.0, 0.0, 1.0))
+
+	model_t = S.AngleAveragedPowerLawElectrons(; p)
+	model_o = S.OrderedPowerLawElectrons(; p)
+
+	# A generic non-perpendicular field direction.
+	b = B0 .* normalize(SVector(1.0, 0.0, 2.0))
+	@testset "limits" begin
+		(j_t, α_t) = S._synchrotron_coeffs(model_t, ne0, S.FullyTangled(B0), k′)
+		(j_0, α_0) = S._synchrotron_coeffs(model_o, ne0, S.TangledOrderedMixture(b; kappa=0.0), k′)
+		(j_inf, α_inf) = S._synchrotron_coeffs(model_o, ne0, S.TangledOrderedMixture(b; kappa=Inf), k′)
+		(j_ord, α_ord) = S._synchrotron_coeffs(model_o, ne0, b, k′)
+
+		@test j_0 ≈ j_t
+		@test α_0 ≈ α_t
+		@test j_inf ≈ j_ord
+		@test α_inf ≈ α_ord
+	end
+
+	@testset "intermediate kappa matches interpolation" begin
+		κ = 2.0
+		f = κ / (1 + κ)
+		(j_mid, α_mid) = S._synchrotron_coeffs(model_o, ne0, S.TangledOrderedMixture(b; kappa=κ), k′)
+
+		B = norm(b)
+		(j_perp, α_perp) = S._synchrotron_coeffs(model_o, ne0, SVector(B, 0.0, 0.0), k′)
+
+		μ = b.z / B
+		sinθ2 = clamp(1 - μ^2, 0, 1)
+		qj = (p + 1) / 2
+		qa = (p + 2) / 2
+		sinpow_j = sinθ2^(qj / 2)
+		sinpow_a = sinθ2^(qa / 2)
+		Aj = (1 - f) * model_o.sinavg_j + f * sinpow_j
+		Aa = (1 - f) * model_o.sinavg_a + f * sinpow_a
+
+		@test j_mid ≈ j_perp * Aj
+		@test α_mid ≈ α_perp * Aa
+
+		(j_0, α_0) = S._synchrotron_coeffs(model_o, ne0, S.TangledOrderedMixture(b; kappa=0.0), k′)
+		(j_inf, α_inf) = S._synchrotron_coeffs(model_o, ne0, S.TangledOrderedMixture(b; kappa=Inf), k′)
+		@test min(j_0, j_inf) ≤ j_mid ≤ max(j_0, j_inf)
+		@test min(α_0, α_inf) ≤ α_mid ≤ max(α_0, α_inf)
+	end
+end
+
+
 @testitem "Ordered vs tangled consistency" begin
 	import Synchray as S
 
@@ -620,50 +718,6 @@ end
 
 		@test j_avg ≈ j_t rtol=2e-3
 		@test α_avg ≈ α_t rtol=2e-3
-	end
-end
-
-
-@testitem "Ordered-field synchrotron (minimal)" begin
-	import Synchray as S
-	using Accessors
-
-	L = 2
-	ν = 2.0
-	p = 3.2
-	model = S.OrderedPowerLawElectrons(; p, Cj=0.7, Ca=0)
-	ne0 = 1.3
-	B0 = 0.9
-
-	ray = S.RayZ(; x0=S.FourPosition(0, 0, 0, 0), k=ν, nz=4_000)
-	u0 = S.FourVelocity(SVector(0, 0, 0))
-	k′ = S.photon_k(ν, SVector(0, 0, 1))
-
-	@testset "B parallel to photon => zero emissivity" begin
-		slab = S.UniformSynchrotronSlab(; z=0..L, u0, ne0, B0=SVector(0, 0, B0), model)
-		I = S.render(ray, slab)
-		@test I ≈ 0
-		(j, α) = S._synchrotron_coeffs(model, ne0, slab.B0, k′)
-		@test j ≈ 0
-		@test α ≈ 0
-	end
-
-	@testset "B ⟂ photon => thin-slab analytic limit" begin
-		slab = S.UniformSynchrotronSlab(; z=0..L, u0, ne0, B0=SVector(B0, 0, 0), model)
-		I_num = S.render(ray, slab)
-		(j, _) = S._synchrotron_coeffs(model, ne0, slab.B0, k′)
-		I_exact = j * L
-		@test I_num ≈ I_exact  rtol=1e-3
-	end
-
-	@testset "sin(theta) scaling" begin
-		slab_perp = S.UniformSynchrotronSlab(; z=0..L, u0, ne0, B0=SVector(B0, 0, 0), model)
-		I_perp = S.render(ray, slab_perp)
-
-		slab_45 = @set slab_perp.B0 = B0 * normalize(SVector(1, 0, 1))
-
-		expected = (1 / sqrt(2))^((p + 1) / 2)
-		@test (S.render(ray, slab_45) / I_perp) ≈ expected
 	end
 end
 

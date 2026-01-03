@@ -55,12 +55,14 @@ Input expectations:
 - `field` passed to `_synchrotron_coeffs` must be a comoving ordered magnetic field vector (currently `SVector{3}`)
 - `k′` is the comoving photon 4-frequency; the direction is derived from `k′.xyz/k′.t`.
 """
-struct OrderedPowerLawElectrons{Tp,Tγ,TC}
+struct OrderedPowerLawElectrons{Tp,Tγ,TC,Tavg}
 	p::Tp
 	γmin::Tγ
 	γmax::Tγ
 	Cj::TC
 	Ca::TC
+	sinavg_j::Tavg
+	sinavg_a::Tavg
 end
 
 function OrderedPowerLawElectrons(; p, γmin=1, γmax=Inf, Cj=nothing, Ca=nothing)
@@ -71,7 +73,11 @@ function OrderedPowerLawElectrons(; p, γmin=1, γmax=Inf, Cj=nothing, Ca=nothin
 		Cj = c5 * K_per_ne
 		Ca = c6 * K_per_ne
 	end
-	return OrderedPowerLawElectrons(p, promote(γmin, γmax)..., promote(Cj, Ca)...)
+	qj = _half(p + 1)
+	qa = _half(p + 2)
+	sinavg_j = _avg_sin_pow(qj)
+	sinavg_a = _avg_sin_pow(qa)
+	return OrderedPowerLawElectrons(p, promote(γmin, γmax)..., promote(Cj, Ca)..., promote(sinavg_j, sinavg_a)...)
 end
 
 function AngleAveragedPowerLawElectrons(; p, γmin=1, γmax=Inf, Cj=nothing, Ca=nothing)
@@ -186,5 +192,36 @@ end
 	common = B_over_ν^_half(p)
 	j = Cj * n_e * common * sqrt(Bperp * ν)
 	α = Ca * n_e * common * Bperp * invν^2
+	return j, α
+end
+
+@inline _synchrotron_coeffs(model::OrderedPowerLawElectrons, n_e, field::TangledOrderedMixture, k′::FourFrequency) = let
+	ν = k′.t
+	(;p, Cj, Ca, sinavg_j, sinavg_a) = model
+	κ = field.kappa
+	@assert κ ≥ 0
+
+	b = field.b
+	B = norm(b)
+	invν = inv(ν)
+
+	# Ordered viewing angle from the preferred direction.
+	n = (@swiz k′.xyz) * invν
+	@assert dot(n, n) ≈ 1
+	sinθ = norm(cross(b, n)) / B
+	sinθ = clamp(sinθ, 0, 1)
+
+	# Minimal ordering model: mix between isotropic-direction average (κ=0) and fully ordered (κ→∞).
+	f = κ == Inf ? one(float(κ)) : κ / (one(κ) + κ)
+
+	qj = _half(p + 1)
+	qa = _half(p + 2)
+	Aj = muladd(f, sinθ^qj - sinavg_j, sinavg_j)
+	Aa = muladd(f, sinθ^qa - sinavg_a, sinavg_a)
+
+	B_over_ν = B * invν
+	common = B_over_ν^_half(p)
+	j = Cj * n_e * common * sqrt(B * ν) * Aj
+	α = Ca * n_e * common * B * invν^2 * Aa
 	return j, α
 end
