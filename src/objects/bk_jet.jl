@@ -16,7 +16,7 @@ AngleTrigCached_fromangle(φ) = AngleTrigCached(tan(φ), cos(φ))
 	ne_exp::Tneexp = -2
 	B_exp::TBexp = -1
 	speed_profile::Tu
-	model::Tmodel = AngleAveragedPowerLawElectrons(p=2.5)
+	model::Tmodel = IsotropicPowerLawElectrons(p=2.5)
 end
 
 @unstable prepare_for_computations(obj::ConicalBKJet) = @p let

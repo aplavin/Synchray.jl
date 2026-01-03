@@ -54,7 +54,7 @@ Semantics (current minimal model):
 
 - `b` is the preferred/ordered comoving field vector `B′`.
 - `kappa ≥ 0` is *not* a concentration parameter.
-- In `OrderedPowerLawElectrons`, `kappa` is mapped to a mixing fraction
+- In the isotropic power-law synchrotron model (`IsotropicPowerLawElectrons`), `kappa` is mapped to a mixing fraction
 	`f = kappa/(1+kappa)` (with `kappa=Inf` treated as `f=1`).
 	Radiative coefficients then interpolate between:
 	- `kappa = 0`: isotropically tangled (direction-averaged), equivalent to using

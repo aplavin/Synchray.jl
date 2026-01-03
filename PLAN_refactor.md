@@ -56,7 +56,7 @@ Instead, $\mu$ is computed inside the `synchrotron_model` from the returned magn
 
 Minimal representation choice (ties into the `magnetic_field(obj, x4)` rename):
 
-- For the current Stage‑1 `AngleAveragedPowerLawElectrons`, have
+- For the current Stage‑1 `IsotropicPowerLawElectrons`, have
 	- `magnetic_field(obj, x4) -> FullyTangled(strength)`
 	- i.e. return only the scalar comoving amplitude, wrapped to make the “tangled/angle‑averaged” assumption explicit.
 - For new direction-aware models, allow `magnetic_field(obj, x4)` to return either:

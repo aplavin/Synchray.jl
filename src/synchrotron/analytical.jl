@@ -1,7 +1,7 @@
 """
-		AngleAveragedPowerLawElectrons(; p, γmin=1, γmax=Inf, Cj=nothing, Ca=nothing)
+		IsotropicPowerLawElectrons(; p, γmin=1, γmax=Inf, Cj=nothing, Ca=nothing)
 
-Stage-1 (angle-averaged, Stokes-I) synchrotron electron model.
+Power-law synchrotron electron model for Stokes-I with **isotropic electron momenta**.
 
 Angle conventions (important):
 
@@ -9,11 +9,15 @@ Angle conventions (important):
 	in the **plasma rest frame**. This sets `B_perp = |B'| * sin(theta_Bn)`.
 - alpha_eB: electron pitch angle, i.e. angle between an electron's velocity and `B'`.
 
-This Stage-1 model does not track either angle explicitly at runtime. Instead, it assumes the
-field is isotropically tangled on unresolved scales and folds the theta_Bn dependence into
-the cgs coefficients (by averaging `sin(theta_Bn)^q`). Electron anisotropy (alpha_eB)
-is not modeled; the standard power-law synchrotron coefficients assume an isotropic electron
-momentum distribution.
+This model does not track electron anisotropy (alpha_eB); the standard power-law synchrotron
+coefficients assume an isotropic electron momentum distribution.
+
+Field-direction handling is controlled by the magnetic-field representation passed to
+`_synchrotron_coeffs`:
+
+- `FullyTangled(|B′|)` applies an isotropic viewing-angle average over θ_{Bn}.
+- An ordered field vector (`SVector{3}`) uses the instantaneous viewing angle.
+- `TangledOrderedMixture(b; kappa)` interpolates between these (heuristically).
 
 Normalization:
 
@@ -29,69 +33,46 @@ Physical-unit interpretation:
 	cgs conventions for the microphysics (e.g. `n_e` in cm⁻³, `|B′|` in Gauss, `ν` in Hz),
 	typically via the Unitful boundary helpers (`withunits`).
 """
-# --- Synchrotron (Stage 1: angle-averaged Stokes I) ---
-struct AngleAveragedPowerLawElectrons{Tp,Tγ,TC}
+struct IsotropicPowerLawElectrons{Tp,Tγ,TC,Tavg}
 	p::Tp
 	γmin::Tγ
 	γmax::Tγ
-	Cj::TC
-	Ca::TC
-end
-
-"""
-		OrderedPowerLawElectrons(; p, γmin=1, γmax=Inf, Cj=nothing, Ca=nothing)
-
-Power-law synchrotron model for Stokes-I with an **ordered** magnetic field direction.
-
-This is the minimal direction-aware counterpart of `AngleAveragedPowerLawElectrons`:
-
-- Electrons are assumed isotropic in the plasma rest frame.
-- The model uses the instantaneous viewing angle via
-	`B_perp = |B′| * sin(theta_Bn)`, where `theta_Bn` is between the comoving ordered
-	field direction and the comoving photon direction.
-
-Input expectations:
-
-- `field` passed to `_synchrotron_coeffs` must be a comoving ordered magnetic field vector (currently `SVector{3}`)
-- `k′` is the comoving photon 4-frequency; the direction is derived from `k′.xyz/k′.t`.
-"""
-struct OrderedPowerLawElectrons{Tp,Tγ,TC,Tavg}
-	p::Tp
-	γmin::Tγ
-	γmax::Tγ
-	Cj::TC
-	Ca::TC
+	Cj_ordered::TC
+	Ca_ordered::TC
 	sinavg_j::Tavg
 	sinavg_a::Tavg
 end
 
-function OrderedPowerLawElectrons(; p, γmin=1, γmax=Inf, Cj=nothing, Ca=nothing)
-	if isnothing(Cj) || isnothing(Ca)
-		@assert isnothing(Cj) && isnothing(Ca)
-		K_per_ne = _K_per_ne(p, γmin, γmax)
-		(c5, c6) = _synchrotron_c5_c6_ordered(p)
-		Cj = c5 * K_per_ne
-		Ca = c6 * K_per_ne
-	end
+@unstable prepare_for_computations(model::IsotropicPowerLawElectrons) = @modify(FixedExponent, model.p)
+
+
+"""
+		IsotropicPowerLawElectrons(; p, γmin=1, γmax=Inf, Cj=nothing, Ca=nothing)
+
+Constructor for `IsotropicPowerLawElectrons` with **ordered-field** normalization semantics:
+
+- If `Cj`/`Ca` are provided, they are interpreted as the ordered-field coefficients (in terms of `B_perp`).
+- If omitted, cgs coefficients are used.
+"""
+function IsotropicPowerLawElectrons(; p, γmin=1, γmax=Inf, Cj=nothing, Ca=nothing)
 	qj = _half(p + 1)
 	qa = _half(p + 2)
 	sinavg_j = _avg_sin_pow(qj)
 	sinavg_a = _avg_sin_pow(qa)
-	return OrderedPowerLawElectrons(p, promote(γmin, γmax)..., promote(Cj, Ca)..., promote(sinavg_j, sinavg_a)...)
-end
 
-function AngleAveragedPowerLawElectrons(; p, γmin=1, γmax=Inf, Cj=nothing, Ca=nothing)
 	if isnothing(Cj) || isnothing(Ca)
 		@assert isnothing(Cj) && isnothing(Ca)
 		K_per_ne = _K_per_ne(p, γmin, γmax)
-		(c5, c6) = _synchrotron_c5_c6(p)
-		Cj = c5 * K_per_ne
-		Ca = c6 * K_per_ne
+		(c5, c6) = _synchrotron_c5_c6_ordered(p)
+		Cj_ordered = c5 * K_per_ne
+		Ca_ordered = c6 * K_per_ne
+	else
+		# XXX: assume provided Cj/Ca are for tangled field, for backwards compatibility
+		Cj_ordered = Cj / sinavg_j
+		Ca_ordered = Ca / sinavg_a
 	end
-	return AngleAveragedPowerLawElectrons(p, promote(γmin, γmax)..., promote(Cj, Ca)...)
+	return IsotropicPowerLawElectrons(p, promote(γmin, γmax)..., promote(Cj_ordered, Ca_ordered)..., promote(sinavg_j, sinavg_a)...)
 end
-
-@unstable prepare_for_computations(model::AngleAveragedPowerLawElectrons) = @modify(FixedExponent, model.p)
 
 # Average of sin^q θ for isotropically distributed directions.
 #
@@ -151,7 +132,7 @@ end
 	return c5, c6
 end
 
-@inline _synchrotron_coeffs(model::AngleAveragedPowerLawElectrons, n_e, field::FullyTangled, k′::FourFrequency) = let
+@inline _synchrotron_coeffs(model::IsotropicPowerLawElectrons, n_e, field::FullyTangled, k′::FourFrequency) = let
 	# Stage 1 (angle-averaged) power-law synchrotron, in the comoving frame.
 	# Returns (j_ν, α_ν) with ν measured in the plasma rest frame.
 	#
@@ -160,7 +141,7 @@ end
 	#   α_ν = Ca · n_e · B^((p+2)/2) · ν^(-(p+4)/2)
 	#
 	# Notes on normalization:
-	# - If `model.Cj`/`model.Ca` were auto-derived (see `AngleAveragedPowerLawElectrons(...)`), then
+	# - If the coefficients were auto-derived (see `IsotropicPowerLawElectrons(...)`), then
 	#   interpreting `n_e`, `B`, `ν` as (cm⁻³, Gauss, Hz) yields cgs-normalized coefficients.
 	# - If `Cj`/`Ca` were provided explicitly, this is a unitless scaling law.
 	#
@@ -169,20 +150,22 @@ end
 	#   j_ν = Cj · n_e · common · √B · √ν
 	#   α_ν = Ca · n_e · common · B · ν^-2
 	ν = k′.t
-	(;p, Cj, Ca) = model
+	(;p, Cj_ordered, Ca_ordered, sinavg_j, sinavg_a) = model
+	Cj_tangled = Cj_ordered * sinavg_j
+	Ca_tangled = Ca_ordered * sinavg_a
 	B = field.strength
 	invν = inv(ν)
 	B_over_ν = B * invν
 	common = B_over_ν^_half(p)
-	j = Cj * n_e * common * sqrt(B*ν)
-	α = Ca * n_e * common * B * invν^2
+	j = Cj_tangled * n_e * common * sqrt(B*ν)
+	α = Ca_tangled * n_e * common * B * invν^2
 	return j, α
 end
 
-@inline _synchrotron_coeffs(model::OrderedPowerLawElectrons, n_e, b::SVector{3}, k′::FourFrequency) = let
+@inline _synchrotron_coeffs(model::IsotropicPowerLawElectrons, n_e, b::SVector{3}, k′::FourFrequency) = let
 	ν = k′.t
 	invν = inv(ν)
-	(;p, Cj, Ca) = model
+	(;p, Cj_ordered, Ca_ordered) = model
 
 	# Photon direction in the comoving frame: k′ = (ν, ν n̂) for a null vector.
 	n̂ = (@swiz k′.xyz) * invν
@@ -190,14 +173,14 @@ end
 
 	B_over_ν = Bperp * invν
 	common = B_over_ν^_half(p)
-	j = Cj * n_e * common * sqrt(Bperp * ν)
-	α = Ca * n_e * common * Bperp * invν^2
+	j = Cj_ordered * n_e * common * sqrt(Bperp * ν)
+	α = Ca_ordered * n_e * common * Bperp * invν^2
 	return j, α
 end
 
-@inline _synchrotron_coeffs(model::OrderedPowerLawElectrons, n_e, field::TangledOrderedMixture, k′::FourFrequency) = let
+@inline _synchrotron_coeffs(model::IsotropicPowerLawElectrons, n_e, field::TangledOrderedMixture, k′::FourFrequency) = let
 	ν = k′.t
-	(;p, Cj, Ca, sinavg_j, sinavg_a) = model
+	(;p, Cj_ordered, Ca_ordered, sinavg_j, sinavg_a) = model
 	κ = field.kappa
 	@assert κ ≥ 0
 
@@ -221,7 +204,7 @@ end
 
 	B_over_ν = B * invν
 	common = B_over_ν^_half(p)
-	j = Cj * n_e * common * sqrt(B * ν) * Aj
-	α = Ca * n_e * common * B * invν^2 * Aa
+	j = Cj_ordered * n_e * common * sqrt(B * ν) * Aj
+	α = Ca_ordered * n_e * common * B * invν^2 * Aa
 	return j, α
 end
