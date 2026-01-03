@@ -38,6 +38,42 @@ struct AngleAveragedPowerLawElectrons{Tp,Tγ,TC}
 	Ca::TC
 end
 
+"""
+		OrderedPowerLawElectrons(; p, γmin=1, γmax=Inf, Cj=nothing, Ca=nothing)
+
+Power-law synchrotron model for Stokes-I with an **ordered** magnetic field direction.
+
+This is the minimal direction-aware counterpart of `AngleAveragedPowerLawElectrons`:
+
+- Electrons are assumed isotropic in the plasma rest frame.
+- The model uses the instantaneous viewing angle via
+	`B_perp = |B′| * sin(theta_Bn)`, where `theta_Bn` is between the comoving ordered
+	field direction and the comoving photon direction.
+
+Input expectations:
+
+- `field` passed to `_synchrotron_coeffs` must be a comoving ordered magnetic field vector (currently `SVector{3}`)
+- `k′` is the comoving photon 4-frequency; the direction is derived from `k′.xyz/k′.t`.
+"""
+struct OrderedPowerLawElectrons{Tp,Tγ,TC}
+	p::Tp
+	γmin::Tγ
+	γmax::Tγ
+	Cj::TC
+	Ca::TC
+end
+
+function OrderedPowerLawElectrons(; p, γmin=1, γmax=Inf, Cj=nothing, Ca=nothing)
+	if isnothing(Cj) || isnothing(Ca)
+		@assert isnothing(Cj) && isnothing(Ca)
+		K_per_ne = _K_per_ne(p, γmin, γmax)
+		(c5, c6) = _synchrotron_c5_c6_ordered(p)
+		Cj = c5 * K_per_ne
+		Ca = c6 * K_per_ne
+	end
+	return OrderedPowerLawElectrons(p, promote(γmin, γmax)..., promote(Cj, Ca)...)
+end
+
 function AngleAveragedPowerLawElectrons(; p, γmin=1, γmax=Inf, Cj=nothing, Ca=nothing)
 	if isnothing(Cj) || isnothing(Ca)
 		@assert isnothing(Cj) && isnothing(Ca)
@@ -93,6 +129,22 @@ end
 	return c5, c6
 end
 
+# Same as `_synchrotron_c5_c6`, but for an ordered field without the viewing-angle average.
+# In this case, the standard power-law coefficients depend on B_perp explicitly and there is
+# no built-in ⟨sin^q θ⟩ factor.
+@inline _synchrotron_c5_c6_ordered(p) = begin
+	e = 4.8032068e-10           # statC
+	me = ustrip(u"g", u"me")     # g
+	c = ustrip(u"cm/s", 1.0u"c") # cm/s
+
+	A = (2 * pi * me * c) / (3 * e)
+	pref0 = sqrt(3) * e^3 / (16 * pi * me)
+
+	c5 = (pref0 / c^2) * (p - 1) * SpecialFunctions.gamma((3p - 1) / 12) * SpecialFunctions.gamma((3p + 7) / 12) * A^(-(p - 1) / 2)
+	c6 = pref0 * (p + 2) * SpecialFunctions.gamma((3p + 2) / 12) * SpecialFunctions.gamma((3p + 10) / 12) * A^(-(p + 2) / 2)
+	return c5, c6
+end
+
 @inline _synchrotron_coeffs(model::AngleAveragedPowerLawElectrons, n_e, field::FullyTangled, k′::FourFrequency) = let
 	# Stage 1 (angle-averaged) power-law synchrotron, in the comoving frame.
 	# Returns (j_ν, α_ν) with ν measured in the plasma rest frame.
@@ -118,5 +170,21 @@ end
 	common = B_over_ν^_half(p)
 	j = Cj * n_e * common * sqrt(B*ν)
 	α = Ca * n_e * common * B * invν^2
+	return j, α
+end
+
+@inline _synchrotron_coeffs(model::OrderedPowerLawElectrons, n_e, b::SVector{3}, k′::FourFrequency) = let
+	ν = k′.t
+	invν = inv(ν)
+	(;p, Cj, Ca) = model
+
+	# Photon direction in the comoving frame: k′ = (ν, ν n̂) for a null vector.
+	n̂ = (@swiz k′.xyz) * invν
+	Bperp = norm(cross(b, n̂))
+
+	B_over_ν = Bperp * invν
+	common = B_over_ν^_half(p)
+	j = Cj * n_e * common * sqrt(Bperp * ν)
+	α = Ca * n_e * common * Bperp * invν^2
 	return j, α
 end

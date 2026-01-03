@@ -12,39 +12,25 @@ Motivation:
 Goal:
 
 - Allow swapping microphysics by changing `synchrotron_model(obj)` (and maybe its parameters), without touching jet geometry/kinematics code.
-- Move the transfer/microphysics entry point to an angle-capable representation: `emissivity_absorption(obj, x4, k')`, where `k'` represents the photon in the plasma rest frame.
-	- This is a breaking change (replaces `emissivity_absorption(obj, x4, ν')`)
+- Use an angle-capable transfer/microphysics entry point: `emissivity_absorption(obj, x4, k')`, where `k'` represents the photon in the plasma rest frame.
 
 #### What stays the same
 
 - No decomposition of jets into geometry/field/particles/process objects.
 - No changes to `ConicalBKJet` / `ConicalBKJetWithPatterns` structure and delegation.
 - The Stage‑1 invariant integration stays based on `(j_ν', α_ν')` computed in the comoving frame.
+- Patterns remain microphysics-only modifiers (no geometry/flow changes).
 
-#### Minimal changes (recommended)
+#### Remaining work
 
-1) Rename the current Stage‑1 model to be explicit about its assumptions
-
-- Rename `PowerLawElectrons` → `AngleAveragedPowerLawElectrons`.
-	- Rationale: the current implementation *bakes in* the “isotropically tangled field” / angle‑averaged Stokes‑I assumption by averaging $\langle\sin^q\theta_{Bn}\rangle$ into the coefficients.
-
-2) Introduce 1–2 new `synchrotron_model` types (still compatible with the current medium API)
-
-These new models must work with the (updated) signature:
-
-- `_synchrotron_coeffs(model, n_e, field, k')`
-
-Suggested minimal set:
-
-- `AngleAveragedPowerLawElectrons` (renamed current default; no behavior change).
-
-3) Angle-dependent microphysics plumbing
+Direction-aware microphysics plumbing (partial ordering + pitch-angle distributions)
 
 True angle dependence needs (at least) the comoving photon direction $n'$ and the ordered field direction $b'$ (and later, electron pitch-angle distribution around $b'$). The key is to add this plumbing *without* refactoring jets into components.
 
-**Minimal API shape**
+**Current API shape**
 
-- Replace the medium entry point with an angle-aware signature:
+
+- Medium entry point:
 	- `emissivity_absorption(obj, x4, k')` is the primary/only interface.
 	- `k'` is a proper photon 4-wavevector **in the plasma rest frame** (a null 4-vector).
 		- The model extracts the comoving frequency $\nu'$ and direction $\hat n'$ directly from `k'`.
@@ -101,19 +87,18 @@ Then the model derives
 		- `GaussianPitchAngle(α0, σα)`
 	- The model then computes coefficients by integrating/averaging over $\alpha_{eB}$ as required by the chosen approximation.
 
-What the angle-aware `_synchrotron_coeffs` should receive (minimal):
+What the direction-aware `_synchrotron_coeffs` should receive (minimal):
 
-- Extend the model dispatch for angle-aware models to accept the additional scalars needed:
+
+- Extend the model dispatch for direction-aware models to accept the additional scalars needed:
 	- `_synchrotron_coeffs(model, n_e, field, k')`
 	- The model computes $\mu$ internally from the returned magnetic field and `k'`.
 
 **Incremental rollout**
 
-- First milestone: ordered-field Stokes‑I with isotropic electrons.
-	- Coefficients depend only on `(field, k', n_e)`; $\nu'$ and $\mu$ are computed internally.
-- Second milestone: partially ordered/tangledness via $\kappa$.
-- Third milestone: explicit pitch-angle distributions for electron anisotropy.
+- First milestone: partially ordered/tangledness via $\kappa$.
+- Second milestone: explicit pitch-angle distributions for electron anisotropy.
 
-4) Keep “patterns” as they are
+3) Keep “patterns” as they are
 
 - `ConicalBKJetWithPatterns` remains the way to modulate `n_e` and `|B'|` without affecting geometry/flow.

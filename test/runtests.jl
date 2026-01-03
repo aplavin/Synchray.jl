@@ -539,7 +539,7 @@ end
 		δ = S.doppler_factor(u0, SVector(0, 0, 1))
 		ν′ = ν / δ
 
-		slab = S.UniformSynchrotronSlab(; z=0..L, u0, ne0, B0, model)
+		slab = S.UniformSynchrotronSlab(; z=0..L, u0, ne0, B0=S.FullyTangled(B0), model)
 
 		@testset "optically thin" begin
 			I_num = S.render(ray, slab)
@@ -547,7 +547,7 @@ end
 			@test S.render(ray, slab, S.OpticalDepth()) ≈ 0
 
 			k′ = S.photon_k(ν′, SVector(0, 0, 1))
-			(j0, _) = S._synchrotron_coeffs(model, ne0, S.FullyTangled(B0), k′)
+			(j0, _) = S._synchrotron_coeffs(model, ne0, slab.B0, k′)
 			I_exact = j0 * L * (δ^2)
 			@test I_num ≈ I_exact rtol=2e-3
 
@@ -563,7 +563,7 @@ end
 			model_thick = @set model.Ca = 5e6
 			slab_thick = @set slab.model = model_thick
 			k′ = S.photon_k(ν′, SVector(0, 0, 1))
-			(j_thick, α_thick) = S._synchrotron_coeffs(model_thick, ne0, S.FullyTangled(B0), k′)
+			(j_thick, α_thick) = S._synchrotron_coeffs(model_thick, ne0, slab.B0, k′)
 
 			I_num_thick = S.render(ray, slab_thick)
 			I_exact_thick = (j_thick / α_thick) * (δ^3)
@@ -574,6 +574,96 @@ end
 
 			@test S.render(ray, @set slab_thick.ne0 *= 2) ≈ I_num_thick rtol=1e-3
 		end
+	end
+end
+
+
+@testitem "Ordered vs tangled consistency" begin
+	import Synchray as S
+
+	avg_sin_pow(q) = sqrt(pi) * S.SpecialFunctions.gamma((q + 2) / 2) / (2 * S.SpecialFunctions.gamma((q + 3) / 2))
+
+	p = 3.2
+	ne0 = 1.3
+	B0 = 0.9
+	ν = 2.0
+	k′ = S.photon_k(ν, S.SVector(0.0, 0.0, 1.0))
+
+	model_t = S.AngleAveragedPowerLawElectrons(; p)
+	model_o = S.OrderedPowerLawElectrons(; p)
+
+	(j_t, α_t) = S._synchrotron_coeffs(model_t, ne0, S.FullyTangled(B0), k′)
+	(j_o_perp, α_o_perp) = S._synchrotron_coeffs(model_o, ne0, S.SVector(B0, 0.0, 0.0), k′)
+
+	@testset "analytic ratio vs orthogonal field" begin
+		qj = (p + 1) / 2
+		qa = (p + 2) / 2
+		@test (j_t / j_o_perp) ≈ avg_sin_pow(qj) rtol=2e-12
+		@test (α_t / α_o_perp) ≈ avg_sin_pow(qa) rtol=2e-12
+	end
+
+	@testset "numerical angle average matches tangled" begin
+		θs = range(0.0, pi; length=100)
+		ws = sin.(θs)
+
+		js = map(θ -> begin
+			b = B0 .* S.SVector(sin(θ), 0.0, cos(θ))
+			first(S._synchrotron_coeffs(model_o, ne0, b, k′))
+		end, θs)
+		αs = map(θ -> begin
+			b = B0 .* S.SVector(sin(θ), 0.0, cos(θ))
+			last(S._synchrotron_coeffs(model_o, ne0, b, k′))
+		end, θs)
+
+		j_avg = sum(js .* ws) / sum(ws)
+		α_avg = sum(αs .* ws) / sum(ws)
+
+		@test j_avg ≈ j_t rtol=2e-3
+		@test α_avg ≈ α_t rtol=2e-3
+	end
+end
+
+
+@testitem "Ordered-field synchrotron (minimal)" begin
+	import Synchray as S
+	using Accessors
+
+	L = 2
+	ν = 2.0
+	p = 3.2
+	model = S.OrderedPowerLawElectrons(; p, Cj=0.7, Ca=0)
+	ne0 = 1.3
+	B0 = 0.9
+
+	ray = S.RayZ(; x0=S.FourPosition(0, 0, 0, 0), k=ν, nz=4_000)
+	u0 = S.FourVelocity(SVector(0, 0, 0))
+	k′ = S.photon_k(ν, SVector(0, 0, 1))
+
+	@testset "B parallel to photon => zero emissivity" begin
+		slab = S.UniformSynchrotronSlab(; z=0..L, u0, ne0, B0=SVector(0, 0, B0), model)
+		I = S.render(ray, slab)
+		@test I ≈ 0
+		(j, α) = S._synchrotron_coeffs(model, ne0, slab.B0, k′)
+		@test j ≈ 0
+		@test α ≈ 0
+	end
+
+	@testset "B ⟂ photon => thin-slab analytic limit" begin
+		slab = S.UniformSynchrotronSlab(; z=0..L, u0, ne0, B0=SVector(B0, 0, 0), model)
+		I_num = S.render(ray, slab)
+		(j, _) = S._synchrotron_coeffs(model, ne0, slab.B0, k′)
+		I_exact = j * L
+		@test I_num ≈ I_exact  rtol=1e-3
+	end
+
+	@testset "sin(theta) scaling" begin
+		slab_perp = S.UniformSynchrotronSlab(; z=0..L, u0, ne0, B0=SVector(B0, 0, 0), model)
+		I_perp = S.render(ray, slab_perp)
+
+		slab_45 = @set slab_perp.B0 = B0 * normalize(SVector(1, 0, 1))
+
+		expected = (1 / sqrt(2))^((p + 1) / 2)
+		@test (S.render(ray, slab_45) / I_perp) ≈ expected
 	end
 end
 

@@ -37,6 +37,7 @@ struct FullyTangled{T<:Number} <: AbstractMagneticField
 end
 Base.:≈(a::FullyTangled, b::FullyTangled; kwargs...) = isapprox(a.strength, b.strength; kwargs...)
 Base.:*(a::Number, b::FullyTangled) = FullyTangled(a * b.strength)
+Base.:*(a::FullyTangled, b::Number) = FullyTangled(a.strength * b)
 
 """Magnetic field with a preferred direction and partial ordering parameter κ."""
 struct PartiallyTangled{Tb<:SVector{3},Tκ<:Number} <: AbstractMagneticField
