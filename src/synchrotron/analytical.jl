@@ -3,6 +3,18 @@
 
 Stage-1 (angle-averaged, Stokes-I) synchrotron electron model.
 
+Angle conventions (important):
+
+- theta_Bn: angle between the magnetic-field direction and the line of sight (photon direction)
+	in the **plasma rest frame**. This sets `B_perp = |B'| * sin(theta_Bn)`.
+- alpha_eB: electron pitch angle, i.e. angle between an electron's velocity and `B'`.
+
+This Stage-1 model does not track either angle explicitly at runtime. Instead, it assumes the
+field is isotropically tangled on unresolved scales and folds the theta_Bn dependence into
+the cgs coefficients (by averaging `sin(theta_Bn)^q`). Electron anisotropy (alpha_eB)
+is not modeled; the standard power-law synchrotron coefficients assume an isotropic electron
+momentum distribution.
+
 Normalization:
 
 - If `Cj`/`Ca` are not provided, they are computed from standard cgs synchrotron
@@ -39,8 +51,13 @@ end
 
 @unstable prepare_for_computations(model::PowerLawElectrons) = @modify(FixedExponent, model.p)
 
-# Pitch-angle average for an isotropic electron momentum distribution.
-# With θ the pitch angle, isotropy implies p(θ) = (1/2)sinθ on [0, π]. Then
+# Average of sin^q θ for isotropically distributed directions.
+#
+# In this codebase's Stage-1 synchrotron, θ is the *viewing angle* θ_{Bn} between the
+# magnetic-field direction and the (comoving) photon propagation direction, so
+#   B_perp = |B'| sinθ_{Bn}.
+#
+# If directions are isotropic on the sphere, the relative-angle PDF is p(θ) = (1/2)sinθ on [0, π].
 #   ⟨sin^q θ⟩ = (1/2)∫₀^π sin^{q+1}θ dθ
 #            = √π · Γ((q+2)/2) / (2 · Γ((q+3)/2)).
 @inline _avg_sin_pow(q) = sqrt(pi) * SpecialFunctions.gamma((q + 2) / 2) / (2 * SpecialFunctions.gamma((q + 3) / 2))
@@ -66,7 +83,8 @@ end
 	A = (2 * pi * me * c) / (3 * e)
 	pref0 = sqrt(3) * e^3 / (16 * pi * me)
 
-	# pitch-angle averaged B_perp^( (p+1)/2 ) and B_perp^( (p+2)/2 )
+	# Stage-1 assumes an isotropically tangled field and averages the viewing-angle factor
+	# ⟨sin^q θ_{Bn}⟩ needed for B_perp^q = (|B'| sinθ_{Bn})^q.
 	sinavg5 = _avg_sin_pow((p + 1) / 2)
 	sinavg6 = _avg_sin_pow((p + 2) / 2)
 
