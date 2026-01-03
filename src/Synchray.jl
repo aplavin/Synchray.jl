@@ -23,7 +23,7 @@ using DispatchDoctor: @stable, @unstable
 include("power.jl")
 include("minkowski.jl")
 include("mediums.jl")
-include("synchrotron/analytical.jl")
+include("synchrotron/isotropic_electrons.jl")
 include("camera.jl")
 include("objects/slabs.jl")
 include("objects/spheres.jl")
