@@ -225,7 +225,18 @@ This is equivalent to `lorentz_boost_matrix(u) * v`, but avoids constructing the
     βx = dot(β, x)
 
     t′ = muladd(γ, v.t, γ * βx)  # γ*(t + β⋅x)
-    s = muladd(γ, v.t, ((γ - 1) / β²) * βx)  # γ*t + ((γ-1)/β²)*(β⋅x)
+    s = muladd(γ, v.t, iszero(β) ? 0 : ((γ - 1) / β²) * βx)  # γ*t + ((γ-1)/β²)*(β⋅x)
     x′ = x + s * β
     constructorof(typeof(v))(t′, x′)
 end
+
+"""
+    lorentz_unboost(u, v)
+
+Apply the inverse Lorentz boost defined by `u` to a contravariant 4-vector `v`,
+transforming components from the lab frame (where the object has 4-velocity `u`)
+into the object's comoving/rest frame.
+
+This is the inverse of `lorentz_boost(u, ⋅)`.
+"""
+@inline lorentz_unboost(u::FourVelocity, v::FourVector) = lorentz_boost(FourVelocity(u.t, -@swiz u.xyz), v)

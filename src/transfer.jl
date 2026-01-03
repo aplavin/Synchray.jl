@@ -56,8 +56,8 @@ const Δτ_THRESHOLD_LINEAR = 1e-2
 
 @inline _integrate_ray_step(acc::AccValue{Intensity}, obj, x4, k, Δλ) = begin
 	u = four_velocity(obj, x4)
-	ν = comoving_frequency(k, u)
-	(Jinv, Ainv) = emissivity_absorption_invariant(obj, x4, ν)
+	k′ = lorentz_unboost(u, k)
+	(Jinv, Ainv) = emissivity_absorption_invariant(obj, x4, k′)
 
 	Iinv = acc.value
 	# Invariant transfer: 𝓘 ≡ I_ν/ν³, 𝓙 ≡ j_ν/ν², 𝓐 ≡ α_ν·ν
@@ -76,8 +76,8 @@ end
 
 @inline _integrate_ray_step(acc::AccValue{OpticalDepth}, obj, x4, k, Δλ) = begin
 	u = four_velocity(obj, x4)
-	ν = comoving_frequency(k, u)
-	Ainv = absorption_invariant(obj, x4, ν)
+	k′ = lorentz_unboost(u, k)
+	Ainv = absorption_invariant(obj, x4, k′)
 
 	# Optical depth accumulation uses the invariant absorption 𝓐 = α_ν·ν:
 	# τ = ∫ 𝓐 dλ, discretized as Σ (𝓐 Δλ).
@@ -91,9 +91,9 @@ end
 	u = four_velocity(obj, x4)
 	# Spectral index via AD: scale ν by s and rescale affine step.
 	# Since k ∝ ν, scaling ν→ν·s implies λ-steps scale as Δλ→Δλ/s.
-	ν = comoving_frequency(k, u) * acc.s
+	k′ = lorentz_unboost(u, k * acc.s)
 	Δλ′ = Δλ / acc.s
-	(Jinv, Ainv) = emissivity_absorption_invariant(obj, x4, ν)
+	(Jinv, Ainv) = emissivity_absorption_invariant(obj, x4, k′)
 
 	Iinv = acc.Iinv
 	Δτ = Ainv * Δλ′
@@ -110,8 +110,8 @@ end
 
 _integrate_ray_step(acc::Tuple{AccValue{Intensity}, AccValue{OpticalDepth}}, obj, x4, k, Δλ) = begin
 	u = four_velocity(obj, x4)
-	ν = comoving_frequency(k, u)
-	(Jinv, Ainv) = emissivity_absorption_invariant(obj, x4, ν)
+	k′ = lorentz_unboost(u, k)
+	(Jinv, Ainv) = emissivity_absorption_invariant(obj, x4, k′)
 
 	Iinv = acc[1].value
 	Δτ = Ainv * Δλ
@@ -204,8 +204,8 @@ ray_contribution_profile(obj::AbstractMedium, ray::RayZ) = begin
 	profile₁ = map(StructArray(; z=zs)) do (;z)
 		x4 = ray.x0 + z * k1
 		u = four_velocity(obj, x4)
-		ν = comoving_frequency(k, u)
-		(Jinv, Ainv) = emissivity_absorption_invariant(obj, x4, ν)
+		k′ = lorentz_unboost(u, k)
+		(Jinv, Ainv) = emissivity_absorption_invariant(obj, x4, k′)
 		Δτ = Ainv * Δλ
 		@assert Δτ ≥ 0
 		dIinv_source = if Δτ < Δτ_THRESHOLD_LINEAR

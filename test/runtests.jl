@@ -77,10 +77,29 @@ using TestItemRunner
 		uid = S.FourVelocity(SVector(0, 0, 0))
 		Λid = S.lorentz_boost_matrix(uid)
 		@test Λid * v ≈ v
+		@test S.lorentz_boost(uid, v) ≈ v
 
 		u_neg = S.FourVelocity(u.t, -@swiz u.xyz)
 		@test S.lorentz_boost_matrix(u_neg) ≈ inv(Λ)
 		@test S.lorentz_boost(u_neg, v′) ≈ v
+	end
+
+	@testset "lorentz_unboost is inverse" begin
+		β = SVector(0.3, -0.4, 0.1)
+		u = S.FourVelocity(β)
+
+		vpos = S.FourPosition(0.7, 1.2, -0.5, 3.4)
+		@test S.lorentz_unboost(u, S.lorentz_boost(u, vpos)) ≈ vpos
+		@test S.lorentz_boost(u, S.lorentz_unboost(u, vpos)) ≈ vpos
+
+		n = normalize(SVector(0.2, 0.1, 0.7))
+		k = S.photon_k(2.3, n)
+		@test S.lorentz_unboost(u, S.lorentz_boost(u, k)) ≈ k
+		@test S.lorentz_boost(u, S.lorentz_unboost(u, k)) ≈ k
+
+		uid = S.FourVelocity(SVector(0, 0, 0))
+		@test S.lorentz_unboost(uid, vpos) === vpos
+		@test S.lorentz_unboost(uid, k) === k
 	end
 end
 
@@ -527,7 +546,8 @@ end
 			@test I_num > 0
 			@test S.render(ray, slab, S.OpticalDepth()) ≈ 0
 
-			(j0, _) = S._synchrotron_coeffs(model, ne0, S.FullyTangled(B0), ν′)
+			k′ = S.photon_k(ν′, SVector(0, 0, 1))
+			(j0, _) = S._synchrotron_coeffs(model, ne0, S.FullyTangled(B0), k′)
 			I_exact = j0 * L * (δ^2)
 			@test I_num ≈ I_exact rtol=2e-3
 
@@ -542,7 +562,8 @@ end
 		@testset "very optically thick" begin
 			model_thick = @set model.Ca = 5e6
 			slab_thick = @set slab.model = model_thick
-			(j_thick, α_thick) = S._synchrotron_coeffs(model_thick, ne0, S.FullyTangled(B0), ν′)
+			k′ = S.photon_k(ν′, SVector(0, 0, 1))
+			(j_thick, α_thick) = S._synchrotron_coeffs(model_thick, ne0, S.FullyTangled(B0), k′)
 
 			I_num_thick = S.render(ray, slab_thick)
 			I_exact_thick = (j_thick / α_thick) * (δ^3)

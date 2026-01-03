@@ -32,7 +32,7 @@ Goal:
 
 These new models must work with the (updated) signature:
 
-- `_synchrotron_coeffs(model, obj, x4, u, n_e, field, k')`
+- `_synchrotron_coeffs(model, n_e, field, k')`
 
 Suggested minimal set:
 
@@ -48,18 +48,15 @@ True angle dependence needs (at least) the comoving photon direction $n'$ and th
 
 - Replace the medium entry point with an angle-aware signature:
 	- `emissivity_absorption(obj, x4, k')` is the primary/only interface.
-	- `k'` is a proper photon 4-wavevector (a null 4-vector).
-		- The comoving frequency is always computed as $\nu' = -k'\cdot u$.
-		- The comoving propagation direction in the local rest space is derived as a rest-space vector
-		  $$n' = k'/\nu' - u$$
-		  with $u\cdot n' = 0$ and $n'\cdot n' = +1$.
-		- This avoids defining/transporting an arbitrary comoving spatial triad while still letting the model form invariants like $\mu=b'\cdot n'$.
+	- `k'` is a proper photon 4-wavevector **in the plasma rest frame** (a null 4-vector).
+		- The model extracts the comoving frequency $\nu'$ and direction $\hat n'$ directly from `k'`.
+		- This avoids defining/transporting an arbitrary comoving spatial triad while still letting the model form invariants like $\mu=b'\cdot \hat n'$.
 
 **Interpreting `k'` (what microphysics extracts)**
 
 - Microphysics needs only (both are extracted from passed 4-vector `k'`):
 	- comoving frequency $\nu'$
-	- comoving propagation direction $n'$ (unit rest-space 4-vector; i.e. orthogonal to $u$)
+	- comoving propagation direction $\hat n'$ (unit 3-vector in the plasma rest frame)
 
 **Ordered magnetic fields: what the microphysics must receive**
 
@@ -84,8 +81,7 @@ Minimal representation choice (ties into the `magnetic_field(obj, x4)` rename):
 
 Then the model derives
 
-- $\nu' = -k'\cdot u$
-- $n' = k'/\nu' - u$ and $\hat n'$ from $n'$
+- $\nu'$ and $\hat n'$ from `k'`
 - $\hat b'$ from the returned `field_vector`
 - $\mu = \hat b'\cdot \hat n'$.
 
@@ -110,7 +106,7 @@ Then the model derives
 What the angle-aware `_synchrotron_coeffs` should receive (minimal):
 
 - Extend the model dispatch for angle-aware models to accept the additional scalars needed:
-	- `_synchrotron_coeffs(model, obj, x4, u, n_e, field, k')`
+	- `_synchrotron_coeffs(model, n_e, field, k')`
 	- The model computes $\mu$ internally from the returned magnetic field and `k'`.
 
 **Incremental rollout**
