@@ -11,6 +11,7 @@ using Unitful: AbstractQuantity
 @reexport using Accessors
 @reexport import AccessorsExtra: construct
 using ForwardDiff
+using QuadGK
 import SpecialFunctions
 using Statistics: mean
 using StructArrays
@@ -24,6 +25,7 @@ include("power.jl")
 include("minkowski.jl")
 include("mediums.jl")
 include("synchrotron/isotropic_electrons.jl")
+include("synchrotron/anisotropic_electrons.jl")
 include("camera.jl")
 include("objects/slabs.jl")
 include("objects/spheres.jl")
