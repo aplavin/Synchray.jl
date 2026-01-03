@@ -178,7 +178,7 @@ function bk_jet_1_knot_snapshots_image()
     )
 
     knot = let
-        x_c0 = S.FourPosition(0, (0.1 * base_jet.axis)...)
+        x_c0 = S.FourPosition(0, 0.1 * base_jet.axis)
         u = S.FourVelocity(0.995 * base_jet.axis)
         sizing = S.CrossSectionKnotSizing(0.3, 0.5)
         S.InertialEllipsoidalKnot(; x_c0, u, sizing, profile_ne=S.GaussianBump(100), profile_B=nothing)

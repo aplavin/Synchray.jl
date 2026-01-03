@@ -21,6 +21,8 @@ struct FourFrequency{T} <: FourVector{T}
     z::T
 end
 
+(::Type{TFV})(t::Number, xyz::SVector{3}) where {TFV<:FourVector} = TFV(t, xyz...)
+
 StaticArrays.similar_type(::Type{TFV}, ::Type{T}, s::Size{(4,)}) where {TFV<:FourVector,T} =
     Base.typename(TFV).wrapper{T}
 
@@ -55,7 +57,7 @@ For a 4-velocity written as `u = (γ, γβ⃗)`:
 
 Errors if `u.t == 0`.
 """
-@inline beta(u::FourVector) = begin
+@inline beta(u::FourVelocity) = begin
     iszero(u.t) && error("beta(u): undefined for u.t == 0")
     (@swiz u.xyz) / u.t
 end
@@ -103,7 +105,7 @@ u = (γ, γβ⃗)
 """
 @inline FourVelocity(β::SVector{3}) = let
     γ = gamma(β)
-    FourVelocity(γ, (γ * β)...)
+    FourVelocity(γ, γ * β)
 end
 
 """
@@ -124,7 +126,7 @@ end
     @assert γ isa Number
     @assert dir isa SVector{3}
 	β = √(1 - γ^-2)
-    return FourVelocity(γ, (γ * β) * dir...)
+    return FourVelocity(γ, (γ * β) * dir)
 end
 
 """
@@ -137,7 +139,7 @@ direction `n` (unit 3-vector) with frequency ν:
 k = (ν, ν n)
 ```
 """
-@inline photon_k(νcam, n::SVector{3}) = FourFrequency(νcam, (νcam * n)...)
+@inline photon_k(νcam, n::SVector{3}) = FourFrequency(νcam, νcam * n)
 
 """
     comoving_frequency(k, u)
@@ -169,3 +171,61 @@ with `ν_obs = 1` and returning
 ```
 """
 @inline doppler_factor(u::FourVelocity, n::SVector{3}) = inv(comoving_frequency(photon_k(one(u.t), n), u))
+
+"""
+    lorentz_boost_matrix(u)
+
+Return the Lorentz boost matrix `Λ` that transforms a contravariant 4-vector from
+the comoving/rest frame of an object into the lab frame in which the object has
+4-velocity `u`.
+
+With `u = (γ, γβ⃗)` (so `β⃗ = beta(u)`), this uses the standard boost:
+
+```
+Λ⁰₀ = γ
+Λ⁰ᵢ = γ βᵢ
+Λⁱ₀ = γ βᵢ
+Λⁱⱼ = δⁱⱼ + (γ-1) βⁱ βⱼ / (β⃗⋅β⃗)
+```
+
+The metric convention is **(-,+,+,+)**.
+"""
+@inline lorentz_boost_matrix(u::FourVelocity) = let
+    γ = u.t
+    β = beta(u)
+    β2 = dot(β, β)
+    iszero(β2) && return @SMatrix [one(γ) zero(γ) zero(γ) zero(γ);
+                                   zero(γ) one(γ) zero(γ) zero(γ);
+                                   zero(γ) zero(γ) one(γ) zero(γ);
+                                   zero(γ) zero(γ) zero(γ) one(γ)]
+
+    A = I + ((γ - 1) / β2) * (β * β')
+    γβ = γ * β
+    @SMatrix [γ      γβ[1]  γβ[2]  γβ[3];
+              γβ[1]  A[1,1] A[1,2] A[1,3];
+              γβ[2]  A[2,1] A[2,2] A[2,3];
+              γβ[3]  A[3,1] A[3,2] A[3,3]]
+end
+
+"""
+    lorentz_boost(u, v)
+
+Apply the Lorentz boost defined by `u` to a contravariant 4-vector `v`,
+transforming components from the comoving/rest frame into the lab frame.
+
+This is equivalent to `lorentz_boost_matrix(u) * v`, but avoids constructing the
+4×4 matrix.
+"""
+@inline lorentz_boost(u::FourVelocity, v::FourVector) = let
+    γ = gamma(u)
+    β = beta(u)
+    β² = dot(β, β)
+
+    x = @swiz v.xyz
+    βx = dot(β, x)
+
+    t′ = muladd(γ, v.t, γ * βx)  # γ*(t + β⋅x)
+    s = muladd(γ, v.t, ((γ - 1) / β²) * βx)  # γ*t + ((γ-1)/β²)*(β⋅x)
+    x′ = x + s * β
+    constructorof(typeof(v))(t′, x′)
+end

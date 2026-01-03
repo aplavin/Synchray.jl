@@ -183,7 +183,7 @@ end
 	βmag = √dot(β, β)
 	βhat = β / βmag
 	γ = u.t
-	return FourPosition(γ * βmag, (γ * βhat)...)
+	return FourPosition(γ * βmag, γ * βhat)
 end
 
 @inline _knot_chi(knot::InertialEllipsoidalKnot, x4::FourPosition, jet::ConicalBKJet) = begin

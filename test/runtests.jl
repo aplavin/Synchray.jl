@@ -54,6 +54,34 @@ using TestItemRunner
 		δ_away = S.doppler_factor(u_away, n)
 		@test δ_away < 1
 	end
+
+	@testset "Lorentz boost (rest → lab)" begin
+		β = 0.6
+		u = S.FourVelocity(SVector(0, 0, β))
+		γ = u.t
+
+		Λ = S.lorentz_boost_matrix(u)
+		v = S.FourPosition(1, 2, 0.5, -1)
+		v′ = S.lorentz_boost(u, v)::S.FourPosition
+		@test v′.x ≈ v.x
+		@test v′.y ≈ v.y
+		@test v′.t ≈ γ * (v.t + β * v.z)
+		@test v′.z ≈ γ * (v.z + β * v.t)
+		@test S.minkowski_dot(v′, v′) ≈ S.minkowski_dot(v, v)
+		@test Λ * v ≈ v′
+
+		u0 = S.FourVelocity(1, 0, 0, 0)
+		@test S.lorentz_boost(u, u0)::S.FourVelocity ≈ u
+		@test Λ * u0 ≈ u
+
+		uid = S.FourVelocity(SVector(0, 0, 0))
+		Λid = S.lorentz_boost_matrix(uid)
+		@test Λid * v ≈ v
+
+		u_neg = S.FourVelocity(u.t, -@swiz u.xyz)
+		@test S.lorentz_boost_matrix(u_neg) ≈ inv(Λ)
+		@test S.lorentz_boost(u_neg, v′) ≈ v
+	end
 end
 
 
