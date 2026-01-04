@@ -206,11 +206,68 @@ function bk_jet_1_knot_snapshots_image()
     fig
 end
 
+function bk_jet_thick_options_image()
+    φj = 2u"°"
+    θ = 7u"°"
+    axis = SVector(sin(θ), 0, cos(θ))
+
+    ne = S.PowerLawS(-2; val0=1, s0=1)
+    Bscale = S.PowerLawS(-1; val0=1, s0=1)
+
+    Bconfigs = (
+        (name="tangled", B=S.BFieldSpec(Bscale, S.ScalarField(), b -> S.FullyTangled(b))),
+        (name="poloidal", B=S.BFieldSpec(Bscale, S.PoloidalField(), identity)),
+        (name="toroidal", B=S.BFieldSpec(Bscale, S.ToroidalField(), identity)),
+        (name="helical ψ=5°", B=S.BFieldSpec(Bscale, S.HelicalField(5u"°"), identity)),
+        (name="helical ψ=85°", B=S.BFieldSpec(Bscale, S.HelicalField(85u"°"), identity)),
+        (name="mixture κ=1", B=S.BFieldSpec(Bscale, S.PoloidalField(), b -> S.TangledOrderedMixture(b; kappa=1))),
+    )
+
+    models = (
+        (name="isotropic", model=S.IsotropicPowerLawElectrons(; p=2.3, Cj=1, Ca=0.1)),
+        (name="aniso η=1/100", model=S.AnisotropicPowerLawElectrons(; p=2.3, η=0.01, Cj=1, Ca=0.1)),
+        (name="aniso η=100", model=S.AnisotropicPowerLawElectrons(; p=2.3, η=100, Cj=1, Ca=0.1)),
+    )
+
+    fig = Figure()
+    for (r, m) in enumerate(models), (c, bc) in enumerate(Bconfigs)
+        pos = fig[r, c]
+        Axis(pos[1, 1]; title="$(m.name), $(bc.name)", aspect=DataAspect(), width=300, height=300)
+
+        unsupported = m.model isa S.AnisotropicPowerLawElectrons && bc.B.wrap !== identity
+        if unsupported
+            hidespines!()
+            hidedecorations!()
+            Label(pos[1, 1], "unsupported"; tellwidth=false, tellheight=false)
+            continue
+        end
+
+        jet0 = S.ConicalJet(;
+            axis, φj,
+            s=(1e-3 .. 50),
+            ne, bc.B,
+            speed_profile=(η -> (S.beta, 0.995)),
+            model=m.model,
+        ) |> S.prepare_for_computations
+        jet0 = @set jet0.model.Ca_ordered = 9 / jet0.model.sinavg_a
+
+        img = render_field(jet0; extent=3, ν=1, what=S.Intensity())
+        plt = heatmap!(img; colormap=:magma, colorscale=SymLog(1e-4 * maximum(img)))
+        Colorbar(pos[1, 2], plt; tickformat=EngTicks(:symbol))
+        hidespines!()
+        hidedecorations!()
+    end
+    resize_to_layout!()
+    save(joinpath(outdir, "bk_jet_thick_options.png"), fig)
+    fig
+end
+
 function main()
     moving_ellipsoid_image()
     synchrotron_sphere_image()
     bk_jet_image()
     bk_jet_1_knot_snapshots_image()
+    bk_jet_thick_options_image()
 end
 
 main()
