@@ -174,7 +174,7 @@ The knot can optionally modulate `n_e` and `|B'|` independently via `profile_ne`
 end
 
 
-_validate_knot_causality(sizing::CrossSectionKnotSizing, u::FourVelocity, jet::ConicalBKJet) = begin
+_validate_knot_causality(sizing::CrossSectionKnotSizing, u::FourVelocity, jet::Union{ConicalBKJet,ConicalJet}) = begin
 	# Causality guard for the “fills a constant fraction of the cross-section” sizing.
 	#
 	# With a_perp(τ) = f_perp * R(s_c(τ)) = f_perp * s_c(τ) * tan(φj), we have

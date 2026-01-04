@@ -107,13 +107,12 @@ function bk_jet_image()
 
     axis_for_viewing_angle(θ) = SVector(sin(θ), 0.0, cos(θ))
 
-    jet0 = S.ConicalBKJet(;
+    jet0 = S.ConicalJet(;
         axis=SVector(NaN, NaN, NaN),
         φj,
         s=(1e-3 .. 50),
-        s0=1.0,
-        ne0=1.0,
-        B0=1.0,
+        ne=S.PowerLawS(-2; val0=1.0, s0=1.0),
+        B=S.BFieldSpec(S.PowerLawS(-1; val0=1.0, s0=1.0), S.ScalarField(), b->S.FullyTangled(b)),
         speed_profile=(η -> (S.beta, 0.995)),
         model=S.IsotropicPowerLawElectrons(; p=2.3, Cj=1.0, Ca=0.1),
     ) |> S.prepare_for_computations
@@ -166,13 +165,12 @@ function bk_jet_1_knot_snapshots_image()
     φj = 4u"°"
     θ = 3 * φj  # "small viewing angle", same as in bk_jet_image
 
-    base_jet = S.ConicalBKJet(;
-        axis = SVector(sin(θ), 0, cos(θ)),
+    base_jet = S.ConicalJet(;
+        axis=SVector(sin(θ), 0, cos(θ)),
         φj,
         s=(1e-3 .. 50),
-        s0=1,
-        ne0=1,
-        B0=1,
+        ne=S.PowerLawS(-2; val0=1, s0=1),
+        B=S.BFieldSpec(S.PowerLawS(-1; val0=1, s0=1), S.ScalarField(), b->S.FullyTangled(b)),
         speed_profile=(η -> (S.beta, 0.995)),
         model=S.IsotropicPowerLawElectrons(; p=2.3, Cj=1, Ca=1),
     )
