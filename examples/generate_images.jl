@@ -146,7 +146,7 @@ function bk_jet_image()
 
     for adaptive_supersampling in (false, 4)
         fig = Figure()
-        jet0 = @set jet0.model.Ca_ordered = 9.0
+        jet0 = @set jet0.model.Ca_ordered = 9/jet0.model.sinavg_a
         for (I, (v, what)) in pairs(collect(Iterators.product(views, whats)))
             pos = fig[Tuple(I)...]
             Axis(pos[1,1]; title="$(v.name), $(what.what|>typeof|>nameof) (θ=$(v.θ))", aspect=DataAspect(), width=300, height=300)
