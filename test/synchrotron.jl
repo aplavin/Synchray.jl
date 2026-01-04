@@ -164,12 +164,12 @@ end
 	ne0 = 1.3
 	B0 = 0.9
 	ν = 2.0
-	k′ = S.photon_k(ν, S.SVector(0.0, 0.0, 1.0))
+	k′ = S.photon_k(ν, SVector(0.0, 0.0, 1.0))
 
 	model = S.IsotropicPowerLawElectrons(; p)
 
 	(j_t, α_t) = S._synchrotron_coeffs(model, ne0, S.FullyTangled(B0), k′)
-	(j_o_perp, α_o_perp) = S._synchrotron_coeffs(model, ne0, S.SVector(B0, 0.0, 0.0), k′)
+	(j_o_perp, α_o_perp) = S._synchrotron_coeffs(model, ne0, SVector(B0, 0.0, 0.0), k′)
 
 	@testset "analytic ratio vs orthogonal field" begin
 		qj = (p + 1) / 2
@@ -183,11 +183,11 @@ end
 		ws = sin.(θs)
 
 		js = map(θ -> begin
-			b = B0 .* S.SVector(sin(θ), 0.0, cos(θ))
+			b = B0 .* SVector(sin(θ), 0.0, cos(θ))
 			first(S._synchrotron_coeffs(model, ne0, b, k′))
 		end, θs)
 		αs = map(θ -> begin
-			b = B0 .* S.SVector(sin(θ), 0.0, cos(θ))
+			b = B0 .* SVector(sin(θ), 0.0, cos(θ))
 			last(S._synchrotron_coeffs(model, ne0, b, k′))
 		end, θs)
 
@@ -206,30 +206,63 @@ end
 	p = 2.5
 	ν = 2
 	n_e = 3
-	b = S.SVector(0, 0, 5)
+	b = SVector(0, 0, 5)
 
 	θ = acos(0.5) # cosθ = 1/2
-	n̂ = S.SVector(sin(θ), 0, cos(θ))
+	n̂ = SVector(sin(θ), 0, cos(θ))
 	k′ = S.FourFrequency(ν, (ν .* n̂)...)
 
 	model_iso = S.IsotropicPowerLawElectrons(; p, Cj=1, Ca=1)
 	model_an1 = S.AnisotropicPowerLawElectrons(; p, η=1, Cj=1, Ca=1)
 	model_an = S.AnisotropicPowerLawElectrons(; p, η=0.5, Cj=1, Ca=1)
 
-	(j_iso0, α_iso0) = S._synchrotron_coeffs(model_iso, n_e, b, k′)
-	@test j_iso0 > 0 && α_iso0 > 0
-	@testset for f in [identity, S.prepare_for_computations]
-		(j_iso, α_iso) = S._synchrotron_coeffs(f(model_iso), n_e, b, k′)
-		(j_an1, α_an1) = S._synchrotron_coeffs(f(model_an1), n_e, b, k′)
+	(j_iso, α_iso) = S._synchrotron_coeffs(model_iso, n_e, b, k′)
+	@test j_iso > 0 && α_iso > 0
 
-		@test j_iso ≈ j_iso0
-		@test j_an1 ≈ j_iso0
-		@test α_an1 ≈ α_iso0
-	end
+	(j_an1, α_an1) = S._synchrotron_coeffs(model_an1, n_e, b, k′)
+	@test j_an1 ≈ j_iso
+	@test α_an1 ≈ α_iso
 
 	(j_an, α_an) = S._synchrotron_coeffs(model_an, n_e, b, k′)
 	cosθ = 0.5
 	φ = (1 + (model_an.η - 1) * cosθ^2)^(-model_an.p / 2) / model_an.Pnorm
-	@test j_an ≈ φ * j_iso0
-	@test α_an ≈ φ * α_iso0
+	@test j_an ≈ φ * j_iso
+	@test α_an ≈ φ * α_iso
+end
+
+@testitem "prepare_for_computations preserves synchrotron coeffs" begin
+	import Synchray as S
+	using Test
+
+	ne0 = 1.3
+	ν = 2
+	k′ = S.photon_k(ν, SVector(0, 0, 1))
+
+	models = (
+		S.IsotropicPowerLawElectrons(; p=3.2, Cj=0.7, Ca=0.3),
+		S.AnisotropicPowerLawElectrons(; p=2.5, η=0.5, Cj=1, Ca=1),
+	)
+
+	b = SVector(1, 0, 2)
+	B_ordered = (SVector(3, 0, 0), SVector(0, 0, 3))
+	B_tangled = (
+		S.FullyTangled(3),
+		S.TangledOrderedMixture(b; kappa=0),
+		S.TangledOrderedMixture(b; kappa=2),
+		S.TangledOrderedMixture(b; kappa=Inf),
+	)
+
+	@testset for model in models
+		prepared = S.prepare_for_computations(model)
+		Bs = model isa S.AnisotropicPowerLawElectrons ? B_ordered : (B_ordered..., B_tangled...)
+
+		@testset for B in Bs
+			(j1, α1) = S._synchrotron_coeffs(model, ne0, B, k′)
+			(j2, α2) = S._synchrotron_coeffs(prepared, ne0, B, k′)
+
+			B == SVector(0,0,3) || @test j1 > 0 && α1 > 0
+			@test j1 ≈ j2 rtol=0.5e-3
+			@test α1 ≈ α2 rtol=0.5e-3
+		end
+	end
 end

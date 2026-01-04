@@ -197,8 +197,8 @@ end
 	# Minimal ordering model: mix between isotropic-direction average (κ=0) and fully ordered (κ→∞).
 	f = κ == Inf ? one(float(κ)) : κ / (one(κ) + κ)
 
-	qj = _half(p + 1)
-	qa = _half(p + 2)
+	qj = _half(p + StaticNum{1}())
+	qa = _half(p + StaticNum{2}())
 	Aj = muladd(f, sinθ^qj - sinavg_j, sinavg_j)
 	Aa = muladd(f, sinθ^qa - sinavg_a, sinavg_a)
 

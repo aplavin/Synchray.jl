@@ -13,3 +13,9 @@ struct FixedExponent{P} end
 end
 
 Base.:-(a::FixedExponent{P}) where {P} = FixedExponent{-P}()
+
+
+struct StaticNum{X} end
+
+Base.:+(a::Number, ::StaticNum{X}) where {X} = a + X
+Base.:+(a::FixedExponent{P}, ::StaticNum{X}) where {P, X} = FixedExponent{P + X}()
