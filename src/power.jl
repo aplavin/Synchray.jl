@@ -11,3 +11,5 @@ struct FixedExponent{P} end
 		:(Base.literal_pow(^, x, Val(P))) :
 		:(FastPower.fastpower(x, P))
 end
+
+Base.:-(a::FixedExponent{P}) where {P} = FixedExponent{-P}()

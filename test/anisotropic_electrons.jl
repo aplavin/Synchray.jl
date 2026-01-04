@@ -15,17 +15,20 @@
 	model_an1 = S.AnisotropicPowerLawElectrons(; p, η=1, Cj=1, Ca=1)
 	model_an = S.AnisotropicPowerLawElectrons(; p, η=0.5, Cj=1, Ca=1)
 
-	(j_iso, α_iso) = S._synchrotron_coeffs(model_iso, n_e, b, k′)
-	(j_an1, α_an1) = S._synchrotron_coeffs(model_an1, n_e, b, k′)
+	(j_iso0, α_iso0) = S._synchrotron_coeffs(model_iso, n_e, b, k′)
+	@test j_iso0 > 0 && α_iso0 > 0
+	@testset for f in [identity, S.prepare_for_computations]
+		(j_iso, α_iso) = S._synchrotron_coeffs(f(model_iso), n_e, b, k′)
+		(j_an1, α_an1) = S._synchrotron_coeffs(f(model_an1), n_e, b, k′)
+
+		@test j_iso ≈ j_iso0
+		@test j_an1 ≈ j_iso0
+		@test α_an1 ≈ α_iso0
+	end
+
 	(j_an, α_an) = S._synchrotron_coeffs(model_an, n_e, b, k′)
-
-    @test j_iso > 0 && α_iso > 0
-
-	@test j_an1 ≈ j_iso
-	@test α_an1 ≈ α_iso
-
 	cosθ = 0.5
 	φ = (1 + (model_an.η - 1) * cosθ^2)^(-model_an.p / 2) / model_an.Pnorm
-	@test j_an ≈ φ * j_iso
-	@test α_an ≈ φ * α_iso
+	@test j_an ≈ φ * j_iso0
+	@test α_an ≈ φ * α_iso0
 end

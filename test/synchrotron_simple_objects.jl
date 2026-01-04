@@ -1,4 +1,3 @@
-
 @testitem "Synchrotron slab scalings" begin
 	import Synchray as S
 	using Accessors
