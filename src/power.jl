@@ -14,6 +14,10 @@ end
 
 Base.:-(a::FixedExponent{P}) where {P} = FixedExponent{-P}()
 
+@inline _value(p::Real) = p
+@inline _value(::FixedExponent{P}) where {P} = P
+
+
 
 struct StaticNum{X} end
 

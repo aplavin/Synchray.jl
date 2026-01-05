@@ -18,6 +18,12 @@ abstract type AbstractMedium end
 	return (j / (ν′^2), α * ν′)
 end
 
+@inline emissivity_absorption_polarized_invariant(obj::AbstractMedium, x4, k′) = begin
+	ν′ = k′.t
+	(j, α) = emissivity_absorption_polarized(obj, x4, k′)
+	return (j / (ν′^2), α * ν′)
+end
+
 # if a medium defines only `emissivity_absorption`, the generic `emissivity`/`absorption` wrappers below will work
 # `absorption` is used in optical depth calculation, maybe can drop this in future?..
 @inline emissivity_invariant(obj::AbstractMedium, x4, k′) = emissivity(obj, x4, k′) / (k′.t^2)
