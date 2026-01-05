@@ -187,6 +187,6 @@ end
 
 # Rotate full Stokes (I,Q,U); I is invariant under basis rotations.
 @inline rotate_IQU(R, s::StokesIQU) = let
-	(Q, U) = rotate_QU(R, s.Q, s.U)
-	StokesIQU(s.I, Q, U)
+	QU = rotate_QU(R, @swiz s.QU)
+	StokesIQU(s.I, QU...)
 end
