@@ -80,6 +80,8 @@ This is undefined for a rest 4-velocity (β⃗ = 0).
     β / norm(β)
 end
 
+@inline direction(k::FourFrequency) = (@swiz k.xyz) / k.t
+
 """
     gamma(x)
 

@@ -1,27 +1,48 @@
+# Linear polarization Stokes vector (I,Q,U) in some chosen screen basis.
+#
+# Notes:
+# - `I` is total specific intensity (or its invariant form, depending on caller).
+# - `Q,U` encode linear polarization relative to the basis; changing basis rotates (Q,U) by 2χ.
 struct StokesIQU{T} <: FieldVector{3,T}
 	I::T
 	Q::T
 	U::T
 end
 
+
+# Intrinsic synchrotron normal-mode pair (⊥, ∥) in the field-aligned basis.
+#
+# Convention (Rybicki–Lightman): +Q ≡ I_⊥ − I_∥, where ⊥/∥ refer to the
+# E-vector orientation relative to the projected magnetic field B′_⊥.
 struct ModePerpPar{T} <: FieldVector{2,T}
 	perp::T
 	par::T
 end
 
+
+# Mode-space state used by the polarized transfer integrator: (I_⊥, I_∥, U).
+#
+# In normal-mode space, ⊥ and ∥ decouple for absorption/emission (no Faraday terms).
 struct ModePerpParU{T} <: FieldVector{3,T}
 	perp::T
 	par::T
 	U::T
 end
 
+# Fractional linear polarization for power-law electrons, for emissivity and absorption:
+# Π_j(p) ≡ j_Q / j_I,  Π_α(p) ≡ α_Q / α_I.
 @inline _Pi_j(p) = (p + 1) / (p + 7 / 3)
 @inline _Pi_a(p) = (p + 2) / (p + 10 / 3)
 
+# Convert between Stokes (I,Q) and intrinsic modes (I_⊥, I_∥):
+# I = I_⊥ + I_∥,  Q = I_⊥ − I_∥.
 @inline modes_from_IQ(I, Q) = ModePerpPar((I + Q)/2, (I - Q)/2)
 @inline stokes_IQ(m::ModePerpPar) = (I=m.perp + m.par, Q=m.perp - m.par)
 
 @inline emissivity_absorption_polarized(obj::AbstractSynchrotronMedium, x4, k′) = begin
+	# Return *comoving-frame* polarized emissivity/absorption in the intrinsic field basis:
+	# (j_⊥, j_∥), (α_⊥, α_∥). For the currently implemented models we split the existing
+	# scalar Stokes-I coefficients using the RL thin-limit polarization fractions Π_j, Π_α.
 	(jI, αI) = emissivity_absorption(obj, x4, k′)
 	field = magnetic_field(obj, x4)
 
@@ -44,6 +65,7 @@ end
 end
 
 
+# Project v into the plane orthogonal to n (i.e. remove the component along n).
 @inline _project_to_plane(v::SVector{3}, n::SVector{3}) = v - dot(v, n) * n
 
 @inline _arbitrary_screen_basis(n::SVector{3}) = begin
@@ -70,13 +92,16 @@ Returns `(n′, e1′, e2′)` where all are unit 3-vectors in the comoving fram
 """
 @inline comoving_screen_basis(u::FourVelocity, k::FourFrequency) = begin
 	k′ = lorentz_unboost(u, k)
-	n′ = (@swiz k′.xyz) / k′.t
+	# Comoving photon direction (unit 3-vector): n′ = k′⃗ / k′ᵗ.
+	n′ = direction(k′)
 	@assert dot(n′, n′) ≈ 1.0
 	e1_cam = SVector(1, 0, 0)
 	e2_cam = SVector(0, 1, 0)
 
-	e1′raw = @swiz lorentz_unboost(u, FourPosition(k′.t, e1_cam)).xyz
-	e2′raw = @swiz lorentz_unboost(u, FourPosition(k′.t, e2_cam)).xyz
+	# Unboost camera basis vectors (treated as spatial four-vectors),
+	# then project them into the screen plane ⟂ n′.
+	e1′raw = @swiz lorentz_unboost(u, FourPosition(0, e1_cam)).xyz
+	e2′raw = @swiz lorentz_unboost(u, FourPosition(0, e2_cam)).xyz
 
 	e1′p = _project_to_plane(e1′raw, n′)
 	e1′ = e1′p / norm(e1′p)
@@ -106,6 +131,7 @@ Returns `(e_par, e_perp)` where:
 If `B′ ∥ n′` (vanishing projection), uses an arbitrary screen basis instead.
 """
 @inline linear_polarization_basis_from_B(n′::SVector{3}, B′::SVector{3}) = begin
+	# The +Q axis is chosen along the projected magnetic field direction B′_⊥.
 	b̂ = normalize(B′)
 	@assert all(!isnan, b̂)
 	bp = _project_to_plane(b̂, n′)
@@ -119,6 +145,7 @@ If `B′ ∥ n′` (vanishing projection), uses an arbitrary screen basis instea
 end
 
 @inline stokes_QU_rotation(χ) = let
+	# Rotate Stokes (Q,U) for a basis rotation by χ in the screen plane (2χ law).
 	s, c = sincos(χ)
 	c2 = muladd(c, c, -(s * s))
 	s2 = 2 * s * c
@@ -141,6 +168,7 @@ and uses the standard 2χ law for Stokes parameters.
 	
 """
 @inline stokes_QU_rotation(e1_old::SVector{3}, e2_old::SVector{3}, e1_new::SVector{3}) = begin
+	# Compute cosχ,sinχ via dot products (no explicit angle extraction), then apply 2χ law.
 	cosχ = dot(e1_new, e1_old)
 	sinχ = dot(e1_new, e2_old)
 	c2 = muladd(cosχ, cosχ, -(sinχ * sinχ))
@@ -148,8 +176,10 @@ and uses the standard 2χ law for Stokes parameters.
 	@SMatrix [c2 s2; -s2 c2]
 end
 
+# Apply a Q/U rotation matrix to a (Q,U) 2-vector.
 @inline rotate_QU(R, QU::SVector{2}) = R * QU
 
+# Rotate full Stokes (I,Q,U); I is invariant under basis rotations.
 @inline rotate_IQU(R, s::StokesIQU) = let
 	(Q, U) = rotate_QU(R, s.Q, s.U)
 	StokesIQU(s.I, Q, U)
