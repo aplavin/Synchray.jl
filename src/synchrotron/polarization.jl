@@ -59,6 +59,12 @@ end
 	Πj = _Pi_j(p)
 	Πα = _Pi_a(p)
 
+	# This Π-based mode split is exact for the currently implemented synchrotron models.
+	# In particular, for `AnisotropicPowerLawElectrons` the direction-dependent factor φ(θBn)
+	# multiplies both Stokes-I emissivity and absorption returned by `emissivity_absorption`.
+	# Since Π_j = jQ/jI and Π_α = αQ/αI are ratios, this common prefactor cancels and the
+	# intrinsic polarization fractions (and thus the mode split) are unchanged.
+
 	j = ModePerpPar((1 + Πj)/2 * jI, (1 - Πj)/2 * jI)
 	a = ModePerpPar((1 + Πα)/2 * αI, (1 - Πα)/2 * αI)
 	return (j, a)
