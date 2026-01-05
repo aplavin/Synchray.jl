@@ -131,6 +131,11 @@ end
 	@test unit(eltype(Iν)) == u"erg/s/cm^2/Hz/sr"
 	@test ustrip.(Iν) == Iν_nou
 	@test ustrip.(u"Jy/mas^2", Iν) ≈ [121 121; 0.028 0.028]  rtol=1e-2
+
+	res = S.withunits(S.render, cam, jet, (S.Intensity(), S.SpectralIndex()))
+	@test res[1] == Iν
+	@test eltype(res[2]) == Float64
+	@test size(res[2]) == size(Iν)
 end
 
 

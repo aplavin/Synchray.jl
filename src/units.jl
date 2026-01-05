@@ -66,5 +66,5 @@ _upost_render(result, ::Intensity) = result * UCTX.Iν0
 _upost_render(result, ::OpticalDepth) = result  # dimensionless
 _upost_render(result, ::SpectralIndex) = result  # dimensionless
 _upost_render(result, what::Tuple) = ntuple(length(what)) do i
-	_upost_render(getindex(result, i), what[i])
+	_upost_render(getindex.(result, i), what[i])
 end
