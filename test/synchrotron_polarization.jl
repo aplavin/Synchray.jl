@@ -110,6 +110,7 @@ end
 		χ = 0.41
 		B′ = cos(χ) * e1′ + sin(χ) * e2′
 		(e_par, _) = S.linear_polarization_basis_from_B(n′, B′)
+		@test dot(e_par, B′) ≈ norm(B′)
 
 		Rgeom = S.stokes_QU_rotation(e1′, e2′, e_par)
 		Rana = S.stokes_QU_rotation(χ)
