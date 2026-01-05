@@ -13,21 +13,21 @@ abstract type AbstractMedium end
 # This helper takes (j_ν, α_ν) at the frequency ν measured in the medium rest frame
 # and returns the invariant pair (𝓙, 𝓐) used for integration.
 @inline emissivity_absorption_invariant(obj::AbstractMedium, x4, k′) = begin
-	ν′ = k′.t
+	ν′ = frequency(k′)
 	(j, α) = emissivity_absorption(obj, x4, k′)
 	return (j / (ν′^2), α * ν′)
 end
 
 @inline emissivity_absorption_polarized_invariant(obj::AbstractMedium, x4, k′) = begin
-	ν′ = k′.t
+	ν′ = frequency(k′)
 	(j, α) = emissivity_absorption_polarized(obj, x4, k′)
 	return (j / (ν′^2), α * ν′)
 end
 
 # if a medium defines only `emissivity_absorption`, the generic `emissivity`/`absorption` wrappers below will work
 # `absorption` is used in optical depth calculation, maybe can drop this in future?..
-@inline emissivity_invariant(obj::AbstractMedium, x4, k′) = emissivity(obj, x4, k′) / (k′.t^2)
-@inline absorption_invariant(obj::AbstractMedium, x4, k′) = absorption(obj, x4, k′) * k′.t
+@inline emissivity_invariant(obj::AbstractMedium, x4, k′) = emissivity(obj, x4, k′) / frequency(k′)^2
+@inline absorption_invariant(obj::AbstractMedium, x4, k′) = absorption(obj, x4, k′) * frequency(k′)
 @inline emissivity(obj::AbstractMedium, x4, k′) = emissivity_absorption(obj, x4, k′)[1]
 @inline absorption(obj::AbstractMedium, x4, k′) = emissivity_absorption(obj, x4, k′)[2]
 

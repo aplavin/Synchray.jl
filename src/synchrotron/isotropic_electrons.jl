@@ -149,7 +149,7 @@ end
 	#   common ≡ (B/ν)^(p/2)
 	#   j_ν = Cj · n_e · common · √B · √ν
 	#   α_ν = Ca · n_e · common · B · ν^-2
-	ν = k′.t
+	ν = frequency(k′)
 	(;p, Cj_ordered, Ca_ordered, sinavg_j, sinavg_a) = model
 	Cj_tangled = Cj_ordered * sinavg_j
 	Ca_tangled = Ca_ordered * sinavg_a
@@ -163,7 +163,7 @@ end
 end
 
 @inline _synchrotron_coeffs(model::IsotropicPowerLawElectrons, n_e, b::SVector{3}, k′::FourFrequency) = let
-	ν = k′.t
+	ν = frequency(k′)
 	invν = inv(ν)
 	(;p, Cj_ordered, Ca_ordered) = model
 
@@ -179,7 +179,7 @@ end
 end
 
 @inline _synchrotron_coeffs(model::IsotropicPowerLawElectrons, n_e, field::TangledOrderedMixture, k′::FourFrequency) = let
-	ν = k′.t
+	ν = frequency(k′)
 	(;p, Cj_ordered, Ca_ordered, sinavg_j, sinavg_a) = model
 	κ = field.kappa
 	@assert κ ≥ 0

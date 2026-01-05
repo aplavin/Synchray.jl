@@ -94,7 +94,7 @@ end
 # Difference: multiply both coefficients by φ(θ_{Bn}; η), where η is stored on `model`
 # (via `_phi_theta(model, cos2θ)` and cached `model.Pnorm`).
 @inline _synchrotron_coeffs(model::AnisotropicPowerLawElectrons, n_e, b::SVector{3}, k′::FourFrequency) = let
-	ν = k′.t
+	ν = frequency(k′)
 	invν = inv(ν)
 	(;p, Cj_ordered, Ca_ordered) = model
 

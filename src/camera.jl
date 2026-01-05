@@ -16,14 +16,8 @@ _ray_z(x0::FourPosition, k::FourFrequency, nz::Int) = RayZ(x0, k, nz)
 _ray_z(x0::FourPosition, k::Number, nz::Int) = RayZ(x0, photon_k(k, SVector(0, 0, 1)), nz)
 
 
-photon_frequency(k::FourFrequency) = k.t
-photon_frequency(ray::RayZ) = photon_frequency(ray.k)
-
-Accessors.set(k::FourFrequency, ::typeof(photon_frequency), ν) = let
-    ν0 = photon_frequency(k)
-    return (ν / ν0) * k
-end
-Accessors.set(ray::RayZ, ::typeof(photon_frequency), ν) = @set photon_frequency(ray.k) = ν
+frequency(ray::RayZ) = frequency(ray.k)
+Accessors.set(ray::RayZ, ::typeof(frequency), ν) = @set frequency(ray.k) = ν
 
 
 struct Intensity end

@@ -139,13 +139,13 @@ integrate_ray(obj::AbstractMedium, ray::RayZ, what=Intensity()) = begin
 
 	acc = if isempty(seg)
 		z = leftendpoint(seg)
-		_integrate_ray_step(_init_acc(typeof(what), photon_frequency(ray)), obj, ray.x0 + z * k1, k, zero(float(z)))
+		_integrate_ray_step(_init_acc(typeof(what), frequency(ray)), obj, ray.x0 + z * k1, k, zero(float(z)))
 	else
 		# zs = range(seg, ray.nz)  # using StepRangeLen constructor directly is faster
 		zs = StepRangeLen(leftendpoint(seg), width(seg) / (ray.nz - 1), ray.nz)
 		Δz = step(zs)
 		Δλ = Δz / kz
-		acc = _integrate_ray_step(_init_acc(typeof(what), photon_frequency(ray)), obj, ray.x0 + first(zs) * k1, k, Δλ)
+		acc = _integrate_ray_step(_init_acc(typeof(what), frequency(ray)), obj, ray.x0 + first(zs) * k1, k, Δλ)
 		for z in zs[2:end]
 			# Spacetime stepping along the null ray: x(z) = x₀ + z·k̂, with k̂ = (1,0,0,1).
 			x = ray.x0 + z * k1
@@ -154,7 +154,7 @@ integrate_ray(obj::AbstractMedium, ray::RayZ, what=Intensity()) = begin
 		acc
 	end
 
-	ν = photon_frequency(ray)
+	ν = frequency(ray)
 	return _postprocess_acc(acc, ν, what)
 end
 
@@ -193,7 +193,7 @@ ray_contribution_profile(obj::AbstractMedium, ray::RayZ) = begin
 	@assert k == SVector(kz, 0, 0, kz)
 	k1 = k / kz
 
-	νobs = photon_frequency(ray)
+	νobs = frequency(ray)
 	FT = float(eltype(ray.x0))
 
 	# Same z-grid and step sizing as integrate_ray.

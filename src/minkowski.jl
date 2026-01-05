@@ -141,6 +141,12 @@ k = (ν, ν n)
 """
 @inline photon_k(νcam, n::SVector{3}) = FourFrequency(νcam, νcam * n)
 
+frequency(k::FourFrequency) = k.t
+Accessors.set(k::FourFrequency, ::typeof(frequency), ν) = let
+    ν0 = frequency(k)
+    return (ν / ν0) * k
+end
+
 """
     comoving_frequency(k, u)
 
