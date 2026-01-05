@@ -1,6 +1,7 @@
 - in-beam blazars: compare observed anisotropy with what's achievable with crossection-uniform jet; then tweak transverse velocity profile to reproduce
     - compare edge-brightening of not-in-beam jets with the same velocity profile
 - in-beam blazars: constrain jet viewing angle?..
+- in-beam blazars: core size roughly the same as out-beam or not? core shift?
 - edge brightening:
     - what exactly to expect from velocity structure vs overdensity? slices/spectral index
     - core shift in edge brightened jets: is it the same or very different? same with core size vs frequency
