@@ -17,8 +17,28 @@ using PyFormattedStrings
 using Accessors
 
 
+function evpa_ticks!(ax, img_IQU; step=16, min_I_frac=0.03, color=:white)
+    Imax = maximum(:I, img_IQU)
+
+    subimg = @p let 
+        CartesianIndices(img_IQU)
+        first(__):CartesianIndex(step, step):last(__)
+        img_IQU[__]
+    end
+
+    vals = @p let
+        with_axiskeys(subimg)
+        filter(((xy, s),) -> s.I ≥ min_I_frac * Imax)
+    end
+
+    scatter!(
+        FPlot(vals, ((xy, s),) -> SVector(xy...); rotation=((xy, s),) -> S.evpa(s));
+        marker=:hline, color)
+end
+
+
 function render_field(obj; extent, nz=256, npx=256, ν, t=0.0, what=S.Intensity(), adaptive_supersampling=false)
-    cam = S.CameraZ(; xys=grid(SVector, range(0±extent, npx), range(0±extent, npx)), nz, ν, t)
+    cam = S.CameraZ(; xys=grid(SVector, x=range(0±extent, npx), y=range(0±extent, npx)), nz, ν, t)
 
     result = open(render_time_log_path, "a") do io
         redirect_stdout(io) do
@@ -262,12 +282,57 @@ function bk_jet_thick_options_image()
     fig
 end
 
+function conical_jet_polarization_evpa_image()
+    φj = 2u"°"
+    θ = 7u"°"
+    axis = SVector(sin(θ), 0, cos(θ))
+
+    ne = S.PowerLawS(-2; val0=1, s0=1)
+    Bscale = S.PowerLawS(-1; val0=1, s0=1)
+
+    Bconfigs = (
+        (name="poloidal", B=S.BFieldSpec(Bscale, S.PoloidalField(), identity)),
+        (name="toroidal", B=S.BFieldSpec(Bscale, S.ToroidalField(), identity)),
+        (name="helical ψ=45°", B=S.BFieldSpec(Bscale, S.HelicalField(45u"°"), identity)),
+    )
+
+    model = S.IsotropicPowerLawElectrons(; p=2.3, Cj=1, Ca=0.1)
+
+    fig = Figure()
+    for (c, bc) in enumerate(Bconfigs)
+        pos = fig[1, c]
+        Axis(pos[1, 1]; title="$(bc.name), I + EVPA", aspect=DataAspect(), width=350, height=350)
+
+        jet0 = S.ConicalJet(;
+            axis, φj,
+            s=(1e-3 .. 50),
+            ne, bc.B,
+            speed_profile=(η -> (S.beta, 0.995)),
+            model,
+        ) |> S.prepare_for_computations
+        jet0 = @set jet0.model.Ca_ordered = 9 / jet0.model.sinavg_a
+
+        img_IQU = render_field(jet0; extent=3, ν=1, what=S.IntensityIQU())
+        img_I = getproperty.(img_IQU, :I)
+
+        plt = heatmap!(img_I; colormap=:magma, colorscale=SymLog(1e-4 * maximum(img_I)))
+        evpa_ticks!(current_axis(), img_IQU; step=5, min_I_frac=1e-5)
+        Colorbar(pos[1, 2], plt; tickformat=EngTicks(:symbol))
+        hidespines!()
+        hidedecorations!()
+    end
+    resize_to_layout!()
+    save(joinpath(outdir, "conical_jet_polarization_evpa.png"), fig)
+    fig
+end
+
 function main()
     moving_ellipsoid_image()
     synchrotron_sphere_image()
     bk_jet_image()
     bk_jet_1_knot_snapshots_image()
     bk_jet_thick_options_image()
+    conical_jet_polarization_evpa_image()
 end
 
 main()

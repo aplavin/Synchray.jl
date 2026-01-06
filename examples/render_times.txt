@@ -67,3 +67,6 @@
                  ConicalJet,       Intensity, 256px × 256: 0.068560 seconds (60 allocations: 516.531 KiB)
                  ConicalJet,       Intensity, 256px × 256: 0.106563 seconds (60 allocations: 516.531 KiB)
                  ConicalJet,       Intensity, 256px × 256: 0.085045 seconds (60 allocations: 516.531 KiB)
+                 ConicalJet,    IntensityIQU, 256px × 256: 0.163045 seconds (62 allocations: 1.504 MiB)
+                 ConicalJet,    IntensityIQU, 256px × 256: 0.109259 seconds (60 allocations: 1.504 MiB)
+                 ConicalJet,    IntensityIQU, 256px × 256: 0.171067 seconds (60 allocations: 1.504 MiB)

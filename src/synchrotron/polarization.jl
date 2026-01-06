@@ -11,6 +11,8 @@ end
 
 StaticArrays.similar_type(::Type{<:StokesIQU}, ::Type{T}, s::Size{(3,)}) where {T} = StokesIQU{T}
 
+evpa(s::StokesIQU) = 0.5 * atan(s.U, s.Q)  # electric vector position angle
+
 
 # Intrinsic synchrotron normal-mode pair (⊥, ∥) in the field-aligned basis.
 #
