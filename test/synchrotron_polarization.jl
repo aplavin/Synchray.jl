@@ -27,7 +27,7 @@
 		@test j.perp ≥ 0 && j.par ≥ 0
 		@test a.perp ≥ 0 && a.par ≥ 0
 		@test (j.perp + j.par) ≈ jI rtol=5e-15 atol=0
-		@test (a.perp + a.par) ≈ αI rtol=5e-15 atol=0
+		@test (a.perp + a.par)/2 ≈ αI rtol=5e-15 atol=0
 	end
 
 	@testset "FullyTangled depolarizes" begin
@@ -38,7 +38,7 @@
 		@test a.perp ≈ a.par
 		(jI, αI) = S.emissivity_absorption(slab, x4, k′)
 		@test (j.perp + j.par) ≈ jI rtol=5e-15 atol=0
-		@test (a.perp + a.par) ≈ αI rtol=5e-15 atol=0
+		@test (a.perp + a.par)/2 ≈ αI rtol=5e-15 atol=0
 	end
 
 	@testset "Mode↔Stokes helper sanity" begin

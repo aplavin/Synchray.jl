@@ -49,7 +49,7 @@ end
 	if field isa FullyTangled
 		# Conservative placeholder: unresolved tangling depolarizes.
 		j = ModePerpPar(jI/2, jI/2)
-		a = ModePerpPar(αI/2, αI/2)
+		a = ModePerpPar(αI, αI)
 		return (j, a)
 	end
     @assert field isa SVector{3}
@@ -66,7 +66,8 @@ end
 	# intrinsic polarization fractions (and thus the mode split) are unchanged.
 
 	j = ModePerpPar((1 + Πj)/2 * jI, (1 - Πj)/2 * jI)
-	a = ModePerpPar((1 + Πα)/2 * αI, (1 - Πα)/2 * αI)
+	# For absorption in normal modes: αI = (α_⊥ + α_∥)/2.
+	a = ModePerpPar((1 + Πα) * αI, (1 - Πα) * αI)
 	return (j, a)
 end
 
