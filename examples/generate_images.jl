@@ -17,7 +17,7 @@ using PyFormattedStrings
 using Accessors
 
 
-function evpa_ticks!(ax, img_IQU; step=16, min_I_frac=0.03, color=:white)
+function evpa_ticks!(step=16, min_I_frac=0.03, color=:white)
     Imax = maximum(:I, img_IQU)
 
     subimg = @p let 
@@ -316,7 +316,7 @@ function conical_jet_polarization_evpa_image()
         img_I = getproperty.(img_IQU, :I)
 
         plt = heatmap!(img_I; colormap=:magma, colorscale=SymLog(1e-4 * maximum(img_I)))
-        evpa_ticks!(current_axis(), img_IQU; step=5, min_I_frac=1e-5)
+        evpa_ticks!(img_IQU; step=5, min_I_frac=1e-5)
         Colorbar(pos[1, 2], plt; tickformat=EngTicks(:symbol))
         hidespines!()
         hidedecorations!()
