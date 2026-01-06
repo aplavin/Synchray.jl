@@ -37,7 +37,10 @@ end
 # Convert between Stokes (I,Q) and intrinsic modes (I_⊥, I_∥):
 # I = I_⊥ + I_∥,  Q = I_⊥ − I_∥.
 @inline modes_from_IQ(I, Q) = ModePerpPar((I + Q)/2, (I - Q)/2)
+@inline modes_from_IQU(s::StokesIQU) = ModePerpParU((s.I + s.Q)/2, (s.I - s.Q)/2, s.U)
 @inline stokes_IQ(m::ModePerpPar) = (I=m.perp + m.par, Q=m.perp - m.par)
+@inline stokes_IQU(m::ModePerpParU) = StokesIQU(m.perp + m.par, m.perp - m.par, m.U)
+
 
 @inline emissivity_absorption_polarized(obj::AbstractSynchrotronMedium, x4, k′) = begin
 	# Return *comoving-frame* polarized emissivity/absorption in the intrinsic field basis:
@@ -195,7 +198,7 @@ end
 @inline rotate_QU(R, QU::SVector{2}) = R * QU
 
 # Rotate full Stokes (I,Q,U); I is invariant under basis rotations.
-@inline rotate_IQU(R, s::StokesIQU) = let
+@inline rotate_QU(R, s::StokesIQU) = let
 	QU = rotate_QU(R, @swiz s.QU)
 	StokesIQU(s.I, QU...)
 end

@@ -21,6 +21,7 @@ Accessors.set(ray::RayZ, ::typeof(frequency), ν) = @set frequency(ray.k) = ν
 
 
 struct Intensity end
+struct IntensityIQU end
 struct OpticalDepth end
 struct SpectralIndex end
 

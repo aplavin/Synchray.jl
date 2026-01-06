@@ -5,6 +5,9 @@ AccValue{WHAT}(value) where {WHAT} = AccValue{WHAT, typeof(value)}(value)
 
 _init_acc(::Type{T}, ν0) where {T<:Tuple} = map(a -> _init_acc(a, ν0), fieldtypes(T))
 _init_acc(::Type{Intensity}, ν0) = AccValue{Intensity}(0)
+_init_acc(::Type{IntensityIQU}, ν0) = begin
+	AccValue{IntensityIQU}(StokesIQU(0, 0, 0))
+end
 _init_acc(::Type{OpticalDepth}, ν0) = AccValue{OpticalDepth}(0)
 struct AccSpectralIndex{TI, TS, DT}
 	Iinv::TI
@@ -25,6 +28,7 @@ end
 
 _postprocess_acc(acc::Tuple, ν, what::Tuple) = map((a, w) -> _postprocess_acc(a, ν, w), acc, what)
 _postprocess_acc(Iinv::AccValue{Intensity}, ν, what::Intensity) = Iinv.value * ν^3
+_postprocess_acc(Iinv::AccValue{IntensityIQU}, ν, what::IntensityIQU) = Iinv.value * ν^3
 # Optical depth is dimensionless and (with 𝓐 ≡ α_ν·ν and τ = ∫𝓐 dλ) is already
 # the quantity used in transfer; unlike intensity, it does not require a ν³ conversion.
 _postprocess_acc(τ::AccValue{OpticalDepth}, ν, what::OpticalDepth) = τ.value
@@ -72,6 +76,51 @@ const Δτ_THRESHOLD_LINEAR = 1e-2
 		Iinv * E + (Jinv / Ainv) * (1 - E)
 	end
 	return AccValue{Intensity}(Iinv)
+end
+
+@inline _rt_step_scalar(y, Jinv, Ainv, Δλ) = begin
+	Δτ = Ainv * Δλ
+	@assert Δτ ≥ 0
+	if Δτ < Δτ_THRESHOLD_LINEAR
+		return y + (Jinv - Ainv * y) * Δλ
+	end
+	E = exp(-Δτ)
+	return y * E + (Jinv / Ainv) * (1 - E)
+end
+
+@inline _integrate_ray_step(acc::AccValue{IntensityIQU}, obj::AbstractSynchrotronMedium, x4, k, Δλ) = begin
+	u = four_velocity(obj, x4)
+	k′ = lorentz_unboost(u, k)
+	(Jinv_m, Ainv_m) = emissivity_absorption_polarized_invariant(obj, x4, k′)
+
+	# Build the comoving camera screen basis and the field-aligned +Q axis.
+	(n′, e1′, e2′) = comoving_screen_basis(u, k)
+	B′ = magnetic_field(obj, x4)
+	(_, e_perp) = linear_polarization_basis_from_B(n′, B′)
+	R_cf = stokes_QU_rotation(e1′, e2′, e_perp)  # (Q,U)_field = R_cf * (Q,U)_cam
+	R_fc = R_cf'  # (Q,U)_cam = R_fc * (Q,U)_field
+
+	# Camera → field Stokes.
+	S_cam = acc.value
+	S_f = rotate_QU(R_cf, S_cam)
+
+	# Field Stokes → normal-mode state y = (I_perp, I_par, U).
+	y_old = modes_from_IQU(S_f)
+
+	# add U so that we can handle everything consistently
+	Jinv_plus = ModePerpParU(Jinv_m.perp, Jinv_m.par, 0)
+	Ainv_plus = ModePerpParU(Ainv_m.perp, Ainv_m.par, (Ainv_m.perp + Ainv_m.par)/2)
+	
+	# Diagonal normal-mode update (constant coeffs over the step).
+	y_new = _rt_step_scalar.(y_old, Jinv_plus, Ainv_plus, Δλ)
+
+	# Normal-mode → field Stokes.
+	S_f_out = stokes_IQU(y_new)
+
+	# Field → camera Stokes.
+	QU_cam_out = rotate_QU(R_fc, @swiz S_f_out.QU)
+	S_cam_out = StokesIQU(S_f_out.I, QU_cam_out...)
+	return AccValue{IntensityIQU}(S_cam_out)
 end
 
 @inline _integrate_ray_step(acc::AccValue{OpticalDepth}, obj, x4, k, Δλ) = begin
