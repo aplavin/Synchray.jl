@@ -135,10 +135,18 @@ Returns `(e_par, e_perp)` where:
 - `e_par` is the unit vector along the projection of `B′` into the plane ⟂ `n′`.
 - `e_perp = n′ × e_par`.
 
+Convention note (used throughout the polarized transfer code):
+
+- The *field-aligned Stokes basis* takes the +Q axis along `e_perp` (electric field
+	perpendicular to the projected magnetic field).
+- With this choice, `ModePerpPar(perp, par)` corresponds to intensities with the
+	E-vector along `(e_perp, e_par)` respectively, and in the field basis
+	Q ≡ I_⊥ − I_∥.
+
 If `B′ ∥ n′` (vanishing projection), uses an arbitrary screen basis instead.
 """
 @inline linear_polarization_basis_from_B(n′::SVector{3}, B′::SVector{3}) = begin
-	# The +Q axis is chosen along the projected magnetic field direction B′_⊥.
+	# Return both screen-plane axes tied to B′: e_par ∥ proj(B′), e_perp ⟂ proj(B′).
 	b̂ = normalize(B′)
 	@assert all(!isnan, b̂)
 	bp = _project_to_plane(b̂, n′)

@@ -95,8 +95,9 @@ end
 		u = S.FourVelocity(SVector(0, 0, 0))
 		(n′, e1′, e2′) = S.comoving_screen_basis(u, k)
 
-		(e_par, e_perp) = S.linear_polarization_basis_from_B(n′, SVector(1, 0, 0))
-		R = S.stokes_QU_rotation(e1′, e2′, e_par)
+		# Choose B′ so that e_perp aligns with e1′ up to a 180° flip.
+		(_, e_perp) = S.linear_polarization_basis_from_B(n′, SVector(0, 1, 0))
+		R = S.stokes_QU_rotation(e1′, e2′, e_perp)
 		@test R ≈ SMatrix{2,2}(I)
 	end
 
@@ -106,13 +107,13 @@ end
 		u = S.FourVelocity(SVector(0, 0, 0))
 		(n′, e1′, e2′) = S.comoving_screen_basis(u, k)
 
-		# Choose B′ in the comoving screen plane at a known angle χ from e1′.
+		# Choose B′ so that e_perp (the +Q axis) is at a known angle χ from e1′.
 		χ = 0.41
-		B′ = cos(χ) * e1′ + sin(χ) * e2′
-		(e_par, _) = S.linear_polarization_basis_from_B(n′, B′)
+		B′ = sin(χ) * e1′ - cos(χ) * e2′
+		(e_par, e_perp) = S.linear_polarization_basis_from_B(n′, B′)
 		@test dot(e_par, B′) ≈ norm(B′)
 
-		Rgeom = S.stokes_QU_rotation(e1′, e2′, e_par)
+		Rgeom = S.stokes_QU_rotation(e1′, e2′, e_perp)
 		Rana = S.stokes_QU_rotation(χ)
 		@test Rgeom ≈ Rana
 	end
@@ -132,10 +133,10 @@ end
 		@test dot(e1′, e2′) ≈ 0  atol=√eps(1.)
 		@test cross(n′, e1′) ≈ e2′
 
-		# Construct B′ with a nonzero component along n′; projection should still align with e1′.
-		B′ = e1′ + 0.2 * n′
-		(e_par, _) = S.linear_polarization_basis_from_B(n′, B′)
-		R = S.stokes_QU_rotation(e1′, e2′, e_par)
+		# Construct B′ with a nonzero component along n′, while e_perp aligns with e1′ (up to a 180° flip).
+		B′ = -e2′ + 0.2 * n′
+		(_, e_perp) = S.linear_polarization_basis_from_B(n′, B′)
+		R = S.stokes_QU_rotation(e1′, e2′, e_perp)
 		@test R ≈ SMatrix{2,2}(I)
 	end
 
