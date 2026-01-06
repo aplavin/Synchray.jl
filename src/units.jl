@@ -63,6 +63,7 @@ end
 @unstable withunits(::typeof(render), cam, obj, what; kwargs...) = _upost_render(render(cam, obj, what; kwargs...), what)
 
 _upost_render(result, ::Intensity) = result * UCTX.Iν0
+_upost_render(result, ::IntensityIQU) = result * UCTX.Iν0
 _upost_render(result, ::OpticalDepth) = result  # dimensionless
 _upost_render(result, ::SpectralIndex) = result  # dimensionless
 _upost_render(result, what::Tuple) = ntuple(length(what)) do i

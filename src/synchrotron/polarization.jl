@@ -9,6 +9,8 @@ struct StokesIQU{T} <: FieldVector{3,T}
 	U::T
 end
 
+StaticArrays.similar_type(::Type{<:StokesIQU}, ::Type{T}, s::Size{(3,)}) where {T} = StokesIQU{T}
+
 
 # Intrinsic synchrotron normal-mode pair (⊥, ∥) in the field-aligned basis.
 #
