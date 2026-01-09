@@ -156,3 +156,42 @@ end
 		@test x0.t == x4.t - x4.z
 	end
 end
+
+@testitem "ray_in_jet_plane and camera_band_in_jet_plane" begin
+	import Synchray as S
+	using RectiGrids
+
+	φj = 0.1
+	axis = SVector(sin(0.2), 0.0, cos(0.2))
+	jet = S.ConicalJet(;
+		axis,
+		φj,
+		s=(1.0 .. 10.0),
+		ne=S.PowerLawS(-2; val0=1.0, s0=1.0),
+		B=S.BFieldSpec(S.PowerLawS(-1; val0=1.0, s0=1.0), S.ScalarField(), b -> S.FullyTangled(b)),
+		speed_profile=(η -> (S.beta, 0.9)),
+		model=S.IsotropicPowerLawElectrons(; p=2.5, Cj=1.0, Ca=0.1),
+	) |> S.prepare_for_computations
+
+	z_range = 0.0 .. 20.0
+
+	@testset "ray_in_jet_plane" begin
+		ray = S.RayZ(; x0=S.FourPosition(0.0, 1.0, 0.0, 0.0), k=1.0, nz=16)
+		pts = S.ray_in_jet_plane(ray, jet; z_range)
+
+		@test length(pts) == 2
+		@test all(p -> p isa SVector{2}, pts)
+		# Line should have different s values at endpoints
+		@test pts[1][1] != pts[2][1]
+	end
+
+	@testset "camera_band_in_jet_plane" begin
+		cam = S.CameraZ(; xys=grid(SVector, x=range(-1.0, 1.0, 8), y=range(-1.0, 1.0, 8)), nz=16, ν=1.0, t=0.0)
+		corners = S.camera_band_in_jet_plane(cam, jet; z_range)
+
+		@test length(corners) == 4
+		@test all(c -> c isa SVector{2}, corners)
+		# Corners should form a quadrilateral (not all same point)
+		@test !allequal(corners)
+	end
+end

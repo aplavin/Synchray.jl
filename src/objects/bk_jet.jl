@@ -193,6 +193,50 @@ This is the inverse of `lab_to_jet_coords`.
 jet_to_lab_coords(jet::ConicalBKJet, rjet::SVector{3}) = jet_to_lab_coords(jet.axis, rjet)
 
 """
+    ray_in_jet_plane(ray, jet; z_range) -> Vector{SVector{2}}
+
+Project a ray into jet-plane coordinates (s, h) where s is along the jet axis
+and h is perpendicular (in the plane containing jet axis and lab z).
+
+Returns two points defining the line segment for the given `z_range` interval.
+"""
+function ray_in_jet_plane(ray::RayZ, jet; z_range)
+    x0, y0, _ = ray.x0.x, ray.x0.y, ray.x0.z
+    z1, z2 = endpoints(z_range)
+
+    r1_jet = lab_to_jet_coords(jet, SVector(x0, y0, z1))
+    r2_jet = lab_to_jet_coords(jet, SVector(x0, y0, z2))
+
+    # (s, h) = (z_jet, x_jet)
+    [SVector(r1_jet[3], r1_jet[1]), SVector(r2_jet[3], r2_jet[1])]
+end
+
+"""
+    camera_band_in_jet_plane(cam, jet; z_range) -> Vector{SVector{2}}
+
+Project the camera's field of view into jet-plane coordinates (s, h).
+
+Returns four corners of the band (polygon) swept by camera rays in the y=0 plane.
+"""
+function camera_band_in_jet_plane(cam::CameraZ, jet; z_range)
+    xs = map(xy -> xy[1], cam.xys)
+    xmin, xmax = extrema(xs)
+    z1, z2 = endpoints(z_range)
+
+    corners_lab = [
+        SVector(xmin, 0.0, z1),
+        SVector(xmax, 0.0, z1),
+        SVector(xmax, 0.0, z2),
+        SVector(xmin, 0.0, z2),
+    ]
+
+    map(corners_lab) do r_lab
+        r_jet = lab_to_jet_coords(jet, r_lab)
+        SVector(r_jet[3], r_jet[1])
+    end
+end
+
+"""
 	is_inside_jet(jet::ConicalBKJet, x4::FourPosition) -> Bool
 
 Return whether the spacetime event `x4` lies inside the truncated conical jet volume.
