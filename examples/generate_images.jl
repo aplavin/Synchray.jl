@@ -17,7 +17,7 @@ using PyFormattedStrings
 using Accessors
 
 
-function evpa_ticks!(step=16, min_I_frac=0.03, color=:white)
+function evpa_ticks!(img_IQU; step=16, min_I_frac=0.03, color=:white)
     Imax = maximum(:I, img_IQU)
 
     subimg = @p let 
