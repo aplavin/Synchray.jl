@@ -193,22 +193,18 @@ This is the inverse of `lab_to_jet_coords`.
 jet_to_lab_coords(jet::ConicalBKJet, rjet::SVector{3}) = jet_to_lab_coords(jet.axis, rjet)
 
 """
-    ray_in_jet_plane(ray, jet; z_range) -> Vector{SVector{2}}
+    ray_in_jet_coords(ray, jet; z_range) -> Vector{SVector{3}}
 
-Project a ray into jet-plane coordinates (s, h) where s is along the jet axis
-and h is perpendicular (in the plane containing jet axis and lab z).
+Project a ray into jet coordinates.
 
-Returns two points defining the line segment for the given `z_range` interval.
+Returns two 3-vectors in jet frame defining the line segment for the given `z_range` interval.
+Use `@swiz` at call sites to extract desired components, e.g., `@swiz r.zx` for (s, h) coordinates.
 """
-function ray_in_jet_plane(ray::RayZ, jet; z_range)
-    x0, y0, _ = ray.x0.x, ray.x0.y, ray.x0.z
-    z1, z2 = endpoints(z_range)
-
-    r1_jet = lab_to_jet_coords(jet, SVector(x0, y0, z1))
-    r2_jet = lab_to_jet_coords(jet, SVector(x0, y0, z2))
-
-    # (s, h) = (z_jet, x_jet)
-    [SVector(r1_jet[3], r1_jet[1]), SVector(r2_jet[3], r2_jet[1])]
+function ray_in_jet_coords(ray::RayZ, jet; z_range)
+	map(endpoints(z_range)) do z
+		r_lab = SVector(ray.x0.x, ray.x0.y, z)
+		lab_to_jet_coords(jet, r_lab)
+	end |> collect |> StructArray
 end
 
 """
@@ -217,10 +213,14 @@ end
 Project the camera's field of view into jet-plane coordinates (s, h).
 
 Returns four corners of the band (polygon) swept by camera rays in the y=0 plane.
+
+!!! note
+    This function only uses the x-extent of the camera and assumes y=0, which is appropriate
+    for 2D visualizations in the plane containing the jet axis and lab x-axis. It may not
+    correctly represent the full camera FOV when the jet axis has significant y-component.
 """
-function camera_band_in_jet_plane(cam::CameraZ, jet; z_range)
-    xs = map(xy -> xy[1], cam.xys)
-    xmin, xmax = extrema(xs)
+@unstable function camera_band_in_jet_plane(cam::CameraZ, jet; z_range)
+    xmin, xmax = extrema(xy -> xy.x, cam.xys)
     z1, z2 = endpoints(z_range)
 
     corners_lab = [

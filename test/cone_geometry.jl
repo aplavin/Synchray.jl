@@ -157,7 +157,7 @@ end
 	end
 end
 
-@testitem "ray_in_jet_plane and camera_band_in_jet_plane" begin
+@testitem "ray_in_jet_coords and camera_band_in_jet_plane" begin
 	import Synchray as S
 	using RectiGrids
 
@@ -175,14 +175,15 @@ end
 
 	z_range = 0.0 .. 20.0
 
-	@testset "ray_in_jet_plane" begin
+	@testset "ray_in_jet_coords" begin
 		ray = S.RayZ(; x0=S.FourPosition(0.0, 1.0, 0.0, 0.0), k=1.0, nz=16)
-		pts = S.ray_in_jet_plane(ray, jet; z_range)
+		pts = S.ray_in_jet_coords(ray, jet; z_range)
 
 		@test length(pts) == 2
-		@test all(p -> p isa SVector{2}, pts)
-		# Line should have different s values at endpoints
-		@test pts[1][1] != pts[2][1]
+		@test all(p -> p isa SVector{3}, pts)
+		@swiz pts.z
+		# Line should have different s values at endpoints (s is z-component in jet frame)
+		@test pts[1][3] != pts[2][3]
 	end
 
 	@testset "camera_band_in_jet_plane" begin
