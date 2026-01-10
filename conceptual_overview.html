@@ -1,0 +1,409 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Synchray.jl — Conceptual Overview</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #ffffff;
+      --fg: #111111;
+      --muted: rgba(0, 0, 0, 0.65);
+      --border: rgba(0, 0, 0, 0.18);
+      --panel: rgba(0, 0, 0, 0.03);
+      --link: #0b5fff;
+
+      /* Julia brand colors (RGB triplets) for subtle row tinting. */
+      --julia-red: 203, 60, 51;
+      --julia-green: 56, 152, 38;
+      --julia-purple: 149, 88, 178;
+      --julia-blue: 64, 99, 216;
+
+      --diagramTint: 0.04;
+
+      --rowTintLeft: 0.1;
+      --rowTintRight: 0.3;
+    }
+    body {
+      margin: 0;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+      line-height: 1.35;
+      background: var(--bg);
+      color: var(--fg);
+    }
+    header {
+      padding: 20px 16px;
+      border-bottom: 1px solid var(--border);
+    }
+    main { padding: 16px; max-width: 1100px; margin: 0 auto; }
+    h1 { margin: 0 0 6px 0; font-size: 22px; }
+    .subtitle { margin: 0; opacity: 0.8; }
+
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin: 14px 0 18px 0;
+    }
+    button {
+      border: 1px solid var(--border);
+      background: var(--bg);
+      color: var(--fg);
+      padding: 6px 10px;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+    button:hover { background: var(--panel); }
+
+    .note {
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: var(--panel);
+      margin: 12px 0 18px 0;
+    }
+
+    a { color: var(--link); }
+    code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+    pre {
+      padding: 10px 12px;
+      border-radius: 10px;
+      overflow: auto;
+      border: 1px solid var(--border);
+      background: var(--panel);
+    }
+
+    details {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 8px 10px;
+      margin: 10px 0;
+      background: var(--bg);
+    }
+    summary {
+      cursor: pointer;
+      list-style: none;
+      font-weight: 650;
+      padding: 2px 0;
+    }
+    summary::-webkit-details-marker { display: none; }
+    summary::before {
+      content: "▸";
+      display: inline-block;
+      width: 1.2em;
+      opacity: 0.85;
+    }
+    details[open] summary::before { content: "▾"; }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 10px;
+    }
+
+    .diagram-wrap {
+      padding: 10px;
+      overflow: auto;
+    }
+
+    /* Diagram layout: HTML grid + SVG overlay arrows. */
+    .diagram-host {
+      position: relative;
+      display: block;
+      width: 100%;
+      padding: 6px;
+    }
+    .diagram-grid {
+      display: grid;
+      grid-template-columns: 50% 50%;
+      grid-template-rows: auto auto auto;
+      gap: 22px 40px;
+      align-items: start;
+      width: 95%;
+    }
+    .stack {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+    .nodebox {
+      border: 1px solid var(--border);
+      background: var(--panel);
+      border-radius: 12px;
+      padding: 12px 14px;
+      box-sizing: border-box;
+    }
+    .nodebox.tinted {
+      background:
+        linear-gradient(
+          rgba(var(--rowColor), var(--rowAlpha)),
+          rgba(var(--rowColor), var(--rowAlpha))
+        ),
+        var(--panel);
+    }
+    .nodebox.colL { --rowAlpha: var(--rowTintLeft); }
+    .nodebox.colR { --rowAlpha: var(--rowTintRight); }
+    .nodebox.row1 { --rowColor: var(--julia-red); }
+    .nodebox.row2 { --rowColor: var(--julia-green); }
+    .nodebox.row3 { --rowColor: var(--julia-purple); }
+    .nodebox h3 {
+      margin: 0 0 8px 0;
+      font-size: 14px;
+      font-weight: 750;
+    }
+    .nodebox .lines {
+      margin: 0;
+      padding-left: 16px;
+      opacity: 0.9;
+      font-size: 12px;
+    }
+    .nodebox .lines li { margin: 3px 0; }
+    .nodebox .line {
+      margin: 0;
+      opacity: 0.9;
+      font-size: 12px;
+    }
+    .nodebox .line + .line { margin-top: 4px; }
+
+    svg.diagram-arrows {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      overflow: visible;
+    }
+    .edge { stroke: rgb(var(--julia-blue)); stroke-width: 1.2; fill: none; }
+
+
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 10px;
+      opacity: 0.85;
+    }
+    .legend span { white-space: nowrap; }
+
+    @media (min-width: 900px) {
+      .grid { grid-template-columns: 1fr 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Synchray.jl — Conceptual Overview</h1>
+    <div class="note">
+      This page is meant as a <b>conceptual</b> overview (not API docs).
+    </div>
+  </header>
+
+  <main>
+    <section aria-labelledby="diagram">
+      <div class="diagram-wrap" role="img" aria-label="High-level architecture diagram">
+        <div class="diagram-host" id="diagramHost" aria-hidden="true">
+          <svg class="diagram-arrows" id="diagramArrows" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+                <polygon points="0 0, 10 3.5, 0 7" fill="rgb(var(--julia-blue))" />
+              </marker>
+            </defs>
+            <g id="arrowLayer"></g>
+          </svg>
+
+          <div class="diagram-grid" id="diagramGrid">
+            <div class="stack" style="grid-column: 1; grid-row: 1;">
+              <div class="nodebox tinted row1 colL" id="node-magnetic">
+                <h3>Magnetic field</h3>
+                <ul class="lines">
+                  <li>arbitrary field: <code>B(x,t)</code></li>
+                  <li>ordered / <code>FullyTangled</code> / <code>TangledOrderedMixture</code></li>
+                </ul>
+              </div>
+
+              <div class="nodebox tinted row1 colL" id="node-particles">
+                <h3>Electrons</h3>
+                <ul class="lines">
+                  <li>arbitrary density profile: <code>nₑ(x,t)</code></li>
+                  <li>energy distribution (e.g. power-law with <code>γmin</code>/<code>γmax</code>)</li>
+                  <li>isotropic / pitch-angle concentration</li>
+                </ul>
+              </div>
+            </div>
+
+            <div class="nodebox tinted row1 colR" id="node-microphysics" style="grid-column: 2; grid-row: 1;">
+              <h3>Microphysics</h3>
+              <p class="line">given local state (nₑ, B′) and k′, compute coefficients</p>
+              <p class="line">outputs: comoving emissivity/absorption jν′, αν′ (including polarization)</p>
+            </div>
+
+            <div class="stack" style="grid-column: 1; grid-row: 2;">
+              <div class="nodebox tinted row2 colL" id="node-velocity">
+                <h3>Velocity profile</h3>
+                <p class="line"><code>u(x)</code>: bulk 4-velocity (<code>four_velocity</code>)</p>
+              </div>
+
+              <div class="nodebox tinted row2 colL" id="node-geometry">
+                <h3>Geometry</h3>
+                <ul class="lines">
+                  <li>provides ray intersection, <code>z_interval()</code></li>
+                    <li>slab / sphere / ellipsoid</li>
+                    <li>cone, includes helpers:<br>
+                    <code>B</code> and <code>nₑ</code> ~ r<sup>k</sup><br>
+                    <code>B</code>: <code>Poloidal()</code> / <code>Toroidal()</code> / <code>Helical(ψ)</code><br>
+                        u: radial, arbitrary transverse profile
+                    </li>
+                </ul>
+              </div>
+
+              <div class="nodebox tinted row2 colL" id="node-patterns">
+                <h3>Patterns/knots</h3>
+                <p class="line">modulate nₑ and/or |B′| in a time-dependent fashion</p>
+              </div>
+            </div>
+
+            <div class="nodebox tinted row2 colR" id="node-medium" style="grid-column: 2; grid-row: 2;">
+              <h3>Medium</h3>
+              <p class="line">geometry + velocity + microphysics + patterns</p>
+              <p class="line"><code>AbstractMedium</code> / <code>AbstractSynchrotronMedium</code></p>
+              <p class="line">a composed object the renderer queries along rays</p>
+            </div>
+
+            <div class="stack" style="grid-column: 1; grid-row: 3;">
+              <div class="nodebox tinted row3 colL" id="node-what">
+                <h3>Targets</h3>
+                <ul class="lines">
+                  <li><code>Intensity</code>: I or <code>IQU</code></li>
+                  <li><code>OpticalDepth</code> τ</li>
+                  <li><code>SpectralIndex</code> α (using autodiff)</li>
+                </ul>
+              </div>
+
+              <div class="nodebox tinted row3 colL" id="node-camera">
+                <h3>Camera</h3>
+                <p class="line"><code>CameraZ(xys, nz, ν, t)</code> or individual <code>RayZ()</code></p>
+              </div>
+
+              <div class="nodebox tinted row3 colL" id="node-units">
+                <h3>Units</h3>
+                <p class="line">(optional)<br><code>withunits(...)</code>: strip units before rendering and restore them in the result</p>
+              </div>
+            </div>
+
+            <div class="nodebox tinted row3 colR" id="node-render" style="grid-column: 2; grid-row: 3;">
+              <h3>Render</h3>
+              <p class="line"><code>render([ray or camera], medium, target)</code></p>
+              <p class="line">integrate SR invariants along rays</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <footer style="margin: 28px 0 10px 0; opacity: 0.7; font-size: 12px;">
+      Generated as a repository artifact (static HTML). Last updated: 2026-01-06.
+    </footer>
+  </main>
+
+</body>
+</html>
+
+<script>
+  (function () {
+    const host = document.getElementById('diagramHost');
+    const svg = document.getElementById('diagramArrows');
+    const layer = document.getElementById('arrowLayer');
+    if (!host || !svg || !layer) return;
+
+    const edges = [
+      // Row 1
+      { from: 'node-magnetic', to: 'node-microphysics', fromSide: 'right', toSide: 'left' },
+      { from: 'node-particles', to: 'node-microphysics', fromSide: 'right', toSide: 'left' },
+      // Row 2 (+ microphysics)
+      { from: 'node-microphysics', to: 'node-medium', fromSide: 'bottom', toSide: 'top' },
+      { from: 'node-geometry', to: 'node-medium', fromSide: 'right', toSide: 'left' },
+      { from: 'node-velocity', to: 'node-medium', fromSide: 'right', toSide: 'left' },
+      { from: 'node-patterns', to: 'node-medium', fromSide: 'right', toSide: 'left' },
+      // Row 3 (+ medium)
+      { from: 'node-medium', to: 'node-render', fromSide: 'bottom', toSide: 'top' },
+      { from: 'node-what', to: 'node-render', fromSide: 'right', toSide: 'left' },
+      { from: 'node-camera', to: 'node-render', fromSide: 'right', toSide: 'left' },
+      { from: 'node-units', to: 'node-render', fromSide: 'right', toSide: 'left' },
+    ];
+
+    function anchorPoint(rect, side) {
+      switch (side) {
+        case 'left':
+          return { x: rect.left, y: rect.top + rect.height / 2 };
+        case 'right':
+          return { x: rect.right, y: rect.top + rect.height / 2 };
+        case 'top':
+          return { x: rect.left + rect.width / 2, y: rect.top };
+        case 'bottom':
+          return { x: rect.left + rect.width / 2, y: rect.bottom };
+        default:
+          return { x: rect.right, y: rect.top + rect.height / 2 };
+      }
+    }
+
+    function makeOrthogonalPath(a, b, fromSide, toSide) {
+      // Keep it simple: one elbow for horizontal, one elbow for vertical.
+      if ((fromSide === 'right' || fromSide === 'left') && (toSide === 'left' || toSide === 'right')) {
+        const midX = (a.x + b.x) / 2;
+        return `M ${a.x} ${a.y} L ${midX} ${a.y} L ${midX} ${b.y} L ${b.x} ${b.y}`;
+      }
+      if ((fromSide === 'top' || fromSide === 'bottom') && (toSide === 'top' || toSide === 'bottom')) {
+        const midY = (a.y + b.y) / 2;
+        return `M ${a.x} ${a.y} L ${a.x} ${midY} L ${b.x} ${midY} L ${b.x} ${b.y}`;
+      }
+      // Fallback: straight line.
+      return `M ${a.x} ${a.y} L ${b.x} ${b.y}`;
+    }
+
+    function renderArrows() {
+      const hostRect = host.getBoundingClientRect();
+
+      // Size svg to host box; use a matching viewBox so coordinates are in CSS pixels.
+      const w = hostRect.width;
+      const h = hostRect.height;
+      svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
+      svg.setAttribute('width', w);
+      svg.setAttribute('height', h);
+
+      layer.innerHTML = '';
+
+      for (const e of edges) {
+        const fromEl = document.getElementById(e.from);
+        const toEl = document.getElementById(e.to);
+        if (!fromEl || !toEl) continue;
+
+        const fr = fromEl.getBoundingClientRect();
+        const tr = toEl.getBoundingClientRect();
+
+        const a0 = anchorPoint(fr, e.fromSide);
+        const b0 = anchorPoint(tr, e.toSide);
+
+        const a = { x: a0.x - hostRect.left, y: a0.y - hostRect.top };
+        const b = { x: b0.x - hostRect.left, y: b0.y - hostRect.top };
+
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        path.setAttribute('d', makeOrthogonalPath(a, b, e.fromSide, e.toSide));
+        path.setAttribute('class', 'edge');
+        path.setAttribute('marker-end', 'url(#arrowhead)');
+        layer.appendChild(path);
+      }
+    }
+
+    // Re-render when layout changes.
+    const ro = new ResizeObserver(() => renderArrows());
+    ro.observe(host);
+    window.addEventListener('resize', renderArrows, { passive: true });
+
+    // Initial render after layout/fonts settle.
+    if (document.fonts && document.fonts.ready) {
+      document.fonts.ready.then(() => renderArrows());
+    }
+    window.requestAnimationFrame(() => renderArrows());
+  })();
+</script>
