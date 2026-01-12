@@ -193,21 +193,6 @@ end
 		@test flux(0.5) / flux(1) ≈ 1  rtol=0.07
 	end
 
-	@testset "float64 vs float32" begin
-		cam64 = S.CameraZ(; xys=grid(S.SVector, range(0.01..0.1, 2), range(-0.001..0.001, 2)), nz=20, ν=2., t=0.)
-		cam32 = S.to_float_type(Float32, cam64)
-
-		jet64 = jet
-		jet32 = S.to_float_type(Float32, S.prepare_for_computations(jet64))
-
-		f64 = S.render(cam64, jet64)
-		f32 = S.render(cam32, jet32)
-		@test eltype(f64) == Float64
-		@test eltype(f32) == Float32
-		@test all(>(0), f64)
-		@test f32 ≈ f64  rtol=1e-5
-	end
-
 	ray_at_s(ν, s; nz=2048) = begin
 		rxy = (@swiz jet.axis.xy) * s
 		S.RayZ(; x0=S.FourPosition(0, rxy..., 0), k=ν, nz)
@@ -227,4 +212,67 @@ end
 		I_B = S.render(ray, @set jet.B0 *= 2)
 		@test I_B ≈ I0 * (2^((p + 1) / 2)) rtol=0.07
 	end
+end
+
+@testitem "float64 vs float32" begin
+	import Synchray as S
+	using Accessors
+	using RectiGrids
+	using Optim, Roots
+
+	φj = 0.05
+	θ = 0.2  # viewing angle (> φj)
+
+	jet = S.ConicalBKJet(; 
+		axis=S.SVector(sin(θ), 0.0, cos(θ)),
+		φj,
+		s=1e-3..50,
+		s0=1.,
+		ne0=1.,
+		B0=3.,
+		speed_profile=(η -> (S.beta, 0f0)),
+		model=S.IsotropicPowerLawElectrons(; p=2.5, Cj=1.0, Ca=1.0),
+	)
+
+	cam64 = S.CameraZ(; xys=grid(S.SVector, range(0.01..0.1, 2), range(-0.001..0.001, 2)), nz=20, ν=2., t=0.)
+	cam32 = S.to_float_type(Float32, cam64)
+
+	jet64 = jet
+	jet32 = S.to_float_type(Float32, S.prepare_for_computations(jet64))
+
+	f64 = S.render(cam64, jet64)
+	f32 = S.render(cam32, jet32)
+	@test eltype(f64) == Float64
+	@test eltype(f32) == Float32
+	@test all(>(0), f64)
+	@test f32 ≈ f64  rtol=1e-5
+
+	# Test that coordinate transformation functions preserve Float32
+	rot_mat32 = S.jet_rotation_matrix(jet32)
+	rot_mat64 = S.jet_rotation_matrix(jet64)
+	@test eltype(rot_mat32) == Float32
+	@test eltype(rot_mat64) == Float64
+	@test rot_mat32 ≈ rot_mat64
+	
+	(ex32, ey32, ez32) = S.jet_basis(jet32)
+	(ex64, ey64, ez64) = S.jet_basis(jet64)
+	@test eltype(ex32) == Float32
+	@test eltype(ez32) == Float32
+	@test ex32 ≈ ex64
+	
+	r32 = S.SVector(Float32(1.5), Float32(-0.3), Float32(2.0))
+	r64 = S.SVector(1.5, -0.3, 2.0)
+	
+	rjet32 = S.lab_to_jet_coords(jet32, r32)
+	rjet64 = S.lab_to_jet_coords(jet64, r64)
+	@test eltype(rjet32) == Float32
+	@test eltype(rjet64) == Float64
+	@test rjet32 ≈ rjet64
+	
+	rlab32 = S.jet_to_lab_coords(jet32, rjet32)
+	rlab64 = S.jet_to_lab_coords(jet64, rjet64)
+	@test eltype(rlab32) == Float32
+	@test eltype(rlab64) == Float64
+	@test rlab32 ≈ r32
+	@test rlab64 ≈ r64
 end
