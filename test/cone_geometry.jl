@@ -159,7 +159,7 @@ end
 	end
 end
 
-@testitem "ray_in_jet_coords and camera_band_in_jet_plane" begin
+@testitem "ray_in_jet_coords and camera_band_in_jet_coords" begin
 	import Synchray as S
 	using RectiGrids
 
@@ -188,12 +188,12 @@ end
 		@test pts[1][3] != pts[2][3]
 	end
 
-	@testset "camera_band_in_jet_plane" begin
+	@testset "camera_band_in_jet_coords" begin
 		cam = S.CameraZ(; xys=grid(SVector, x=range(-1.0, 1.0, 8), y=range(-1.0, 1.0, 8)), nz=16, ν=1.0, t=0.0)
-		corners = S.camera_band_in_jet_plane(cam, jet; z_range)
+		corners = S.camera_band_in_jet_coords(cam, jet; z_range)
 
 		@test length(corners) == 4
-		@test all(c -> c isa SVector{2}, corners)
+		@test all(c -> c isa SVector{3}, corners)
 		# Corners should form a quadrilateral (not all same point)
 		@test !allequal(corners)
 	end

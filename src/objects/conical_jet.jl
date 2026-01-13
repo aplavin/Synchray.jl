@@ -234,31 +234,26 @@ function ray_in_jet_coords(ray::RayZ, jet; z_range)
 end
 
 """
-    camera_band_in_jet_plane(cam, jet; z_range) -> Vector{SVector{2}}
+    camera_band_in_jet_coords(cam, jet; y=0, z_range) -> Vector{SVector{3}}
 
 Project the camera's field of view into jet-plane coordinates (s, h).
 
-Returns four corners of the band (polygon) swept by camera rays in the y=0 plane.
-
-!!! note
-    This function only uses the x-extent of the camera and assumes y=0, which is appropriate
-    for 2D visualizations in the plane containing the jet axis and lab x-axis. It may not
-    correctly represent the full camera FOV when the jet axis has significant y-component.
+Returns four corners of the band (polygon) swept by camera rays in the y=y plane.
+Use `@swiz` at call sites to extract desired components, e.g., `@swiz r.zx` for (s, h) coordinates.
 """
-@unstable function camera_band_in_jet_plane(cam::CameraZ, jet; z_range)
+@unstable function camera_band_in_jet_coords(cam::CameraZ, jet; y=0, z_range)
     xmin, xmax = extrema(xy -> xy.x, cam.xys)
     z1, z2 = endpoints(z_range)
 
-    corners_lab = [
-        SVector(xmin, 0.0, z1),
-        SVector(xmax, 0.0, z1),
-        SVector(xmax, 0.0, z2),
-        SVector(xmin, 0.0, z2),
-    ]
+    corners_lab = StructArray([
+        SVector(xmin, y, z1),
+        SVector(xmax, y, z1),
+        SVector(xmax, y, z2),
+        SVector(xmin, y, z2),
+    ])
 
     map(corners_lab) do r_lab
-        r_jet = lab_to_jet_coords(jet, r_lab)
-        SVector(r_jet[3], r_jet[1])
+        lab_to_jet_coords(jet, r_lab)
     end
 end
 
