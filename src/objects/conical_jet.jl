@@ -6,15 +6,15 @@ Base.tan(x::AngleTrigCached) = x.tan
 Base.cos(x::AngleTrigCached) = x.cos
 AngleTrigCached_fromangle(φ) = AngleTrigCached(tan(φ), cos(φ))
 
-struct PowerLawS{Texp,Tval,Ts0}
+struct PowerLaw{Texp,Tval,Ts0}
 	exp::Texp
 	val0::Tval
 	s0::Ts0
 end
 
-PowerLawS(exp; val0, s0=one(val0)) = PowerLawS(exp, val0, s0)
+PowerLaw(exp; val0, s0=one(val0)) = PowerLaw(exp, val0, s0)
 
-@inline (pl::PowerLawS)(s) = s > 0 ? pl.val0 * (s / pl.s0)^pl.exp : zero(float(pl.val0))
+@inline (pl::PowerLaw)(s) = s > 0 ? pl.val0 * (s / pl.s0)^pl.exp : zero(float(pl.val0))
 
 abstract type AbstractJetFieldDirection end
 

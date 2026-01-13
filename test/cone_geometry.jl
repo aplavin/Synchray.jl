@@ -93,8 +93,8 @@ end
 			axis=SVector(0.0, 0.0, 1.0),
 			φj,
 			s=0.0..10.0,
-			ne=S.PowerLawS(-2; val0=1.0, s0=1.0),
-			B=S.BFieldSpec_OLD(S.PowerLawS(-1; val0=1.0, s0=1.0), S.ScalarField(), b -> S.FullyTangled(b)),
+			ne=S.PowerLaw(-2; val0=1.0, s0=1.0),
+			B=S.BFieldSpec_OLD(S.PowerLaw(-1; val0=1.0, s0=1.0), S.ScalarField(), b -> S.FullyTangled(b)),
 			speed_profile=(η -> (S.beta, 0.0)),
 			model=S.IsotropicPowerLawElectrons(; p=2.5, Cj=1.0, Ca=1.0),
 		)
@@ -169,8 +169,8 @@ end
 		axis,
 		φj,
 		s=(1.0 .. 10.0),
-		ne=S.PowerLawS(-2; val0=1.0, s0=1.0),
-		B=S.BFieldSpec_OLD(S.PowerLawS(-1; val0=1.0, s0=1.0), S.ScalarField(), b -> S.FullyTangled(b)),
+		ne=S.PowerLaw(-2; val0=1.0, s0=1.0),
+		B=S.BFieldSpec_OLD(S.PowerLaw(-1; val0=1.0, s0=1.0), S.ScalarField(), b -> S.FullyTangled(b)),
 		speed_profile=(η -> (S.beta, 0.9)),
 		model=S.IsotropicPowerLawElectrons(; p=2.5, Cj=1.0, Ca=0.1),
 	) |> S.prepare_for_computations

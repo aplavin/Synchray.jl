@@ -7,8 +7,8 @@
 		axis=SVector(0., 0, 1),
 		φj=0.05,
 		s=1e-3..10,
-		ne=S.PowerLawS(-2; val0=2., s0=1.),
-		B=S.BFieldSpec_OLD(S.PowerLawS(-1; val0=3., s0=1.), S.ScalarField(), b -> S.FullyTangled(b)),
+		ne=S.PowerLaw(-2; val0=2., s0=1.),
+		B=S.BFieldSpec_OLD(S.PowerLaw(-1; val0=3., s0=1.), S.ScalarField(), b -> S.FullyTangled(b)),
 		speed_profile=(η -> (S.beta, 0)),
 		model=S.IsotropicPowerLawElectrons(; p=2.5, Cj=1, Ca=1),
 	)
