@@ -78,7 +78,7 @@ function field_direction end
 @inline field_direction(::Directions.Radial, geom, x4) = begin
     r = SVector(x4.x, x4.y, x4.z)
     r_norm = norm(r)
-    return r / r_norm
+    return iszero(r_norm) ? zero(r) : r / r_norm
 end
 
 # Toroidal: azimuthal around axis
