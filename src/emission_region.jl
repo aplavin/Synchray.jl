@@ -43,7 +43,7 @@ end
 # Delegate geometry methods
 @inline z_interval(region::EmissionRegion, ray) = z_interval(region.geometry, ray)
 @inline is_inside(region::EmissionRegion, x4) = is_inside(region.geometry, x4)
-@accessor geometry_axis(region::EmissionRegion) = geometry_axis(region.geometry)
+@unstable @accessor geometry_axis(region::EmissionRegion) = geometry_axis(region.geometry)
 
 # Implement medium interface
 @inline electron_density(region::EmissionRegion, x4) = region.ne(region.geometry, x4)
@@ -77,4 +77,4 @@ rotation_lab_to_local(region::EmissionRegion) = rotation_lab_to_local(region.geo
 rotate_lab_to_local(region::EmissionRegion, r::SVector{3}) = rotate_lab_to_local(region.geometry, r)
 rotate_local_to_lab(region::EmissionRegion, r_local::SVector{3}) = rotate_local_to_lab(region.geometry, r_local)
 ray_in_local_coords(ray, region::EmissionRegion; z_range) = ray_in_local_coords(ray, region.geometry; z_range)
-camera_fov_in_local_coords(cam, region::EmissionRegion; y=0, z_range) = camera_fov_in_local_coords(cam, region.geometry; y, z_range)
+@unstable camera_fov_in_local_coords(cam, region::EmissionRegion; y=0, z_range) = camera_fov_in_local_coords(cam, region.geometry; y, z_range)

@@ -16,7 +16,7 @@ _ray_z(x0::FourPosition, k::FourFrequency, nz::Int) = RayZ(x0, k, nz)
 _ray_z(x0::FourPosition, k::Number, nz::Int) = RayZ(x0, photon_k(k, SVector(0, 0, 1)), nz)
 
 
-ustrip(cam::CameraZ) = @p let
+@unstable ustrip(cam::CameraZ) = @p let
     cam
     @modify(_u_to_code(_, UCTX.L0), __.xys)
     @modify(_u_to_code(_, UCTX.ν0), __.ν)

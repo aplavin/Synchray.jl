@@ -23,9 +23,6 @@ struct BFieldSpec{Tscale,Tdir,Twrap}
     wrap::Twrap
 end
 
-prepare_for_computations(bspec::BFieldSpec) = modify(prepare_for_computations, bspec, @o _.dir _.scale _.wrap)
-ustrip(bspec::BFieldSpec) = @modify(s -> ustrip(s; valu=UCTX.B0), bspec.scale)
-
 """
     VelocitySpec{Tdir, Tkind, Tscale}
 
@@ -64,5 +61,10 @@ end
 # Default constructor with gamma
 VelocitySpec(dir, scale) = VelocitySpec(dir, gamma, scale)
 
+
+@unstable begin
+prepare_for_computations(bspec::BFieldSpec) = modify(prepare_for_computations, bspec, @o _.dir _.scale _.wrap)
 prepare_for_computations(vspec::VelocitySpec) = modify(prepare_for_computations, vspec, @o _.dir _.kind _.scale)
+ustrip(bspec::BFieldSpec) = @modify(s -> ustrip(s; valu=UCTX.B0), bspec.scale)
 ustrip(vspec::VelocitySpec) = vspec
+end

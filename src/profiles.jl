@@ -15,6 +15,18 @@ struct PowerLaw{Texp,Tval,Ts0}
 end
 PowerLaw(exp; val0, s0=one(val0)) = PowerLaw(exp, val0, s0)
 
+using DispatchDoctor: @unstable
+@unstable struct LinearInterp{Tpts}
+	points::Tpts  # Tuple of (x, y) pairs, sorted by x
+	
+    function LinearInterp(points)
+        @assert !isempty(points)
+		# Sort points by x coordinate
+		sorted_pts = sort(collect(points); by=first) |> Tuple
+		new{typeof(sorted_pts)}(sorted_pts)
+	end
+end
+
 """
     Axial{F}
 
@@ -129,33 +141,43 @@ end # module Profiles
 
 
 @inline (pl::Profiles.PowerLaw)(s) = s > 0 ? pl.val0 * (s / pl.s0)^pl.exp : zero(float(pl.val0))
-prepare_for_computations(pl::Profiles.PowerLaw) = @modify(FixedExponent, pl.exp)
-ustrip(pl::Profiles.PowerLaw; argu, valu) = Profiles.PowerLaw(pl.exp; val0=_u_to_code(pl.val0, valu), s0=_u_to_code(pl.s0, argu))
+
+@inline function (li::Profiles.LinearInterp)(s)
+	pts = li.points
+	length(pts) == 1 && return last(first(pts))
+	
+	x1, y1 = first(pts)
+	s <= x1 && return y1  # Flat before first point
+	
+	xn, yn = last(pts)
+	s >= xn && return yn  # Flat after last point
+	
+	# Linear interpolation between points
+	for i in 1:length(pts)-1
+		x_lo, y_lo = pts[i]
+		x_hi, y_hi = pts[i+1]
+		if x_lo <= s <= x_hi
+			t = (s - x_lo) / (x_hi - x_lo)
+			return y_lo + t * (y_hi - y_lo)
+		end
+	end
+	return yn  # Fallback
+end
 
 
 @inline function (p::Profiles.Axial)(geom, x4)
     z = natural_coords(geom, x4, Val(:z))
     return p.f(z)
 end
-prepare_for_computations(p::Profiles.Axial) = modify(prepare_for_computations, p, @o _.f)
-ustrip(p::Profiles.Axial; valu) = @modify(f -> ustrip(f; valu, argu=UCTX.L0), p.f)
 
 @inline function (p::Profiles.Transverse)(geom, x4)
     coords = natural_coords(geom, x4)
     return p.f(coords.η)
 end
-prepare_for_computations(p::Profiles.Transverse) = modify(prepare_for_computations, p, @o _.f)
-ustrip(p::Profiles.Transverse; valu) = @modify(f -> ustrip(f; valu, argu=1), p.f)
 
 @inline function (p::Profiles.AxialTransverse)(geom, x4)
     coords = natural_coords(geom, x4)
     return p.f_z(coords.z) * p.f_η(coords.η)
-end
-prepare_for_computations(p::Profiles.AxialTransverse) = modify(prepare_for_computations, p, @o _.f_z _.f_η)
-ustrip(p::Profiles.AxialTransverse; valu) = @p let
-    p
-    @modify(ustrip(_; valu, argu=UCTX.L0), __.f_z)
-    @modify(ustrip(_; valu, argu=1), __.f_η)
 end
 
 @inline function (p::Profiles.Natural)(geom, x4)
@@ -171,8 +193,28 @@ end
     base_val = p.base(geom, x4)
     return p.modifier(geom, x4, base_val)
 end
+
+
+@unstable begin
+
+prepare_for_computations(pl::Profiles.PowerLaw) = @modify(FixedExponent, pl.exp)
 prepare_for_computations(p::Profiles.Modified) = modify(prepare_for_computations, p, @o _.base _.modifier)
+prepare_for_computations(p::Profiles.Axial) = modify(prepare_for_computations, p, @o _.f)
+prepare_for_computations(p::Profiles.Transverse) = modify(prepare_for_computations, p, @o _.f)
+prepare_for_computations(p::Profiles.AxialTransverse) = modify(prepare_for_computations, p, @o _.f_z _.f_η)
+
+ustrip(pl::Profiles.PowerLaw; argu, valu) = Profiles.PowerLaw(pl.exp; val0=_u_to_code(pl.val0, valu), s0=_u_to_code(pl.s0, argu))
+ustrip(li::Profiles.LinearInterp; argu, valu) = Profiles.LinearInterp(map(((x, y),) -> (_u_to_code(x, argu), _u_to_code(y, valu)), li.points))
+ustrip(p::Profiles.Axial; valu) = @modify(f -> ustrip(f; valu, argu=UCTX.L0), p.f)
+ustrip(p::Profiles.Transverse; valu) = @modify(f -> ustrip(f; valu, argu=1), p.f)
+ustrip(p::Profiles.AxialTransverse; valu) = @p let
+    p
+    @modify(ustrip(_; valu, argu=UCTX.L0), __.f_z)
+    @modify(ustrip(_; valu, argu=1), __.f_η)
+end
 ustrip(p::Profiles.Modified; valu) = @p let
     p
     @modify(ustrip(_; valu), __.base)
+end
+
 end
