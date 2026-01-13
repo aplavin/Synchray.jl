@@ -203,22 +203,10 @@ Therefore:
 end
 
 """
-	jet_basis(axis) -> (ex, ey, ez)
-
-Construct an orthonormal right-handed spatial basis where `ez` points along `axis`.
-
-Convention: **minimal rotation from lab frame**.
-Apply the smallest 3D rotation that maps lab `ẑ` to the jet axis, and rotate lab `x̂`
-and `ŷ` by the same rotation. This makes the jet frame as close to the lab frame as
-possible while enforcing `ez ∥ axis`.
-"""
-@inline jet_basis(axis::SVector{3}) = eachcol(jet_rotation_matrix(axis))
-
-"""
 	lab_to_jet_coords(axis, r) -> SVector{3}
 
 Convert a lab-frame spatial 3-position `r` to jet coordinates `(x, y, z)` defined by
-`jet_basis(axis)`.
+the jet rotation matrix.
 """
 @inline lab_to_jet_coords(axis::SVector{3}, r::SVector{3}) = jet_rotation_matrix(axis)' * r
 
@@ -299,7 +287,6 @@ z_interval(obj::ConicalJet, ray::RayZ) = _rayz_cone_z_interval(obj.axis, obj.φj
 end
 
 jet_rotation_matrix(jet::ConicalJet) = jet_rotation_matrix(jet.axis)
-jet_basis(jet::ConicalJet) = jet_basis(jet.axis)
 lab_to_jet_coords(jet::ConicalJet, r::SVector{3}) = lab_to_jet_coords(jet.axis, r)
 jet_to_lab_coords(jet::ConicalJet, rjet::SVector{3}) = jet_to_lab_coords(jet.axis, rjet)
 

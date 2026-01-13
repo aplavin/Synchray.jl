@@ -252,12 +252,6 @@ end
 	@test eltype(rot_mat64) == Float64
 	@test rot_mat32 ≈ rot_mat64
 
-	(ex32, ey32, ez32) = S.jet_basis(jet32)
-	(ex64, ey64, ez64) = S.jet_basis(jet64)
-	@test eltype(ex32) == Float32
-	@test eltype(ez32) == Float32
-	@test ex32 ≈ ex64
-
 	r32 = S.SVector(Float32(1.5), Float32(-0.3), Float32(2.0))
 	r64 = S.SVector(1.5, -0.3, 2.0)
 

@@ -47,7 +47,6 @@ end
 @inline four_velocity(obj::JetWithPatterns, x4) = four_velocity(obj.base, x4)
 
 @inline is_inside_jet(obj::JetWithPatterns, x4::FourPosition) = is_inside_jet(obj.base, x4)
-@inline jet_basis(obj::JetWithPatterns) = jet_basis(obj.base)
 @inline lab_to_jet_coords(obj::JetWithPatterns, r::SVector{3}) = lab_to_jet_coords(obj.base, r)
 @inline jet_to_lab_coords(obj::JetWithPatterns, rjet::SVector{3}) = jet_to_lab_coords(obj.base, rjet)
 

@@ -129,18 +129,20 @@ end
 		@test rj.z ≈ dot(r, axis)
 	end
 
-	@testset "jet_basis is minimal rotation from lab" begin
+	@testset "jet_rotation_matrix is minimal rotation from lab" begin
 		@testset for θ in [0, 0.1, π/2, deg2rad(175)]
-			# Axis tilted by θ around lab-y: expect ey == ŷ and (ex, ez) rotated by θ.
+			# Axis tilted by θ around lab-y: expect ey == ŷ and (ex, ez) rotated by θ.
 			axis = normalize(SVector(sin(θ), 0, cos(θ)))
-			(ex, ey, ez) = S.jet_basis(axis)
+			R = S.jet_rotation_matrix(axis)
+			ex, ey, ez = eachcol(R)
 			@test ez ≈ axis
 			@test ey ≈ SVector(0, 1, 0)
 			@test ex ≈ SVector(cos(θ), 0, -sin(θ))
 
 			# Axis tilted by θ around lab-x: expect ex == x̂ and (ey, ez) rotated by θ.
 			axis = normalize(SVector(0, sin(θ), cos(θ)))
-			(ex, ey, ez) = S.jet_basis(axis)
+			R = S.jet_rotation_matrix(axis)
+			ex, ey, ez = eachcol(R)
 			@test ez ≈ axis
 			@test ex ≈ SVector(1, 0, 0)
 			@test ey ≈ SVector(0, cos(θ), -sin(θ))
