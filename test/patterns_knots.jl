@@ -1,16 +1,14 @@
-
 @testitem "Jet patterns: wrapper + inertial knot" begin
 	import Synchray as S
 	using RectiGrids
 	using Accessors
 
-	jet = S.ConicalBKJet(; 
+	jet = S.ConicalJet(;
 		axis=SVector(0., 0, 1),
 		φj=0.05,
 		s=1e-3..10,
-		s0=1.,
-		ne0=2.,
-		B0=3.,
+		ne=S.PowerLawS(-2; val0=2., s0=1.),
+		B=S.BFieldSpec(S.PowerLawS(-1; val0=3., s0=1.), S.ScalarField(), b -> S.FullyTangled(b)),
 		speed_profile=(η -> (S.beta, 0)),
 		model=S.IsotropicPowerLawElectrons(; p=2.5, Cj=1, Ca=1),
 	)
@@ -94,26 +92,16 @@
 		@test f32 ≈ f64  rtol=1e-5
 	end
 
-	@testset "ConicalJet renders match for patterns" begin
-		cj = S.ConicalJet(;
-			axis=jet.axis,
-			φj=jet.φj,
-			s=jet.s,
-			speed_profile=jet.speed_profile,
-			model=jet.model,
-			ne=S.PowerLawS(jet.ne_exp; val0=jet.ne0, s0=jet.s0),
-			B=S.BFieldSpec(S.PowerLawS(jet.B_exp; val0=jet.B0, s0=jet.s0), S.ScalarField(), b -> S.FullyTangled(b)),
-		)
-
-		cjp = S.JetWithPatterns(cj, (knot,))
+	@testset "ConicalJet renders match for patterns with prepare_for_computations" begin
+		cjp = S.JetWithPatterns(jet, (knot,))
 		cjpp = S.prepare_for_computations(cjp)
 		cam = S.CameraZ(; xys=grid(S.SVector, range(0.01..0.1, 6), range(-0.001..0.001, 6)), nz=50, ν=2., t=0.)
 
-		img_bk = S.render(cam, jetp)
-		img_cj = S.render(cam, cjp)
+		img_jet = S.render(cam, jetp)
+		img_cjp = S.render(cam, cjp)
 		img_cjpp = S.render(cam, cjpp)
-		@test !(img_cj ≈ S.render(cam, cj))
-		@test img_cj ≈ img_bk
-		@test img_cjpp ≈ img_bk
+		@test !(img_cjp ≈ S.render(cam, jet))
+		@test img_cjp ≈ img_jet
+		@test img_cjpp ≈ img_jet
 	end
 end

@@ -1,15 +1,15 @@
-@testitem "Conical BK jet geometry + scalings" begin
+@testitem "Conical jet geometry + scalings" begin
 	import Synchray as S
 	using Synchray: mean; using Synchray.IntervalSets: width
 	using Accessors
 
-	jet = S.ConicalBKJet(; 
+	s0 = 1
+	jet = S.ConicalJet(;
 		axis=SVector(0, 0, 1),
 		φj=0.05,
 		s=1e-3..5,
-		s0=1,
-		ne0=2,
-		B0=3,
+		ne=S.PowerLawS(-2; val0=2, s0),
+		B=S.BFieldSpec(S.PowerLawS(-1; val0=3, s0), S.ScalarField(), b -> S.FullyTangled(b)),
 		speed_profile=(η -> (S.beta, 0)),
 		model=S.IsotropicPowerLawElectrons(; p=2.5, Cj=1, Ca=1),
 	)
@@ -24,7 +24,7 @@
 		@test S.magnetic_field(jet, x4_2) ≈ S.FullyTangled(3 * (2^(-1)))
 
 		ray = S.RayZ(; x0=S.FourPosition(0, 0, 0, 0), k=2, nz=1024)
-		# On-axis ray should see the full truncation segment for axis=ẑ.
+		# On-axis ray should see the full truncation segment for axis=ẑ.
 		@test S.z_interval(jet, ray) == jet.s
 		@test S.render(ray, jet) > 0
 		# Off-axis ray within cone should also see a non-empty segment.
@@ -40,7 +40,7 @@
 		@test S.render(miss_ray, jet) == 0
 	end
 	@testset "off-axis viewing angles" begin
-		s_probe = jet.s0
+		s_probe = s0
 		smax = maximum(jet.s)
 		ymiss = 1.1 * smax * tan(jet.φj)
 
@@ -91,18 +91,17 @@
 end
 
 
-@testitem "Unitful boundary API (ConicalBKJet)" begin
+@testitem "Unitful boundary API (ConicalJet)" begin
 	import Synchray as S
 	using Unitful, UnitfulAstro
 	using RectiGrids
 
-	jet = S.withunits(S.ConicalBKJet;
+	jet = S.withunits(S.ConicalJet;
 		axis=SVector(0, 0, 1),
 		φj=2u"°",
 		s=1e-3u"pc"..50u"pc",
-		s0=1u"pc",
-		ne0=2u"cm^-3",
-		B0=3u"Gauss",
+		ne=S.PowerLawS(-2; val0=2u"cm^-3", s0=1u"pc"),
+		B=S.BFieldSpec(S.PowerLawS(-1; val0=3u"Gauss", s0=1u"pc"), S.ScalarField(), b -> S.FullyTangled(b)),
 		speed_profile=(η -> (S.beta, 0.0)),
 		model=S.IsotropicPowerLawElectrons(; p=2.5),
 	)
@@ -139,7 +138,7 @@ end
 end
 
 
-@testitem "Conical BK jet phenomenology" begin
+@testitem "Conical jet phenomenology" begin
 	import Synchray as S
 	using Accessors
 	using RectiGrids
@@ -147,14 +146,14 @@ end
 
 	φj = 0.05
 	θ = 0.2  # viewing angle (> φj)
+	s0 = 1.
 
-	jet = S.ConicalBKJet(; 
+	jet = S.ConicalJet(;
 		axis=S.SVector(sin(θ), 0.0, cos(θ)),
 		φj,
 		s=1e-3..50,
-		s0=1.,
-		ne0=1.,
-		B0=3.,
+		ne=S.PowerLawS(-2; val0=1., s0),
+		B=S.BFieldSpec(S.PowerLawS(-1; val0=3., s0), S.ScalarField(), b -> S.FullyTangled(b)),
 		speed_profile=(η -> (S.beta, 0f0)),
 		model=S.IsotropicPowerLawElectrons(; p=2.5, Cj=1.0, Ca=1.0),
 	)
@@ -169,7 +168,7 @@ end
 			ray_base = S.RayZ(; x0=S.FourPosition(0, 0, 0, 0), k=ν, nz=2048)
 			Roots.find_zero(x -> S.render((@set ray_base.x0.x = x), jet, S.OpticalDepth()) - 1, (0.001, 5))
 		end
-	
+
 		@test core_byint(jet, 1) ≈ 2*core_byint(jet, 2) rtol=1e-2
 		@test core_byint(jet, 4) ≈ 0.5*core_byint(jet, 2) rtol=1e-2
 		@test core_byτ(jet, 1) ≈ 2*core_byτ(jet, 2) rtol=1e-2
@@ -200,16 +199,16 @@ end
 
 	@testset "thin-regime scaling with (ne0, B0) matches IsotropicPowerLawElectrons" begin
 		νthin = 80.0
-		ray = ray_at_s(νthin, jet.s0; nz=4096)
+		ray = ray_at_s(νthin, s0; nz=4096)
 		τthin = S.render(ray, jet, S.OpticalDepth())
 		@test τthin < 0.2
 
 		I0 = S.render(ray, jet)
-		I_ne = S.render(ray, @set jet.ne0 *= 2)
+		I_ne = S.render(ray, @set jet.ne.val0 *= 2)
 		@test I_ne ≈ 2I0 rtol=0.05
 
 		p = jet.model.p
-		I_B = S.render(ray, @set jet.B0 *= 2)
+		I_B = S.render(ray, @set jet.B.scale.val0 *= 2)
 		@test I_B ≈ I0 * (2^((p + 1) / 2)) rtol=0.07
 	end
 end
@@ -223,13 +222,12 @@ end
 	φj = 0.05
 	θ = 0.2  # viewing angle (> φj)
 
-	jet = S.ConicalBKJet(; 
+	jet = S.ConicalJet(;
 		axis=S.SVector(sin(θ), 0.0, cos(θ)),
 		φj,
 		s=1e-3..50,
-		s0=1.,
-		ne0=1.,
-		B0=3.,
+		ne=S.PowerLawS(-2; val0=1., s0=1.),
+		B=S.BFieldSpec(S.PowerLawS(-1; val0=3., s0=1.), S.ScalarField(), b -> S.FullyTangled(b)),
 		speed_profile=(η -> (S.beta, 0f0)),
 		model=S.IsotropicPowerLawElectrons(; p=2.5, Cj=1.0, Ca=1.0),
 	)
@@ -253,22 +251,22 @@ end
 	@test eltype(rot_mat32) == Float32
 	@test eltype(rot_mat64) == Float64
 	@test rot_mat32 ≈ rot_mat64
-	
+
 	(ex32, ey32, ez32) = S.jet_basis(jet32)
 	(ex64, ey64, ez64) = S.jet_basis(jet64)
 	@test eltype(ex32) == Float32
 	@test eltype(ez32) == Float32
 	@test ex32 ≈ ex64
-	
+
 	r32 = S.SVector(Float32(1.5), Float32(-0.3), Float32(2.0))
 	r64 = S.SVector(1.5, -0.3, 2.0)
-	
+
 	rjet32 = S.lab_to_jet_coords(jet32, r32)
 	rjet64 = S.lab_to_jet_coords(jet64, r64)
 	@test eltype(rjet32) == Float32
 	@test eltype(rjet64) == Float64
 	@test rjet32 ≈ rjet64
-	
+
 	rlab32 = S.jet_to_lab_coords(jet32, rjet32)
 	rlab64 = S.jet_to_lab_coords(jet64, rjet64)
 	@test eltype(rlab32) == Float32

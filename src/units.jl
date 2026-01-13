@@ -15,18 +15,6 @@ _u_to_code(x::Number, scale::AbstractQuantity) = NoUnits(x / scale)
 _u_to_code(x::AbstractArray, scale::AbstractQuantity) = _u_to_code.(x, scale)
 _u_to_code(x::AbstractInterval, scale::AbstractQuantity) = @modify(x -> _u_to_code(x, scale), endpoints(x)[∗])
 
-withunits(::Type{ConicalBKJet}; kws...) = let
-    kws = NamedTuple(kws)
-	ConicalBKJet(;
-		kws...,
-		φj=NoUnits(kws.φj),
-		s=_u_to_code(kws.s, UCTX.L0),
-		s0=_u_to_code(kws.s0, UCTX.L0),
-		ne0=_u_to_code(kws.ne0, UCTX.ne0),
-		B0=_u_to_code(kws.B0, UCTX.B0),
-	)
-end
-
 _withunits(pl::PowerLawS, y0_scale) = PowerLawS(pl.exp; val0=_u_to_code(pl.val0, y0_scale), s0=_u_to_code(pl.s0, UCTX.L0))
 _withunits(B::BFieldSpec) = BFieldSpec(_withunits(B.scale, UCTX.B0), B.dir, B.wrap)
 withunits(::Type{ConicalJet}; kws...) = let

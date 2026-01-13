@@ -31,7 +31,7 @@ struct JetWithPatterns{Tbase, Tpatterns} <: AbstractSynchrotronMedium
 	patterns::Tpatterns
 end
 
-function JetWithPatterns(base::Union{ConicalBKJet,ConicalJet}, patterns)
+function JetWithPatterns(base::ConicalJet, patterns)
 	for p in patterns
 		validate_pattern(p, base)
 	end
@@ -174,7 +174,7 @@ The knot can optionally modulate `n_e` and `|B'|` independently via `profile_ne`
 end
 
 
-_validate_knot_causality(sizing::CrossSectionKnotSizing, u::FourVelocity, jet::Union{ConicalBKJet,ConicalJet}) = begin
+_validate_knot_causality(sizing::CrossSectionKnotSizing, u::FourVelocity, jet::ConicalJet) = begin
 	# Causality guard for the “fills a constant fraction of the cross-section” sizing.
 	#
 	# With a_perp(τ) = f_perp * R(s_c(τ)) = f_perp * s_c(τ) * tan(φj), we have
@@ -195,16 +195,16 @@ _validate_knot_causality(sizing::CrossSectionKnotSizing, u::FourVelocity, jet::U
 	return nothing
 end
 
-validate_pattern(knot::InertialEllipsoidalKnot, jet::Union{ConicalBKJet,ConicalJet}) = begin
+validate_pattern(knot::InertialEllipsoidalKnot, jet::ConicalJet) = begin
 	knot.sizing isa CrossSectionKnotSizing && _validate_knot_causality(knot.sizing, knot.u, jet)
 	return nothing
 end
 
 
 # Return sizes in the order (a_par, a_perp) to match the variables used in `_knot_chi`.
-@inline _knot_sizes(sizing::FixedKnotSizing, tau, x_c, jet::Union{ConicalBKJet,ConicalJet}) = (sizing.a_parallel, sizing.a_perp)
+@inline _knot_sizes(sizing::FixedKnotSizing, tau, x_c, jet::ConicalJet) = (sizing.a_parallel, sizing.a_perp)
 
-@inline _knot_sizes(sizing::CrossSectionKnotSizing, tau, x_c, jet::Union{ConicalBKJet,ConicalJet}) = begin
+@inline _knot_sizes(sizing::CrossSectionKnotSizing, tau, x_c, jet::ConicalJet) = begin
 	# Compute rest-frame (a_parallel, a_perp) from the *current* center position.
 	# Intuitively: as the knot moves outward, it expands to keep a fixed fraction
 	# of the local jet radius.
@@ -233,7 +233,7 @@ end
 	return FourPosition(γ * βmag, γ * βhat)
 end
 
-@inline _knot_chi(knot::InertialEllipsoidalKnot, x4::FourPosition, jet::Union{ConicalBKJet,ConicalJet}) = begin
+@inline _knot_chi(knot::InertialEllipsoidalKnot, x4::FourPosition, jet::ConicalJet) = begin
 	# Compute the ellipsoidal “radius-squared” χ(x) in the knot rest frame.
 	#
 	# Overall (metric signature (-,+,+,+)):
@@ -260,13 +260,13 @@ end
 end
 
 
-@inline pattern_factor_ne(knot::InertialEllipsoidalKnot, x4::FourPosition, jet::Union{ConicalBKJet,ConicalJet}) = begin
+@inline pattern_factor_ne(knot::InertialEllipsoidalKnot, x4::FourPosition, jet::ConicalJet) = begin
 	knot.profile_ne === nothing && return one(x4.t)
 	χ = _knot_chi(knot, x4, jet)
 	return knot.profile_ne(χ)
 end
 
-@inline pattern_factor_B(knot::InertialEllipsoidalKnot, x4::FourPosition, jet::Union{ConicalBKJet,ConicalJet}) = begin
+@inline pattern_factor_B(knot::InertialEllipsoidalKnot, x4::FourPosition, jet::ConicalJet) = begin
 	knot.profile_B === nothing && return one(x4.t)
 	χ = _knot_chi(knot, x4, jet)
 	return knot.profile_B(χ)
