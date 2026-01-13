@@ -45,6 +45,7 @@ include("geometries.jl")
 include("directions.jl")
 include("profiles.jl")
 include("field_specs.jl")
+include("patterns.jl")
 include("emission_region.jl")
 
 
@@ -60,6 +61,6 @@ end
 # we only export a few things from this module, very minimal;
 # the user is recommended to do `import Synchray as S`
 # and then access things as `S.SomeType` or `S.some_function`
-export Geometries, Directions, Profiles
+export Geometries, Directions, Profiles, Patterns
 
 end

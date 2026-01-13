@@ -219,19 +219,6 @@ end
 # It satisfies u⋅Δx_perp = 0.
 @inline _project_orthogonal(u::FourVelocity, dx::FourPosition) = dx + u * minkowski_dot(u, dx)
 
-@inline _knot_velocity_axis(u::FourVelocity) = begin
-	# Unit spacelike 4-vector aligned with the knot's lab-frame velocity direction.
-	#
-	# Math: look for a unit spacelike vector e_par = (a, b β̂) whose spatial direction
-	# is along β = beta(u) (β̂ = β/|β|), and which lives in the knot rest space:
-	# u⋅e_par = 0 and e_par⋅e_par = 1 (signature (-,+,+,+)).
-	β = beta(u)
-	βmag = √dot(β, β)
-	βhat = β / βmag
-	γ = u.t
-	return FourPosition(γ * βmag, γ * βhat)
-end
-
 @inline _knot_chi(knot::InertialEllipsoidalKnot, x4::FourPosition, jet::ConicalJet) = begin
 	# Compute the ellipsoidal “radius-squared” χ(x) in the knot rest frame.
 	#
