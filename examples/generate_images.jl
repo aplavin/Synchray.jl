@@ -136,7 +136,7 @@ function bk_jet_image()
         geometry = Geometries.Conical(; axis=SVector(NaN, NaN, NaN), φj, z=1e-3 .. 50),
         ne = Profiles.Axial(S.PowerLaw(-2; val0=1.0, s0=1.0)),
         B = S.BFieldSpec(Profiles.Axial(S.PowerLaw(-1; val0=1.0, s0=1.0)), Directions.Scalar(), b->S.FullyTangled(b)),
-        velocity = S.VelocitySpec(Directions.Radial(), S.beta, Profiles.Constant(0.995)),
+        velocity = S.VelocitySpec(Directions.Radial(), S.gamma, Profiles.Transverse(Profiles.LinearInterp(((0.3, 10), (0.8, 8))))),
         model = S.IsotropicPowerLawElectrons(; p=2.3, Cj=1.0, Ca=0.1),
     ) |> S.prepare_for_computations
 

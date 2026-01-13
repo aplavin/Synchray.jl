@@ -63,7 +63,7 @@ Compute cylindrical coordinates relative to axis.
 Returns: spatial position `r`, axial distance `z`, perpendicular component `r_perp`, cylindrical radius `ρ`.
 """
 @inline _cylindrical_coords(axis, x4) = begin
-	r = SVector(x4.x, x4.y, x4.z)
+	r = @swiz x4.xyz
 	z = dot(axis, r)
 	r_perp = r - z * axis
 	ρ = norm(r_perp)
@@ -78,7 +78,7 @@ Returns `(z, ρ, η)` where:
 - `ρ`: cylindrical radius (perpendicular distance from axis)
 - `η`: normalized radial coordinate `η = ρ / (z * tan(φj))`
 """
-function natural_coords(g::Geometries.Conical, x4)
+@inline function natural_coords(g::Geometries.Conical, x4)
 	(; z, ρ) = _cylindrical_coords(g.axis, x4)
 	η = ρ / (z * tan(g.φj))
 	return (; z, ρ, η)
@@ -89,17 +89,14 @@ end
 
 Returns just the axial coordinate `z` (optimized version).
 """
-function natural_coords(g::Geometries.Conical, x4, ::Val{:z})
-	r = SVector(x4.x, x4.y, x4.z)
-	return dot(g.axis, r)
-end
+@inline natural_coords(g::Geometries.Conical, x4, ::Val{:z}) = dot(g.axis, @swiz x4.xyz)
 
 """
     is_inside(g::Conical, x4) -> Bool
 
 Test if position is inside the conical volume.
 """
-function is_inside(g::Geometries.Conical, x4)
+@inline function is_inside(g::Geometries.Conical, x4)
 	(; z, ρ) = _cylindrical_coords(g.axis, x4)
 	return (z ∈ g.z) && ρ ≤ z * tan(g.φj)
 end
