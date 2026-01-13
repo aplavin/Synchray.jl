@@ -37,23 +37,31 @@ end
 
 @inline jet_field_direction(::PoloidalField, jet, x4) = normalize(jet.axis)
 
-@inline jet_field_direction(::ToroidalField, jet, x4) = begin
-	axis = normalize(jet.axis)
+"""
+	jet_cylindrical_coords(axis, x4) -> (r, s, r_perp, ρ)
+
+Compute cylindrical coordinates relative to jet axis.
+Returns: spatial position `r`, axial distance `s`, perpendicular component `r_perp`, cylindrical radius `ρ`.
+"""
+@inline jet_cylindrical_coords(axis, x4) = begin
 	r = @swiz x4.xyz
 	s = dot(axis, r)
 	r_perp = r - s * axis
 	ρ = norm(r_perp)
+	return (; r, s, r_perp, ρ)
+end
+
+@inline jet_field_direction(::ToroidalField, jet, x4) = begin
+	axis = jet.axis
+	(; r_perp, ρ) = jet_cylindrical_coords(axis, x4)
 	iszero(ρ) && return zero(axis)
 	e_r = r_perp / ρ
 	return cross(axis, e_r)
 end
 
 @inline jet_field_direction(h::HelicalField, jet, x4) = begin
-	axis = normalize(jet.axis)
-	r = @swiz x4.xyz
-	s = dot(axis, r)
-	r_perp = r - s * axis
-	ρ = norm(r_perp)
+	axis = jet.axis
+	(; r_perp, ρ) = jet_cylindrical_coords(axis, x4)
 	e_phi = iszero(ρ) ? zero(axis) : cross(axis, r_perp / ρ)
 	sψ, cψ = sincos(h.ψ)
 	v = cψ * axis + sψ * e_phi
@@ -286,10 +294,8 @@ end
 z_interval(obj::ConicalJet, ray::RayZ) = _rayz_cone_z_interval(obj.axis, obj.φj, ray, obj.s)
 
 @inline is_inside_jet(jet::ConicalJet, x4::FourPosition) = begin
-	r = @swiz x4.xyz
-	s = dot(jet.axis, r)
+	(; s, ρ) = jet_cylindrical_coords(jet.axis, x4)
 	(s ∈ jet.s) || return false
-	ρ = norm(r - s * jet.axis)
 	return ρ ≤ s * tan(jet.φj)
 end
 
@@ -299,11 +305,9 @@ lab_to_jet_coords(jet::ConicalJet, r::SVector{3}) = lab_to_jet_coords(jet.axis, 
 jet_to_lab_coords(jet::ConicalJet, rjet::SVector{3}) = jet_to_lab_coords(jet.axis, rjet)
 
 @inline four_velocity(obj::ConicalJet, x4) = begin
-	r = @swiz x4.xyz
-	s = dot(obj.axis, r)
+	(; r, s, ρ) = jet_cylindrical_coords(obj.axis, x4)
 
 	vhat = iszero(r) ? zero(r) : r / √(dot(r, r))
-	ρ = norm(r - s * obj.axis)
 	tanφ = tan(obj.φj)
 	η = ρ / (s * tanφ)
 
@@ -312,14 +316,12 @@ jet_to_lab_coords(jet::ConicalJet, rjet::SVector{3}) = jet_to_lab_coords(jet.axi
 end
 
 @inline electron_density(obj::ConicalJet, x4) = begin
-	r = @swiz x4.xyz
-	s = dot(obj.axis, r)
+	s = dot(obj.axis, @swiz x4.xyz)
 	return obj.ne(s)
 end
 
 @inline magnetic_field(obj::ConicalJet, x4) = begin
-	r = @swiz x4.xyz
-	s = dot(obj.axis, r)
+	s = dot(obj.axis, @swiz x4.xyz)
 	b = obj.B.scale(s)
 	b̂ = jet_field_direction(obj.B.dir, obj, x4)
 	return obj.B.wrap(b * b̂)
