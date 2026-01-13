@@ -7,11 +7,7 @@
 	region = S.EmissionRegion(
 		geometry = S.Geometries.Conical(; axis = SVector(0, 0, 1), φj = 0.05, z = 1e-3..10),
 		ne = S.Profiles.Axial(S.PowerLaw(-2; val0=2., s0=1.)),
-		B = S.BFieldSpec(
-			S.Profiles.Axial(S.PowerLaw(-1; val0=3., s0=1.)),
-			S.Directions.Scalar(),
-			b -> S.FullyTangled(b),
-		),
+		B = S.BFieldSpec(S.Profiles.Axial(S.PowerLaw(-1; val0=3., s0=1.)), S.Directions.Scalar(), b -> S.FullyTangled(b)),
 		velocity = S.VelocitySpec(S.Directions.Axial(), S.Profiles.Constant(1.0)),
 		model = S.IsotropicPowerLawElectrons(; p=2.5, Cj=1, Ca=1),
 	)

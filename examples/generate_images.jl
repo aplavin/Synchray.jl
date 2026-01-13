@@ -133,15 +133,11 @@ function bk_jet_image()
     axis_for_viewing_angle(θ) = SVector(sin(θ), 0.0, cos(θ))
 
     jet0 = S.EmissionRegion(
-        geometry=Geometries.Conical(;axis=SVector(NaN, NaN, NaN), φj, z=1e-3 .. 50),
-        ne=Profiles.Axial(S.PowerLaw(-2; val0=1.0, s0=1.0)),
-        B=S.BFieldSpec(
-            Profiles.Axial(S.PowerLaw(-1; val0=1.0, s0=1.0)),
-            Directions.Scalar(),
-            b->S.FullyTangled(b)
-        ),
-        velocity=S.VelocitySpec(Directions.Radial(), S.beta, Profiles.Constant(0.995)),
-        model=S.IsotropicPowerLawElectrons(; p=2.3, Cj=1.0, Ca=0.1),
+        geometry = Geometries.Conical(; axis=SVector(NaN, NaN, NaN), φj, z=1e-3 .. 50),
+        ne = Profiles.Axial(S.PowerLaw(-2; val0=1.0, s0=1.0)),
+        B = S.BFieldSpec(Profiles.Axial(S.PowerLaw(-1; val0=1.0, s0=1.0)), Directions.Scalar(), b->S.FullyTangled(b)),
+        velocity = S.VelocitySpec(Directions.Radial(), S.beta, Profiles.Constant(0.995)),
+        model = S.IsotropicPowerLawElectrons(; p=2.3, Cj=1.0, Ca=0.1),
     ) |> S.prepare_for_computations
 
     views = (
@@ -193,25 +189,22 @@ function bk_jet_1_knot_snapshots_image()
 
     φj = 4u"°"
     θ = 3 * φj  # "small viewing angle", same as in bk_jet_image
-
-    base_jet = S.ConicalJet(;
-        axis=SVector(sin(θ), 0, cos(θ)),
-        φj,
-        s=(1e-3 .. 50),
-        ne=S.PowerLaw(-2; val0=1, s0=1),
-        B=S.BFieldSpec_OLD(S.PowerLaw(-1; val0=1, s0=1), S.ScalarField(), b->S.FullyTangled(b)),
-        speed_profile=(η -> (S.beta, 0.995)),
-        model=S.IsotropicPowerLawElectrons(; p=2.3, Cj=1, Ca=1),
-    )
+    axis = SVector(sin(θ), 0, cos(θ))
 
     knot = let
-        x_c0 = S.FourPosition(0, 0.1 * base_jet.axis)
-        u = S.FourVelocity(0.995 * base_jet.axis)
-        sizing = S.CrossSectionKnotSizing(0.3, 0.5)
-        S.InertialEllipsoidalKnot(; x_c0, u, sizing, profile_ne=S.GaussianBump(100), profile_B=nothing)
+        x_c0 = S.FourPosition(0, 0.1 * axis)
+        u = S.FourVelocity(0.995 * axis)
+        sizing = S.Patterns.CrossSectionSizing(0.3, 0.5)
+        S.Patterns.EllipsoidalKnot(; x_c0, u, sizing, profile=S.Patterns.GaussianBump(100))
     end
 
-    jet = S.JetWithPatterns(base_jet, (knot,)) |> S.prepare_for_computations
+    jet = S.EmissionRegion(
+        geometry = S.Geometries.Conical(; axis, φj, z = 1e-3 .. 50.0),
+        ne = S.Profiles.Modified(S.Profiles.Axial(S.PowerLaw(-2; val0=1.0, s0=1.0)), knot),
+        B = S.BFieldSpec(S.Profiles.Axial(S.PowerLaw(-1; val0=1.0, s0=1.0)), S.Directions.Scalar(), b -> S.FullyTangled(b)),
+        velocity = S.VelocitySpec(S.Directions.Radial(), S.beta, S.Profiles.Constant(0.995)),
+        model = S.IsotropicPowerLawElectrons(; p=2.3, Cj=1, Ca=1),
+    ) |> S.prepare_for_computations
 
     ts = [0, 0.1, 0.25]
     whats = [
@@ -272,10 +265,10 @@ function bk_jet_thick_options_image()
         end
 
         jet0 = S.EmissionRegion(;
-            geometry=Geometries.Conical(;axis, φj, z=1e-3 .. 50),
-            ne=Profiles.Axial(S.PowerLaw(-2; val0=1, s0=1)),
+            geometry = Geometries.Conical(; axis, φj, z=1e-3 .. 50),
+            ne = Profiles.Axial(S.PowerLaw(-2; val0=1, s0=1)),
             bc.B,
-            velocity=S.VelocitySpec(Directions.Radial(), S.beta, Profiles.Constant(0.995)),
+            velocity = S.VelocitySpec(Directions.Radial(), S.beta, Profiles.Constant(0.995)),
             m.model,
         ) |> S.prepare_for_computations
         jet0 = @set jet0.model.Ca_ordered = 9 / jet0.model.sinavg_a
@@ -313,10 +306,10 @@ function conical_jet_polarization_evpa_image()
         Axis(pos[1, 1]; title="$(bc.name), I + EVPA", aspect=DataAspect(), width=350, height=350)
 
         jet0 = S.EmissionRegion(;
-            geometry=Geometries.Conical(; axis, φj, z=1e-3 .. 50),
-            ne=Profiles.Axial(S.PowerLaw(-2; val0=1, s0=1)),
+            geometry = Geometries.Conical(; axis, φj, z=1e-3 .. 50),
+            ne = Profiles.Axial(S.PowerLaw(-2; val0=1, s0=1)),
             bc.B,
-            velocity=S.VelocitySpec(Directions.Radial(), S.beta, Profiles.Constant(0.995)),
+            velocity = S.VelocitySpec(Directions.Radial(), S.beta, Profiles.Constant(0.995)),
             model,
         ) |> S.prepare_for_computations
         jet0 = @set jet0.model.Ca_ordered = 9 / jet0.model.sinavg_a

@@ -3,16 +3,12 @@
 	using Synchray: mean
 
 	s0 = 1
-	region = S.EmissionRegion(;
-		geometry=S.Geometries.Conical(
-			axis=SVector(0, 0, 1),
-			φj=0.05,
-			z=1e-3..5,
-		),
-		ne=S.Profiles.Axial(S.PowerLaw(-2; val0=2, s0)),
-		B=S.BFieldSpec(S.Profiles.Axial(S.PowerLaw(-1; val0=3, s0)), S.Directions.Scalar(), b -> S.FullyTangled(b)),
-		velocity=S.VelocitySpec(S.Directions.Axial(), S.beta, S.Profiles.Constant(0)),
-		model=S.IsotropicPowerLawElectrons(; p=2.5, Cj=1, Ca=1),
+	region = S.EmissionRegion(
+		geometry = S.Geometries.Conical(; axis=SVector(0, 0, 1), φj=0.05, z=1e-3..5),
+		ne = S.Profiles.Axial(S.PowerLaw(-2; val0=2, s0)),
+		B = S.BFieldSpec(S.Profiles.Axial(S.PowerLaw(-1; val0=3, s0)), S.Directions.Scalar(), b -> S.FullyTangled(b)),
+		velocity = S.VelocitySpec(S.Directions.Axial(), S.beta, S.Profiles.Constant(0)),
+		model = S.IsotropicPowerLawElectrons(; p=2.5, Cj=1, Ca=1),
 	)
 
 	@testset "jet axis along ray" begin
@@ -143,16 +139,12 @@ end
 	θ = 0.2  # viewing angle (> φj)
 	s0 = 1.
 
-	region = S.EmissionRegion(;
-		geometry=S.Geometries.Conical(;
-			axis=S.SVector(sin(θ), 0.0, cos(θ)),
-			φj,
-			z=1e-3..50,
-		),
-		ne=S.Profiles.Axial(S.PowerLaw(-2; val0=1., s0)),
-		B=S.BFieldSpec(S.Profiles.Axial(S.PowerLaw(-1; val0=3., s0)), S.Directions.Scalar(), b -> S.FullyTangled(b)),
-		velocity=S.VelocitySpec(S.Directions.Axial(), S.beta, S.Profiles.Constant(0f0)),
-		model=S.IsotropicPowerLawElectrons(; p=2.5, Cj=1.0, Ca=1.0),
+	region = S.EmissionRegion(
+		geometry = S.Geometries.Conical(; axis=S.SVector(sin(θ), 0.0, cos(θ)), φj, z=1e-3..50),
+		ne = S.Profiles.Axial(S.PowerLaw(-2; val0=1., s0)),
+		B = S.BFieldSpec(S.Profiles.Axial(S.PowerLaw(-1; val0=3., s0)), S.Directions.Scalar(), b -> S.FullyTangled(b)),
+		velocity = S.VelocitySpec(S.Directions.Axial(), S.beta, S.Profiles.Constant(0f0)),
+		model = S.IsotropicPowerLawElectrons(; p=2.5, Cj=1.0, Ca=1.0),
 	)
 
 	@testset "core shift (intensity peak along axis) scales ~ ν^-1" begin
@@ -218,16 +210,12 @@ end
 	φj = 0.05
 	θ = 0.2  # viewing angle (> φj)
 
-	region = S.EmissionRegion(;
-		geometry=S.Geometries.Conical(;
-			axis=S.SVector(sin(θ), 0.0, cos(θ)),
-			φj,
-			z=1e-3..50,
-		),
-		ne=S.Profiles.Axial(S.PowerLaw(-2; val0=1., s0=1.)),
-		B=S.BFieldSpec(S.Profiles.Axial(S.PowerLaw(-1; val0=3., s0=1.)), S.Directions.Scalar(), b -> S.FullyTangled(b)),
-		velocity=S.VelocitySpec(S.Directions.Axial(), S.beta, S.Profiles.Constant(0f0)),
-		model=S.IsotropicPowerLawElectrons(; p=2.5, Cj=1.0, Ca=1.0),
+	region = S.EmissionRegion(
+		geometry = S.Geometries.Conical(; axis=S.SVector(sin(θ), 0.0, cos(θ)), φj, z=1e-3..50),
+		ne = S.Profiles.Axial(S.PowerLaw(-2; val0=1., s0=1.)),
+		B = S.BFieldSpec(S.Profiles.Axial(S.PowerLaw(-1; val0=3., s0=1.)), S.Directions.Scalar(), b -> S.FullyTangled(b)),
+		velocity = S.VelocitySpec(S.Directions.Axial(), S.beta, S.Profiles.Constant(0f0)),
+		model = S.IsotropicPowerLawElectrons(; p=2.5, Cj=1.0, Ca=1.0),
 	)
 
 	cam64 = S.CameraZ(; xys=grid(S.SVector, range(0.01..0.1, 2), range(-0.001..0.001, 2)), nz=20, ν=2., t=0.)
