@@ -25,38 +25,3 @@ _upost_render(result, ::SpectralIndex) = result  # dimensionless
 _upost_render(result, what::Tuple) = ntuple(length(what)) do i
 	_upost_render(getindex.(result, i), what[i])
 end
-
-
-# OLD CODE BELOW:
-
-_withunits(pl::PowerLaw, y0_scale) = PowerLaw(pl.exp; val0=_u_to_code(pl.val0, y0_scale), s0=_u_to_code(pl.s0, UCTX.L0))
-_withunits(B::BFieldSpec_OLD) = BFieldSpec_OLD(_withunits(B.scale, UCTX.B0), B.dir, B.wrap)
-withunits(::Type{ConicalJet}; kws...) = let
-	kws = NamedTuple(kws)
-	ConicalJet(;
-		kws...,
-		φj=NoUnits(kws.φj),
-		s=_u_to_code(kws.s, UCTX.L0),
-		ne=_withunits(kws.ne, UCTX.ne0),
-		B=_withunits(kws.B),
-	)
-end
-
-withunits(::Type{InertialEllipsoidalKnot}; kws...) = let
-	kws = NamedTuple(kws)
-	InertialEllipsoidalKnot(;
-		kws...,
-		x_c0=_u_to_code(kws.x_c0, UCTX.L0),
-		# u=_u_to_code(kws.u, UCTX.c),
-	)
-end
-
-withunits(::Type{CameraZ}; kws...) = let
-    kws = NamedTuple(kws)
-	CameraZ(;
-		kws...,
-		xys=_u_to_code(kws.xys, UCTX.L0),
-		ν=_u_to_code(kws.ν, UCTX.ν0),
-		t=_u_to_code(kws.t, _t0(UCTX)),
-	)
-end

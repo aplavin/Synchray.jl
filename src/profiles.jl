@@ -8,6 +8,13 @@ module Profiles
 
 # No type exports - always use Profiles.Axial(), etc.
 
+struct PowerLaw{Texp,Tval,Ts0}
+	exp::Texp
+	val0::Tval
+	s0::Ts0
+end
+PowerLaw(exp; val0, s0=one(val0)) = PowerLaw(exp, val0, s0)
+
 """
     Axial{F}
 
@@ -119,6 +126,12 @@ struct Modified{Tbase, Tmod}
 end
 
 end # module Profiles
+
+
+@inline (pl::Profiles.PowerLaw)(s) = s > 0 ? pl.val0 * (s / pl.s0)^pl.exp : zero(float(pl.val0))
+prepare_for_computations(pl::Profiles.PowerLaw) = @modify(FixedExponent, pl.exp)
+ustrip(pl::Profiles.PowerLaw; argu, valu) = Profiles.PowerLaw(pl.exp; val0=_u_to_code(pl.val0, valu), s0=_u_to_code(pl.s0, argu))
+
 
 @inline function (p::Profiles.Axial)(geom, x4)
     z = natural_coords(geom, x4, Val(:z))

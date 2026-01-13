@@ -350,12 +350,12 @@ end
 		model=S.IsotropicPowerLawElectrons(; p=2.5, Cj=1.0, Ca=0.0),
 	) |> ustrip
 
-	cam = S.withunits(S.CameraZ;
+	cam = ustrip(S.CameraZ(
 		xys=grid(SVector, range(0.01u"pc"..0.1u"pc", 2), range(-0.001u"pc"..0.001u"pc", 2)),
 		nz=40,
 		ν=230u"GHz",
 		t=0u"yr",
-	)
+	))
 
 	img_I = S.render(cam, region, S.Intensity())
 	img_IQU = S.render(cam, region, S.IntensityIQU())

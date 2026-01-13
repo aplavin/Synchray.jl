@@ -35,8 +35,6 @@ include("synchrotron/polarization.jl")
 include("camera.jl")
 include("objects/slabs.jl")
 include("objects/spheres.jl")
-include("objects/conical_jet.jl")
-include("objects/patterns.jl")
 include("transfer.jl")
 include("units.jl")
 
@@ -62,5 +60,7 @@ end
 # the user is recommended to do `import Synchray as S`
 # and then access things as `S.SomeType` or `S.some_function`
 export Geometries, Directions, Profiles, Patterns
+
+using .Profiles: PowerLaw
 
 end
