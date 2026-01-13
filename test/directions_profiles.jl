@@ -20,7 +20,7 @@ end
     @test Profiles.Axial(s -> s^-2) isa Profiles.Axial
     @test Profiles.Transverse(η -> exp(-η^2)) isa Profiles.Transverse
     @test Profiles.AxialTransverse(s -> s^-2, η -> exp(-η^2)) isa Profiles.AxialTransverse
-    @test Profiles.Natural(c -> c.s * c.η) isa Profiles.Natural
+    @test Profiles.Natural(c -> c.z * c.η) isa Profiles.Natural
     @test Profiles.Raw((g, x4) -> 1.0) isa Profiles.Raw
     @test Profiles.Constant(42.0) isa Profiles.Constant
     @test Profiles.Modified(Profiles.Constant(1.0), (g, x4, v) -> 2v) isa Profiles.Modified
@@ -51,8 +51,8 @@ end
     @test p_prod(geom, x4) ≈ 4.0 * (3 * coords.η)
     
     # Natural profile
-    p_nat = Profiles.Natural(c -> c.s + c.η)
-    @test p_nat(geom, x4) ≈ coords.s + coords.η
+    p_nat = Profiles.Natural(c -> c.z + c.η)
+    @test p_nat(geom, x4) ≈ coords.z + coords.η
     
     # Raw profile
     p_raw = Profiles.Raw((g, x4) -> dot(geometry_axis(g), SVector(x4.x, x4.y, x4.z)))

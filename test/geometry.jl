@@ -4,9 +4,9 @@
 
 	axis = SVector(0, 0, 1)
 	φj = 0.05
-	s_range = 1.0 .. 5.0
+	z = 1.0 .. 5.0
 	
-	geom = Geometries.Conical(axis, φj, s_range)
+	geom = Geometries.Conical(axis, φj, z)
 	
 	@test geom isa Geometries.AbstractGeometry
 	@test geometry_axis(geom) == axis
@@ -14,17 +14,17 @@
 	# Test natural_coords
 	x4_on_axis = S.FourPosition(0, 0, 0, 2.0)
 	coords = natural_coords(geom, x4_on_axis)
-	@test coords.s ≈ 2.0
+	@test coords.z ≈ 2.0
 	@test coords.ρ ≈ 0.0
 	@test coords.η ≈ 0.0
 	
-	# Test Val(:s) optimization
-	@test natural_coords(geom, x4_on_axis, Val(:s)) ≈ 2.0
+	# Test Val(:z) optimization
+	@test natural_coords(geom, x4_on_axis, Val(:z)) ≈ 2.0
 	
 	# Off-axis point
 	x4_off = S.FourPosition(0, 0.1, 0, 2.0)
 	coords_off = natural_coords(geom, x4_off)
-	@test coords_off.s ≈ 2.0
+	@test coords_off.z ≈ 2.0
 	@test coords_off.ρ ≈ 0.1
 	@test coords_off.η ≈ 0.1 / (2.0 * tan(φj))
 	
@@ -39,12 +39,18 @@
 	
 	# Test z_interval (on-axis ray)
 	ray = S.RayZ(; x0=S.FourPosition(0, 0, 0, 0), k=2, nz=1024)
-	@test z_interval(geom, ray) == s_range
+	@test z_interval(geom, ray) == z
 	
 	# prepare_for_computations should cache trig
 	geom_prepared = S.prepare_for_computations(geom)
 	@test tan(geom_prepared.φj) ≈ tan(φj)
 	@test cos(geom_prepared.φj) ≈ cos(φj)
+	
+	# Test Accessors.set for geometry_axis
+	new_axis = normalize(SVector(1, 0, 1))
+	geom_new = S.@set geometry_axis(geom) = new_axis
+	@test geometry_axis(geom_new) == new_axis
+	@test geometry_axis(geom) == axis  # original unchanged
 end
 
 @testitem "Coordinate transformations" begin
@@ -53,7 +59,7 @@ end
 
 	# Basic roundtrip test
 	axis = normalize(SVector(1, 0, 1))
-	geom = Geometries.Conical(axis, 0.1, 1.0 .. 5.0)
+	geom = Geometries.Conical(; axis, φj=0.1, z=1.0 .. 5.0)
 	
 	# Test rotation matrix
 	R = rotation_lab_to_local(geom)
@@ -67,7 +73,7 @@ end
 	@test r_back ≈ r_lab
 	
 	# For axis-aligned geometry, local z should align with axis
-	geom_z = Geometries.Conical(SVector(0, 0, 1), 0.1, 1.0 .. 5.0)
+	geom_z = Geometries.Conical(; axis=SVector(0, 0, 1), φj=0.1, z=1.0 .. 5.0)
 	R_z = rotation_lab_to_local(geom_z)
 	@test R_z[:, 3] ≈ SVector(0, 0, 1)  # ez = axis
 	

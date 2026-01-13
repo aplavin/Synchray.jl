@@ -10,13 +10,14 @@ using StaticArrays
 using LinearAlgebra
 using IntervalSets
 using StructArrays
+using Accessors: @accessor
 using DispatchDoctor: @unstable
 
 # Import prepare_for_computations from parent to extend it
 import ..Synchray: prepare_for_computations
 
 # Export only interface functions, not type names
-export natural_coords, geometry_axis, geometry_basis, field_direction
+export natural_coords, geometry_axis, geometry_basis
 export z_interval, is_inside
 export rotation_lab_to_local, rotate_lab_to_local, rotate_local_to_lab
 export ray_in_local_coords, camera_fov_in_local_coords
@@ -48,59 +49,58 @@ Base.cos(x::AngleTrigCached) = x.cos
 AngleTrigCached_fromangle(φ) = AngleTrigCached(tan(φ), cos(φ))
 
 """
-    Conical{Ta, Tφ, Ts}
+    Conical{Ta, Tφ, Tz}
 
 Conical geometry with axis, half-opening angle, and axial extent.
 
 # Fields
 - `axis::Ta`: Unit vector defining the cone axis
 - `φj::Tφ`: Half-opening angle
-- `s_range::Ts`: Axial extent interval
+- `z::Tz`: Axial extent interval (along-axis coordinate range)
 """
-struct Conical{Ta, Tφ, Ts} <: AbstractGeometry
+@kwdef struct Conical{Ta, Tφ, Tz} <: AbstractGeometry
 	axis::Ta
 	φj::Tφ
-	s_range::Ts
+	z::Tz
 end
 
 """Prepare for computations by caching trig values"""
-@unstable prepare_for_computations(g::Conical) =
-	Conical(g.axis, AngleTrigCached_fromangle(g.φj), g.s_range)
+prepare_for_computations(g::Conical) = Conical(g.axis, AngleTrigCached_fromangle(g.φj), g.z)
 
-geometry_axis(g::Conical) = g.axis
+@accessor geometry_axis(g::Conical) = g.axis
 
 """
 Compute cylindrical coordinates relative to axis.
-Returns: spatial position `r`, axial distance `s`, perpendicular component `r_perp`, cylindrical radius `ρ`.
+Returns: spatial position `r`, axial distance `z`, perpendicular component `r_perp`, cylindrical radius `ρ`.
 """
 @inline _cylindrical_coords(axis, x4) = begin
 	r = SVector(x4.x, x4.y, x4.z)
-	s = dot(axis, r)
-	r_perp = r - s * axis
+	z = dot(axis, r)
+	r_perp = r - z * axis
 	ρ = norm(r_perp)
-	return (; r, s, r_perp, ρ)
+	return (; r, z, r_perp, ρ)
 end
 
 """
     natural_coords(g::Conical, x4) -> NamedTuple
 
-Returns `(s, ρ, η)` where:
-- `s`: axial coordinate (distance along axis)
+Returns `(z, ρ, η)` where:
+- `z`: axial coordinate (distance along axis)
 - `ρ`: cylindrical radius (perpendicular distance from axis)
-- `η`: normalized radial coordinate `η = ρ / (s * tan(φj))`
+- `η`: normalized radial coordinate `η = ρ / (z * tan(φj))`
 """
 function natural_coords(g::Conical, x4)
-	(; s, ρ) = _cylindrical_coords(g.axis, x4)
-	η = ρ / (s * tan(g.φj))
-	return (; s, ρ, η)
+	(; z, ρ) = _cylindrical_coords(g.axis, x4)
+	η = ρ / (z * tan(g.φj))
+	return (; z, ρ, η)
 end
 
 """
-    natural_coords(g::Conical, x4, ::Val{:s}) -> Number
+    natural_coords(g::Conical, x4, ::Val{:z}) -> Number
 
-Returns just the axial coordinate `s` (optimized version).
+Returns just the axial coordinate `z` (optimized version).
 """
-function natural_coords(g::Conical, x4, ::Val{:s})
+function natural_coords(g::Conical, x4, ::Val{:z})
 	r = SVector(x4.x, x4.y, x4.z)
 	return dot(g.axis, r)
 end
@@ -111,8 +111,8 @@ end
 Test if position is inside the conical volume.
 """
 function is_inside(g::Conical, x4)
-	(; s, ρ) = _cylindrical_coords(g.axis, x4)
-	return (s ∈ g.s_range) && ρ ≤ s * tan(g.φj)
+	(; z, ρ) = _cylindrical_coords(g.axis, x4)
+	return (z ∈ g.z) && ρ ≤ z * tan(g.φj)
 end
 
 """
@@ -124,7 +124,7 @@ function z_interval(g::Conical, ray)
 	# RayZ is a line of sight parameterized by z: r(z) = r0 + z*e_z.
 	# Assumes standard camera convention: ray.x0.z == 0 and cone apex at origin.
 	@assert iszero(ray.x0.z)
-	@assert 0 ≤ leftendpoint(g.s_range) ≤ rightendpoint(g.s_range)
+	@assert 0 ≤ leftendpoint(g.z) ≤ rightendpoint(g.z)
 	
 	c2 = cos(g.φj)^2
 	r0 = SVector(ray.x0.x, ray.x0.y, ray.x0.z)
@@ -146,13 +146,13 @@ function z_interval(g::Conical, ray)
 	end
 	infseg = FT(-Inf) .. FT(Inf)
 
-	# 1) Restrict to truncation interval in s: s(z) ∈ s_range.
+	# 1) Restrict to truncation interval in along-axis coordinate: z_axis(z_lab) ∈ g.z.
 	zs = if iszero(az)
-		(α0 ∈ g.s_range) ? infseg : emptyseg
+		(α0 ∈ g.z) ? infseg : emptyseg
 	else
-		smin, smax = endpoints(g.s_range)
-		z1 = (smin - α0) / az
-		z2 = (smax - α0) / az
+		zmin, zmax = endpoints(g.z)
+		z1 = (zmin - α0) / az
+		z2 = (zmax - α0) / az
 		(min(z1, z2) .. max(z1, z2))
 	end
 

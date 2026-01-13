@@ -18,7 +18,7 @@ Profile depending only on the axial coordinate `s`.
 
 # Example
 ```julia
-ne = Profiles.Axial(PowerLawS(-2; val0=1e4, s0=1pc))
+ne = Profiles.Axial(PowerLaw(-2; val0=1e4, s0=1pc))
 ```
 """
 struct Axial{F}
@@ -26,8 +26,8 @@ struct Axial{F}
 end
 
 function (p::Axial)(geom, x4)
-    s = natural_coords(geom, x4, Val(:s))
-    return p.f(s)
+    z = natural_coords(geom, x4, Val(:z))
+    return p.f(z)
 end
 
 """
@@ -50,26 +50,26 @@ function (p::Transverse)(geom, x4)
 end
 
 """
-    AxialTransverse{Fs, Fη}
+    AxialTransverse{Fz, Fη}
 
-Profile as a separable product of axial and transverse functions: `f(s) * g(η)`.
+Profile as a separable product of axial and transverse functions: `f(z) * g(η)`.
 
 # Example
 ```julia
 ne = Profiles.AxialTransverse(
-    s -> (s/s0)^-2,           # axial decline
+    z -> (z/z0)^-2,           # axial decline
     η -> exp(-η^2 / 0.5^2)    # Gaussian transverse profile
 )
 ```
 """
-struct AxialTransverse{Fs, Fη}
-    f_s::Fs      # function of s
+struct AxialTransverse{Fz, Fη}
+    f_z::Fz      # function of z
     f_η::Fη      # function of η
 end
 
 function (p::AxialTransverse)(geom, x4)
     coords = natural_coords(geom, x4)
-    return p.f_s(coords.s) * p.f_η(coords.η)
+    return p.f_z(coords.z) * p.f_η(coords.η)
 end
 
 """
@@ -79,7 +79,7 @@ Profile depending on the full natural coordinate tuple.
 
 # Example
 ```julia
-ne = Profiles.Natural(c -> c.s^-2 * exp(-c.η^2))
+ne = Profiles.Natural(c -> c.z^-2 * exp(-c.η^2))
 ```
 """
 struct Natural{F}
