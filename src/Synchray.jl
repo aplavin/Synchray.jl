@@ -21,6 +21,11 @@ using DispatchDoctor: @stable, @unstable
 
 
 @stable default_mode="disable" begin
+
+# Default no-op for prepare_for_computations
+# Submodules can extend this for types that need preparation
+prepare_for_computations(x) = x
+
 include("power.jl")
 include("minkowski.jl")
 include("mediums.jl")
@@ -35,6 +40,11 @@ include("objects/patterns.jl")
 include("transfer.jl")
 include("units.jl")
 
+# New modular architecture
+include("geometries.jl")
+include("directions.jl")
+include("profiles.jl")
+
 
 @unstable to_float_type(::Type{TF}, obj) where {TF<:AbstractFloat} =
     @modify(x -> to_float_type(TF, x), obj[∗ₚ])
@@ -45,8 +55,9 @@ include("units.jl")
 
 end
 
-# we don't export anything from this module on purpose
+# we only export a few things from this module, very minimal;
 # the user is recommended to do `import Synchray as S`
 # and then access things as `S.SomeType` or `S.some_function`
+export Geometries, Directions, Profiles
 
 end
