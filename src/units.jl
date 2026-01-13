@@ -15,6 +15,20 @@ _u_to_code(x::Number, scale::AbstractQuantity) = NoUnits(x / scale)
 _u_to_code(x::AbstractArray, scale::AbstractQuantity) = _u_to_code.(x, scale)
 _u_to_code(x::AbstractInterval, scale::AbstractQuantity) = @modify(x -> _u_to_code(x, scale), endpoints(x)[∗])
 
+
+@unstable withunits(::typeof(render), cam, obj, what; kwargs...) = _upost_render(render(cam, obj, what; kwargs...), what)
+
+_upost_render(result, ::Intensity) = result * UCTX.Iν0
+_upost_render(result, ::IntensityIQU) = result * UCTX.Iν0
+_upost_render(result, ::OpticalDepth) = result  # dimensionless
+_upost_render(result, ::SpectralIndex) = result  # dimensionless
+_upost_render(result, what::Tuple) = ntuple(length(what)) do i
+	_upost_render(getindex.(result, i), what[i])
+end
+
+
+# OLD CODE BELOW:
+
 _withunits(pl::PowerLaw, y0_scale) = PowerLaw(pl.exp; val0=_u_to_code(pl.val0, y0_scale), s0=_u_to_code(pl.s0, UCTX.L0))
 _withunits(B::BFieldSpec_OLD) = BFieldSpec_OLD(_withunits(B.scale, UCTX.B0), B.dir, B.wrap)
 withunits(::Type{ConicalJet}; kws...) = let
@@ -45,15 +59,4 @@ withunits(::Type{CameraZ}; kws...) = let
 		ν=_u_to_code(kws.ν, UCTX.ν0),
 		t=_u_to_code(kws.t, _t0(UCTX)),
 	)
-end
-
-
-@unstable withunits(::typeof(render), cam, obj, what; kwargs...) = _upost_render(render(cam, obj, what; kwargs...), what)
-
-_upost_render(result, ::Intensity) = result * UCTX.Iν0
-_upost_render(result, ::IntensityIQU) = result * UCTX.Iν0
-_upost_render(result, ::OpticalDepth) = result  # dimensionless
-_upost_render(result, ::SpectralIndex) = result  # dimensionless
-_upost_render(result, what::Tuple) = ntuple(length(what)) do i
-	_upost_render(getindex.(result, i), what[i])
 end

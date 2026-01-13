@@ -24,6 +24,7 @@ struct BFieldSpec{Tscale,Tdir,Twrap}
 end
 
 prepare_for_computations(bspec::BFieldSpec) = modify(prepare_for_computations, bspec, @o _.dir _.scale _.wrap)
+ustrip(bspec::BFieldSpec) = @modify(s -> ustrip(s; valu=UCTX.B0), bspec.scale)
 
 """
     VelocitySpec{Tdir, Tkind, Tscale}
@@ -64,3 +65,4 @@ end
 VelocitySpec(dir, scale) = VelocitySpec(dir, gamma, scale)
 
 prepare_for_computations(vspec::VelocitySpec) = modify(prepare_for_computations, vspec, @o _.dir _.kind _.scale)
+ustrip(vspec::VelocitySpec) = vspec

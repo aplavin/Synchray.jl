@@ -125,18 +125,25 @@ end # module Profiles
     return p.f(z)
 end
 prepare_for_computations(p::Profiles.Axial) = modify(prepare_for_computations, p, @o _.f)
+ustrip(p::Profiles.Axial; valu) = @modify(f -> ustrip(f; valu, argu=UCTX.L0), p.f)
 
 @inline function (p::Profiles.Transverse)(geom, x4)
     coords = natural_coords(geom, x4)
     return p.f(coords.η)
 end
 prepare_for_computations(p::Profiles.Transverse) = modify(prepare_for_computations, p, @o _.f)
+ustrip(p::Profiles.Transverse; valu) = @modify(f -> ustrip(f; valu, argu=1), p.f)
 
 @inline function (p::Profiles.AxialTransverse)(geom, x4)
     coords = natural_coords(geom, x4)
     return p.f_z(coords.z) * p.f_η(coords.η)
 end
 prepare_for_computations(p::Profiles.AxialTransverse) = modify(prepare_for_computations, p, @o _.f_z _.f_η)
+ustrip(p::Profiles.AxialTransverse; valu) = @p let
+    p
+    @modify(ustrip(_; valu, argu=UCTX.L0), __.f_z)
+    @modify(ustrip(_; valu, argu=1), __.f_η)
+end
 
 @inline function (p::Profiles.Natural)(geom, x4)
     coords = natural_coords(geom, x4)
@@ -152,3 +159,7 @@ end
     return p.modifier(geom, x4, base_val)
 end
 prepare_for_computations(p::Profiles.Modified) = modify(prepare_for_computations, p, @o _.base _.modifier)
+ustrip(p::Profiles.Modified; valu) = @p let
+    p
+    @modify(ustrip(_; valu), __.base)
+end

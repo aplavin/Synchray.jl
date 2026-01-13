@@ -65,8 +65,12 @@ end
 @inline synchrotron_model(region::EmissionRegion) = region.model
 
 # prepare_for_computations propagation
-@unstable prepare_for_computations(region::EmissionRegion) =
-    modify(prepare_for_computations, region, @o _.geometry _.ne _.B _.velocity _.model)
+@unstable prepare_for_computations(region::EmissionRegion) = modify(prepare_for_computations, region, @o _.geometry _.ne _.B _.velocity _.model)
+@unstable ustrip(region::EmissionRegion) = @p let
+    region
+    modify(ustrip, __, @o _.geometry _.B _.velocity _.model)
+    @modify(ustrip(_; valu=UCTX.ne0), __.ne)
+end
 
 # Visualization helpers forward to geometry
 rotation_lab_to_local(region::EmissionRegion) = rotation_lab_to_local(region.geometry)

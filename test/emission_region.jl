@@ -88,45 +88,52 @@
 end
 
 
-# @testitem "Unitful boundary API (EmissionRegion)" begin
-# 	import Synchray as S
-# 	using Unitful, UnitfulAstro
-# 	using RectiGrids
+@testitem "Unitful boundary API (EmissionRegion)" begin
+	import Synchray as S
+	using Unitful, UnitfulAstro
+	using RectiGrids
 
-# 	region = S.withunits(S.EmissionRegion;
-# 		geometry=S.Geometries.Conical(
-# 			axis=SVector(0, 0, 1),
-# 			φj=2u"°",
-# 			z=1e-3u"pc"..50u"pc",
-# 		),
-# 		ne=S.Profiles.Axial(S.PowerLaw(-2; val0=2u"cm^-3", s0=1u"pc")),
-# 		B=S.BFieldSpec(S.Profiles.Axial(S.PowerLaw(-1; val0=3u"Gauss", s0=1u"pc")), S.Directions.Scalar(), b -> S.FullyTangled(b)),
-# 		velocity=S.VelocitySpec(S.Directions.Axial(), S.beta, S.Profiles.Constant(0.0)),
-# 		model=S.IsotropicPowerLawElectrons(; p=2.5),
-# 	)
+	region = S.EmissionRegion(;
+		geometry=S.Geometries.Conical(
+			axis=SVector(0, 0, 1),
+			φj=2u"°",
+			z=1e-3u"pc"..50u"pc",
+		),
+		ne=S.Profiles.Axial(S.PowerLaw(-2; val0=2u"cm^-3", s0=1u"pc")),
+		B=S.BFieldSpec(S.Profiles.Axial(S.PowerLaw(-1; val0=3u"Gauss", s0=1u"pc")), S.Directions.Scalar(), b -> S.FullyTangled(b)),
+		velocity=S.VelocitySpec(S.Directions.Axial(), S.beta, S.Profiles.Constant(0.0)),
+		model=S.IsotropicPowerLawElectrons(; p=2.5),
+	) |> ustrip
+	knot = S.Patterns.EllipsoidalKnot(
+		x_c0=S.FourPosition(0.0u"pc", 0.0u"pc", 0u"pc", 0u"pc"),
+		# x_c0=S.FourPosition(0.0u"yr", 0.0u"pc", 0u"pc", 2u"pc"),
+		u=construct(S.FourVelocity, S.gamma=>10, S.direction=>region.geometry.axis),
+		sizing=S.Patterns.CrossSectionSizing(0.1, 0.5),
+		profile=S.Patterns.GaussianBump(100),
+	) |> ustrip
 
-# 	@test region.model.Cj_ordered * region.model.sinavg_j ≈ 1.7e-18 rtol=1e-3
-# 	@test region.model.Ca_ordered * region.model.sinavg_a ≈ 7.20e13 rtol=1e-3
+	@test region.model.Cj_ordered * region.model.sinavg_j ≈ 1.7e-18 rtol=1e-3
+	@test region.model.Ca_ordered * region.model.sinavg_a ≈ 7.20e13 rtol=1e-3
 
-# 	cam = S.withunits(S.CameraZ;
-# 		xys=grid(SVector, range(0.01u"pc"..0.1u"pc", 2), range(-0.001u"pc"..0.001u"pc", 2)),
-# 		nz=20,
-# 		ν=230u"GHz",
-# 		t=0u"yr",
-# 	)
+	cam = ustrip(S.CameraZ(;
+		xys=grid(SVector, range(0.01u"pc"..0.1u"pc", 2), range(-0.001u"pc"..0.001u"pc", 2)),
+		nz=20,
+		ν=230u"GHz",
+		t=0u"yr",
+	))
 
-# 	Iν_nou = S.render(cam, region)
-# 	@test all(>(0), Iν_nou)
-# 	Iν = S.withunits(S.render, cam, region, S.Intensity())
-# 	@test unit(eltype(Iν)) == u"erg/s/cm^2/Hz/sr"
-# 	@test ustrip.(Iν) == Iν_nou
-# 	@test ustrip.(u"Jy/mas^2", Iν) ≈ [121 121; 0.028 0.028]  rtol=1e-2
+	Iν_nou = S.render(cam, region)
+	@test all(>(0), Iν_nou)
+	Iν = S.withunits(S.render, cam, region, S.Intensity())
+	@test unit(eltype(Iν)) == u"erg/s/cm^2/Hz/sr"
+	@test ustrip.(Iν) == Iν_nou
+	@test ustrip.(u"Jy/mas^2", Iν) ≈ [121 121; 0.028 0.028]  rtol=1e-2
 
-# 	res = S.withunits(S.render, cam, region, (S.Intensity(), S.SpectralIndex()))
-# 	@test res[1] == Iν
-# 	@test eltype(res[2]) == Float64
-# 	@test size(res[2]) == size(Iν)
-# end
+	res = S.withunits(S.render, cam, region, (S.Intensity(), S.SpectralIndex()))
+	@test res[1] == Iν
+	@test eltype(res[2]) == Float64
+	@test size(res[2]) == size(Iν)
+end
 
 
 @testitem "EmissionRegion phenomenology" begin

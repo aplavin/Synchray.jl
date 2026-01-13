@@ -16,6 +16,14 @@ _ray_z(x0::FourPosition, k::FourFrequency, nz::Int) = RayZ(x0, k, nz)
 _ray_z(x0::FourPosition, k::Number, nz::Int) = RayZ(x0, photon_k(k, SVector(0, 0, 1)), nz)
 
 
+ustrip(cam::CameraZ) = @p let
+    cam
+    @modify(_u_to_code(_, UCTX.L0), __.xys)
+    @modify(_u_to_code(_, UCTX.ν0), __.ν)
+    @modify(_u_to_code(_, _t0(UCTX)), __.t)
+end
+
+
 frequency(ray::RayZ) = frequency(ray.k)
 Accessors.set(ray::RayZ, ::typeof(frequency), ν) = @set frequency(ray.k) = ν
 

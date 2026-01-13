@@ -238,5 +238,4 @@ end
 # Default: no validation needed for other geometry types
 validate_pattern(knot::Patterns.EllipsoidalKnot, geom) = nothing
 
-"""Prepare knot for computations (propagates to fields)"""
-prepare_for_computations(knot::Patterns.EllipsoidalKnot) = knot
+ustrip(knot::Patterns.EllipsoidalKnot) = @modify(x -> _u_to_code(x, UCTX.L0), knot.x_c0)

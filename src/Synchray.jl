@@ -6,7 +6,7 @@ using Reexport
 @reexport using Swizzling
 @reexport using LinearAlgebra
 @reexport using Unitful
-using Unitful: AbstractQuantity
+import Unitful: ustrip, AbstractQuantity
 @reexport using DataPipes
 @reexport using Accessors
 @reexport import AccessorsExtra: construct

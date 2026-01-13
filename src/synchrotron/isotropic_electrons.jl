@@ -44,6 +44,7 @@ struct IsotropicPowerLawElectrons{Tp,Tγ,TC,Tavg}
 end
 
 @unstable prepare_for_computations(model::IsotropicPowerLawElectrons) = @modify(FixedExponent, model.p)
+ustrip(model::IsotropicPowerLawElectrons) = model
 
 
 """

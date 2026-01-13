@@ -54,6 +54,7 @@ end # module Geometries
 
 """Prepare for computations by caching trig values"""
 prepare_for_computations(g::Geometries.Conical) = Geometries.Conical(g.axis, Geometries.AngleTrigCached_fromangle(g.φj), g.z)
+ustrip(g::Geometries.Conical) = @modify(z -> _u_to_code(z, UCTX.L0), g.z)
 
 @accessor geometry_axis(g::Geometries.Conical) = g.axis
 
