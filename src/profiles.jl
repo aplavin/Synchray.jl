@@ -6,10 +6,6 @@ vary spatially, with different patterns of dependence on natural coordinates.
 """
 module Profiles
 
-# Will be available from Geometries module after both are loaded
-using ..Geometries: natural_coords
-using Accessors: modify, @o
-
 # No type exports - always use Profiles.Axial(), etc.
 
 """
@@ -26,12 +22,6 @@ struct Axial{F}
     f::F
 end
 
-@inline function (p::Axial)(geom, x4)
-    z = natural_coords(geom, x4, Val(:z))
-    return p.f(z)
-end
-prepare_for_computations(p::Axial) = modify(prepare_for_computations, p, @o _.f)
-
 """
     Transverse{F}
 
@@ -45,12 +35,6 @@ ne = Profiles.Transverse(η -> exp(-η^2))
 struct Transverse{F}
     f::F
 end
-
-@inline function (p::Transverse)(geom, x4)
-    coords = natural_coords(geom, x4)
-    return p.f(coords.η)
-end
-prepare_for_computations(p::Transverse) = modify(prepare_for_computations, p, @o _.f)
 
 """
     AxialTransverse{Fz, Fη}
@@ -70,12 +54,6 @@ struct AxialTransverse{Fz, Fη}
     f_η::Fη      # function of η
 end
 
-@inline function (p::AxialTransverse)(geom, x4)
-    coords = natural_coords(geom, x4)
-    return p.f_z(coords.z) * p.f_η(coords.η)
-end
-prepare_for_computations(p::AxialTransverse) = modify(prepare_for_computations, p, @o _.f_z _.f_η)
-
 """
     Natural{F}
 
@@ -88,11 +66,6 @@ ne = Profiles.Natural(c -> c.z^-2 * exp(-c.η^2))
 """
 struct Natural{F}
     f::F
-end
-
-@inline function (p::Natural)(geom, x4)
-    coords = natural_coords(geom, x4)
-    return p.f(coords)
 end
 
 """
@@ -109,8 +82,6 @@ struct Raw{F}
     f::F
 end
 
-@inline (p::Raw)(geom, x4) = p.f(geom, x4)
-
 """
     Constant{T}
 
@@ -124,8 +95,6 @@ ne = Profiles.Constant(1e4)
 struct Constant{T}
     val::T
 end
-
-@inline (p::Constant)(geom, x4) = p.val
 
 """
     Modified{Tbase, Tmod}
@@ -149,10 +118,37 @@ struct Modified{Tbase, Tmod}
     modifier::Tmod
 end
 
-@inline function (p::Modified)(geom, x4)
+end # module Profiles
+
+@inline function (p::Profiles.Axial)(geom, x4)
+    z = natural_coords(geom, x4, Val(:z))
+    return p.f(z)
+end
+prepare_for_computations(p::Profiles.Axial) = modify(prepare_for_computations, p, @o _.f)
+
+@inline function (p::Profiles.Transverse)(geom, x4)
+    coords = natural_coords(geom, x4)
+    return p.f(coords.η)
+end
+prepare_for_computations(p::Profiles.Transverse) = modify(prepare_for_computations, p, @o _.f)
+
+@inline function (p::Profiles.AxialTransverse)(geom, x4)
+    coords = natural_coords(geom, x4)
+    return p.f_z(coords.z) * p.f_η(coords.η)
+end
+prepare_for_computations(p::Profiles.AxialTransverse) = modify(prepare_for_computations, p, @o _.f_z _.f_η)
+
+@inline function (p::Profiles.Natural)(geom, x4)
+    coords = natural_coords(geom, x4)
+    return p.f(coords)
+end
+
+@inline (p::Profiles.Raw)(geom, x4) = p.f(geom, x4)
+
+@inline (p::Profiles.Constant)(geom, x4) = p.val
+
+@inline function (p::Profiles.Modified)(geom, x4)
     base_val = p.base(geom, x4)
     return p.modifier(geom, x4, base_val)
 end
-prepare_for_computations(p::Modified) = modify(prepare_for_computations, p, @o _.base _.modifier)
-
-end # module Profiles
+prepare_for_computations(p::Profiles.Modified) = modify(prepare_for_computations, p, @o _.base _.modifier)

@@ -6,22 +6,6 @@ for emission regions.
 """
 module Geometries
 
-using StaticArrays
-using LinearAlgebra
-using IntervalSets
-using StructArrays
-using Accessors: @accessor
-using DispatchDoctor: @unstable
-
-# Import prepare_for_computations from parent to extend it
-import ..Synchray: prepare_for_computations
-
-# Export only interface functions, not type names
-export natural_coords, geometry_axis, geometry_basis
-export z_interval, is_inside
-export rotation_lab_to_local, rotate_lab_to_local, rotate_local_to_lab
-export ray_in_local_coords, camera_fov_in_local_coords
-
 """
     AbstractGeometry
 
@@ -44,6 +28,7 @@ struct AngleTrigCached{T}
 	tan::T
 	cos::T
 end
+
 Base.tan(x::AngleTrigCached) = x.tan
 Base.cos(x::AngleTrigCached) = x.cos
 AngleTrigCached_fromangle(φ) = AngleTrigCached(tan(φ), cos(φ))
@@ -64,10 +49,13 @@ Conical geometry with axis, half-opening angle, and axial extent.
 	z::Tz
 end
 
-"""Prepare for computations by caching trig values"""
-prepare_for_computations(g::Conical) = Conical(g.axis, AngleTrigCached_fromangle(g.φj), g.z)
+end # module Geometries
 
-@accessor geometry_axis(g::Conical) = g.axis
+
+"""Prepare for computations by caching trig values"""
+prepare_for_computations(g::Geometries.Conical) = Geometries.Conical(g.axis, Geometries.AngleTrigCached_fromangle(g.φj), g.z)
+
+@accessor geometry_axis(g::Geometries.Conical) = g.axis
 
 """
 Compute cylindrical coordinates relative to axis.
@@ -89,7 +77,7 @@ Returns `(z, ρ, η)` where:
 - `ρ`: cylindrical radius (perpendicular distance from axis)
 - `η`: normalized radial coordinate `η = ρ / (z * tan(φj))`
 """
-function natural_coords(g::Conical, x4)
+function natural_coords(g::Geometries.Conical, x4)
 	(; z, ρ) = _cylindrical_coords(g.axis, x4)
 	η = ρ / (z * tan(g.φj))
 	return (; z, ρ, η)
@@ -100,7 +88,7 @@ end
 
 Returns just the axial coordinate `z` (optimized version).
 """
-function natural_coords(g::Conical, x4, ::Val{:z})
+function natural_coords(g::Geometries.Conical, x4, ::Val{:z})
 	r = SVector(x4.x, x4.y, x4.z)
 	return dot(g.axis, r)
 end
@@ -110,7 +98,7 @@ end
 
 Test if position is inside the conical volume.
 """
-function is_inside(g::Conical, x4)
+function is_inside(g::Geometries.Conical, x4)
 	(; z, ρ) = _cylindrical_coords(g.axis, x4)
 	return (z ∈ g.z) && ρ ≤ z * tan(g.φj)
 end
@@ -120,7 +108,7 @@ end
 
 Compute ray-cone intersection interval in lab `z` coordinate.
 """
-function z_interval(g::Conical, ray)
+function z_interval(g::Geometries.Conical, ray)
 	# RayZ is a line of sight parameterized by z: r(z) = r0 + z*e_z.
 	# Assumes standard camera convention: ray.x0.z == 0 and cone apex at origin.
 	@assert iszero(ray.x0.z)
@@ -239,7 +227,7 @@ Matrix columns are lab-frame images of the local basis vectors.
 - lab → local coordinates: `r_local = R' * r_lab`
 - local → lab coordinates: `r_lab = R * r_local`
 """
-function rotation_lab_to_local(geom::AbstractGeometry)
+function rotation_lab_to_local(geom::Geometries.AbstractGeometry)
 	axis = geometry_axis(geom)
 	ẑ = SVector(0, 0, 1)
 	x̂ = SVector(1, 0, 0)
@@ -258,7 +246,7 @@ end
 Convert a lab-frame spatial 3-position `r` to local coordinates defined by
 the geometry rotation matrix.
 """
-rotate_lab_to_local(geom::AbstractGeometry, r::SVector{3}) = 
+rotate_lab_to_local(geom::Geometries.AbstractGeometry, r::SVector{3}) = 
 	rotation_lab_to_local(geom)' * r
 
 """
@@ -266,7 +254,7 @@ rotate_lab_to_local(geom::AbstractGeometry, r::SVector{3}) =
 
 Convert a local-frame spatial 3-position back to lab coordinates.
 """
-rotate_local_to_lab(geom::AbstractGeometry, r_local::SVector{3}) = 
+rotate_local_to_lab(geom::Geometries.AbstractGeometry, r_local::SVector{3}) = 
 	rotation_lab_to_local(geom) * r_local
 
 """
@@ -307,5 +295,3 @@ Use `@swiz` at call sites to extract desired components.
 		rotate_lab_to_local(geom, r_lab)
 	end
 end
-
-end # module Geometries

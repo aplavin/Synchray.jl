@@ -145,34 +145,6 @@ _rayz_cone_z_interval(axis, φj, ray::RayZ, s) = let
 	return zs ∩ z_cone
 end
 
-@inline _rotate_minimal(a::SVector{3}, b::SVector{3}, v::SVector{3}) = begin
-	ET = float(promote_type(eltype(a), eltype(b), eltype(v)))
-
-	# Assumes a and b are already unit vectors.
-	c = dot(a, b)
-	vx = cross(a, b)
-	s = norm(vx)
-
-	# Rodrigues rotation formula for the minimal rotation mapping â -> b̂.
-	# Special-case (anti)parallel vectors for numerical stability.
-	if s < √eps(s)
-		if c > 0
-			return ET.(v)
-		else
-			# 180° rotation: axis is not unique; pick a deterministic one perpendicular to â.
-			# Since in this codepath â is typically ẑ, choosing ŷ keeps the "tilt about y" intuition.
-			axis = abs(a.y) < 0.9 ? SVector{3,ET}(0, 1, 0) : SVector{3,ET}(1, 0, 0)
-			k = normalize(cross(a, axis))
-			# For θ = π: R(v) = v - 2 k×(k×v) = 2(k⋅v)k - v.
-			return 2 * dot(k, v) * k - v
-		end
-	end
-
-	k = vx / s
-	# v_rot = v cosθ + (k×v) sinθ + k(k⋅v)(1-cosθ)
-	return v * c + cross(k, v) * s + k * dot(k, v) * (1 - c)
-end
-
 """
 	jet_rotation_matrix(axis) -> SMatrix{3,3}
 

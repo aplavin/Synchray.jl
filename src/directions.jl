@@ -6,13 +6,6 @@ in space relative to the geometry.
 """
 module Directions
 
-using StaticArrays
-using LinearAlgebra
-using ..Geometries
-
-# Export only interface functions, not type names
-export field_direction
-
 """
     AbstractDirection
 
@@ -62,6 +55,8 @@ struct Helical{T} <: AbstractDirection
     ψ::T  # pitch angle
 end
 
+end # module Directions
+
 """
     field_direction(dir::AbstractDirection, geometry, x4) -> SVector{3} or scalar
 
@@ -74,21 +69,21 @@ For vector directions, returns a unit 3-vector in the lab frame.
 function field_direction end
 
 # Scalar case: return 1
-@inline field_direction(::Scalar, geom, x4) = 1
+@inline field_direction(::Directions.Scalar, geom, x4) = 1
 
 # Axial: along geometry axis
-@inline field_direction(::Axial, geom, x4) = Geometries.geometry_axis(geom)
+@inline field_direction(::Directions.Axial, geom, x4) = geometry_axis(geom)
 
 # Radial: outward from origin (normalized position vector)
-@inline field_direction(::Radial, geom, x4) = begin
+@inline field_direction(::Directions.Radial, geom, x4) = begin
     r = SVector(x4.x, x4.y, x4.z)
     r_norm = norm(r)
     return r / r_norm
 end
 
 # Toroidal: azimuthal around axis
-@inline field_direction(::Toroidal, geom, x4) = begin
-    axis = Geometries.geometry_axis(geom)
+@inline field_direction(::Directions.Toroidal, geom, x4) = begin
+    axis = geometry_axis(geom)
     r = SVector(x4.x, x4.y, x4.z)
     s = dot(axis, r)
     r_perp = r - s * axis
@@ -103,8 +98,8 @@ end
 end
 
 # Helical: mix of axial and toroidal
-@inline field_direction(h::Helical, geom, x4) = begin
-    axis = Geometries.geometry_axis(geom)
+@inline field_direction(h::Directions.Helical, geom, x4) = begin
+    axis = geometry_axis(geom)
     r = SVector(x4.x, x4.y, x4.z)
     s = dot(axis, r)
     r_perp = r - s * axis
@@ -120,5 +115,3 @@ end
     v = cψ * axis + sψ * e_phi
     return iszero(v) ? zero(v) : v / norm(v)
 end
-
-end # module Directions

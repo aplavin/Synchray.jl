@@ -1,6 +1,5 @@
 @testitem "Directions module" begin
     import Synchray as S
-    using Synchray.Directions
 
     @test Directions.Scalar() isa Directions.AbstractDirection
     @test Directions.Axial() isa Directions.AbstractDirection
@@ -11,7 +10,7 @@
     # Scalar returns 1
     geom = nothing  # not used for Scalar
     x4 = S.FourPosition(0, 0, 0, 1)
-    @test field_direction(Directions.Scalar(), geom, x4) == 1
+    @test S.field_direction(Directions.Scalar(), geom, x4) == 1
 end
 
 @testitem "Profiles module" begin
@@ -42,7 +41,7 @@ end
     @test p_axial(geom, x4) ≈ 4.0
     
     # Transverse profile
-    coords = natural_coords(geom, x4)
+    coords = S.natural_coords(geom, x4)
     p_trans = Profiles.Transverse(η -> 2η)
     @test p_trans(geom, x4) ≈ 2 * coords.η
     
@@ -55,7 +54,7 @@ end
     @test p_nat(geom, x4) ≈ coords.z + coords.η
     
     # Raw profile
-    p_raw = Profiles.Raw((g, x4) -> dot(geometry_axis(g), SVector(x4.x, x4.y, x4.z)))
+    p_raw = Profiles.Raw((g, x4) -> dot(S.geometry_axis(g), SVector(x4.x, x4.y, x4.z)))
     @test p_raw(geom, x4) ≈ 2.0
     
     # Modified profile

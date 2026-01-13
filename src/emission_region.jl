@@ -41,9 +41,9 @@ region = EmissionRegion(
 end
 
 # Delegate geometry methods
-@inline z_interval(region::EmissionRegion, ray) = Geometries.z_interval(region.geometry, ray)
-@inline is_inside(region::EmissionRegion, x4) = Geometries.is_inside(region.geometry, x4)
-@accessor geometry_axis(region::EmissionRegion) = Geometries.geometry_axis(region.geometry)
+@inline z_interval(region::EmissionRegion, ray) = z_interval(region.geometry, ray)
+@inline is_inside(region::EmissionRegion, x4) = is_inside(region.geometry, x4)
+@accessor geometry_axis(region::EmissionRegion) = geometry_axis(region.geometry)
 
 # Implement medium interface
 @inline electron_density(region::EmissionRegion, x4) = region.ne(region.geometry, x4)
@@ -51,14 +51,14 @@ end
 @inline function magnetic_field(region::EmissionRegion, x4)
     g = region.geometry
     b_mag = region.B.scale(g, x4)
-    b_dir = Directions.field_direction(region.B.dir, g, x4)
+    b_dir = field_direction(region.B.dir, g, x4)
     return region.B.wrap(b_mag * b_dir)
 end
 
 @inline function four_velocity(region::EmissionRegion, x4)
     g = region.geometry
     speed_val = region.velocity.scale(g, x4)
-    v_dir = Directions.field_direction(region.velocity.dir, g, x4)
+    v_dir = field_direction(region.velocity.dir, g, x4)
     return construct(FourVelocity, region.velocity.kind => speed_val, direction => v_dir)
 end
 
