@@ -8,6 +8,7 @@ module Profiles
 
 # Will be available from Geometries module after both are loaded
 using ..Geometries: natural_coords
+using Accessors: modify, @o
 
 # No type exports - always use Profiles.Axial(), etc.
 
@@ -25,10 +26,11 @@ struct Axial{F}
     f::F
 end
 
-function (p::Axial)(geom, x4)
+@inline function (p::Axial)(geom, x4)
     z = natural_coords(geom, x4, Val(:z))
     return p.f(z)
 end
+prepare_for_computations(p::Axial) = modify(prepare_for_computations, p, @o _.f)
 
 """
     Transverse{F}
@@ -44,10 +46,11 @@ struct Transverse{F}
     f::F
 end
 
-function (p::Transverse)(geom, x4)
+@inline function (p::Transverse)(geom, x4)
     coords = natural_coords(geom, x4)
     return p.f(coords.η)
 end
+prepare_for_computations(p::Transverse) = modify(prepare_for_computations, p, @o _.f)
 
 """
     AxialTransverse{Fz, Fη}
@@ -67,10 +70,11 @@ struct AxialTransverse{Fz, Fη}
     f_η::Fη      # function of η
 end
 
-function (p::AxialTransverse)(geom, x4)
+@inline function (p::AxialTransverse)(geom, x4)
     coords = natural_coords(geom, x4)
     return p.f_z(coords.z) * p.f_η(coords.η)
 end
+prepare_for_computations(p::AxialTransverse) = modify(prepare_for_computations, p, @o _.f_z _.f_η)
 
 """
     Natural{F}
@@ -86,7 +90,7 @@ struct Natural{F}
     f::F
 end
 
-function (p::Natural)(geom, x4)
+@inline function (p::Natural)(geom, x4)
     coords = natural_coords(geom, x4)
     return p.f(coords)
 end
@@ -105,7 +109,7 @@ struct Raw{F}
     f::F
 end
 
-(p::Raw)(geom, x4) = p.f(geom, x4)
+@inline (p::Raw)(geom, x4) = p.f(geom, x4)
 
 """
     Constant{T}
@@ -121,7 +125,7 @@ struct Constant{T}
     val::T
 end
 
-(p::Constant)(geom, x4) = p.val
+@inline (p::Constant)(geom, x4) = p.val
 
 """
     Modified{Tbase, Tmod}
@@ -145,9 +149,10 @@ struct Modified{Tbase, Tmod}
     modifier::Tmod
 end
 
-function (p::Modified)(geom, x4)
+@inline function (p::Modified)(geom, x4)
     base_val = p.base(geom, x4)
     return p.modifier(geom, x4, base_val)
 end
+prepare_for_computations(p::Modified) = modify(prepare_for_computations, p, @o _.base _.modifier)
 
 end # module Profiles

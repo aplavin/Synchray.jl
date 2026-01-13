@@ -8,6 +8,7 @@ module Directions
 
 using StaticArrays
 using LinearAlgebra
+using ..Geometries
 
 # Export only interface functions, not type names
 export field_direction
@@ -73,6 +74,51 @@ For vector directions, returns a unit 3-vector in the lab frame.
 function field_direction end
 
 # Scalar case: return 1
-field_direction(::Scalar, geom, x4) = 1
+@inline field_direction(::Scalar, geom, x4) = 1
+
+# Axial: along geometry axis
+@inline field_direction(::Axial, geom, x4) = Geometries.geometry_axis(geom)
+
+# Radial: outward from origin (normalized position vector)
+@inline field_direction(::Radial, geom, x4) = begin
+    r = SVector(x4.x, x4.y, x4.z)
+    r_norm = norm(r)
+    return r / r_norm
+end
+
+# Toroidal: azimuthal around axis
+@inline field_direction(::Toroidal, geom, x4) = begin
+    axis = Geometries.geometry_axis(geom)
+    r = SVector(x4.x, x4.y, x4.z)
+    s = dot(axis, r)
+    r_perp = r - s * axis
+    ρ = norm(r_perp)
+    
+    if iszero(ρ)
+        return zero(axis)
+    end
+    
+    e_r = r_perp / ρ
+    return cross(axis, e_r)
+end
+
+# Helical: mix of axial and toroidal
+@inline field_direction(h::Helical, geom, x4) = begin
+    axis = Geometries.geometry_axis(geom)
+    r = SVector(x4.x, x4.y, x4.z)
+    s = dot(axis, r)
+    r_perp = r - s * axis
+    ρ = norm(r_perp)
+    
+    e_phi = if iszero(ρ)
+        zero(axis)
+    else
+        cross(axis, r_perp / ρ)
+    end
+    
+    sψ, cψ = sincos(h.ψ)
+    v = cψ * axis + sψ * e_phi
+    return iszero(v) ? zero(v) : v / norm(v)
+end
 
 end # module Directions

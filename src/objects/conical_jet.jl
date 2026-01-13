@@ -15,6 +15,7 @@ end
 PowerLaw(exp; val0, s0=one(val0)) = PowerLaw(exp, val0, s0)
 
 @inline (pl::PowerLaw)(s) = s > 0 ? pl.val0 * (s / pl.s0)^pl.exp : zero(float(pl.val0))
+prepare_for_computations(pl::PowerLaw) = @modify(FixedExponent, pl.exp)
 
 abstract type AbstractJetFieldDirection end
 

@@ -44,6 +44,8 @@ include("units.jl")
 include("geometries.jl")
 include("directions.jl")
 include("profiles.jl")
+include("field_specs.jl")
+include("emission_region.jl")
 
 
 @unstable to_float_type(::Type{TF}, obj) where {TF<:AbstractFloat} =

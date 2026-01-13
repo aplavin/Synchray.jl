@@ -52,6 +52,8 @@ function render_field(obj; extent, nz=256, npx=256, ν, t=0.0, what=S.Intensity(
 end
 
 function moving_ellipsoid_image()
+    open(io -> write(io, "moving_ellipsoid_image()\n"), render_time_log_path, "a")
+
     βs = [0.0 0.7; 0.9 0.99]
     fig = Figure()
     for (I, β) in pairs(βs)
@@ -83,6 +85,8 @@ function moving_ellipsoid_image()
 end
 
 function synchrotron_sphere_image()
+    open(io -> write(io, "synchrotron_sphere_image()\n"), render_time_log_path, "a")
+
     # Two optical-depth regimes by varying absorption normalization.
     regimes = (
         (name="thin", Ca=1e-3),
@@ -123,17 +127,20 @@ function synchrotron_sphere_image()
 end
 
 function bk_jet_image()
-    φj = 4u"°"
+    open(io -> write(io, "bk_jet_image()\n"), render_time_log_path, "a")
 
+    φj = 4u"°"
     axis_for_viewing_angle(θ) = SVector(sin(θ), 0.0, cos(θ))
 
-    jet0 = S.ConicalJet(;
-        axis=SVector(NaN, NaN, NaN),
-        φj,
-        s=(1e-3 .. 50),
-        ne=S.PowerLawS(-2; val0=1.0, s0=1.0),
-        B=S.BFieldSpec(S.PowerLawS(-1; val0=1.0, s0=1.0), S.ScalarField(), b->S.FullyTangled(b)),
-        speed_profile=(η -> (S.beta, 0.995)),
+    jet0 = S.EmissionRegion(
+        geometry=Geometries.Conical(;axis=SVector(NaN, NaN, NaN), φj, z=1e-3 .. 50),
+        ne=Profiles.Axial(S.PowerLaw(-2; val0=1.0, s0=1.0)),
+        B=S.BFieldSpec(
+            Profiles.Axial(S.PowerLaw(-1; val0=1.0, s0=1.0)),
+            Directions.Scalar(),
+            b->S.FullyTangled(b)
+        ),
+        velocity=S.VelocitySpec(Directions.Radial(), S.beta, Profiles.Constant(0.995)),
         model=S.IsotropicPowerLawElectrons(; p=2.3, Cj=1.0, Ca=0.1),
     ) |> S.prepare_for_computations
 
@@ -153,7 +160,7 @@ function bk_jet_image()
     for (I, (v, what)) in pairs(collect(Iterators.product(views, whats)))
         pos = fig[Tuple(I)...]
         Axis(pos[1,1]; title="$(v.name), $(what.what|>typeof|>nameof) (θ=$(v.θ))", aspect=DataAspect(), width=300, height=300)
-        jet = @set jet0.axis = axis_for_viewing_angle(v.θ)
+        jet = @set S.geometry_axis(jet0) = axis_for_viewing_angle(v.θ)
         img = render_field(jet; extent=3, ν=1, what.what)
         plt = heatmap!(img; what.kwargs(maximum(img))...)
         Colorbar(pos[1,2], plt; tickformat=EngTicks(:symbol))
@@ -169,7 +176,7 @@ function bk_jet_image()
         for (I, (v, what)) in pairs(collect(Iterators.product(views, whats)))
             pos = fig[Tuple(I)...]
             Axis(pos[1,1]; title="$(v.name), $(what.what|>typeof|>nameof) (θ=$(v.θ))", aspect=DataAspect(), width=300, height=300)
-            jet = @set jet0.axis = axis_for_viewing_angle(v.θ)
+            jet = @set S.geometry_axis(jet0) = axis_for_viewing_angle(v.θ)
             img = render_field(jet; extent=3, ν=1, what.what, adaptive_supersampling)
             plt = heatmap!(img; what.kwargs(maximum(img))...)
             Colorbar(pos[1,2], plt; tickformat=EngTicks(:symbol))
@@ -182,6 +189,8 @@ function bk_jet_image()
 end
 
 function bk_jet_1_knot_snapshots_image()
+    open(io -> write(io, "bk_jet_1_knot_snapshots_image()\n"), render_time_log_path, "a")
+
     φj = 4u"°"
     θ = 3 * φj  # "small viewing angle", same as in bk_jet_image
 
@@ -189,8 +198,8 @@ function bk_jet_1_knot_snapshots_image()
         axis=SVector(sin(θ), 0, cos(θ)),
         φj,
         s=(1e-3 .. 50),
-        ne=S.PowerLawS(-2; val0=1, s0=1),
-        B=S.BFieldSpec(S.PowerLawS(-1; val0=1, s0=1), S.ScalarField(), b->S.FullyTangled(b)),
+        ne=S.PowerLaw(-2; val0=1, s0=1),
+        B=S.BFieldSpec_OLD(S.PowerLaw(-1; val0=1, s0=1), S.ScalarField(), b->S.FullyTangled(b)),
         speed_profile=(η -> (S.beta, 0.995)),
         model=S.IsotropicPowerLawElectrons(; p=2.3, Cj=1, Ca=1),
     )
@@ -227,20 +236,20 @@ function bk_jet_1_knot_snapshots_image()
 end
 
 function bk_jet_thick_options_image()
+    open(io -> write(io, "bk_jet_thick_options_image()\n"), render_time_log_path, "a")
+
     φj = 2u"°"
     θ = 7u"°"
     axis = SVector(sin(θ), 0, cos(θ))
 
-    ne = S.PowerLawS(-2; val0=1, s0=1)
-    Bscale = S.PowerLawS(-1; val0=1, s0=1)
-
+    Bscale = Profiles.Axial(S.PowerLaw(-1; val0=1, s0=1))
     Bconfigs = (
-        (name="tangled", B=S.BFieldSpec(Bscale, S.ScalarField(), b -> S.FullyTangled(b))),
-        (name="poloidal", B=S.BFieldSpec(Bscale, S.PoloidalField(), identity)),
-        (name="toroidal", B=S.BFieldSpec(Bscale, S.ToroidalField(), identity)),
-        (name="helical ψ=5°", B=S.BFieldSpec(Bscale, S.HelicalField(5u"°"), identity)),
-        (name="helical ψ=85°", B=S.BFieldSpec(Bscale, S.HelicalField(85u"°"), identity)),
-        (name="mixture κ=1", B=S.BFieldSpec(Bscale, S.PoloidalField(), b -> S.TangledOrderedMixture(b; kappa=1))),
+        (name="tangled", B=S.BFieldSpec(Bscale, Directions.Scalar(), b -> S.FullyTangled(b))),
+        (name="poloidal", B=S.BFieldSpec(Bscale, Directions.Axial(), identity)),
+        (name="toroidal", B=S.BFieldSpec(Bscale, Directions.Toroidal(), identity)),
+        (name="helical ψ=5°", B=S.BFieldSpec(Bscale, Directions.Helical(5u"°"), identity)),
+        (name="helical ψ=85°", B=S.BFieldSpec(Bscale, Directions.Helical(85u"°"), identity)),
+        (name="mixture κ=1", B=S.BFieldSpec(Bscale, Directions.Axial(), b -> S.TangledOrderedMixture(b; kappa=1))),
     )
 
     models = (
@@ -262,12 +271,12 @@ function bk_jet_thick_options_image()
             continue
         end
 
-        jet0 = S.ConicalJet(;
-            axis, φj,
-            s=(1e-3 .. 50),
-            ne, bc.B,
-            speed_profile=(η -> (S.beta, 0.995)),
-            model=m.model,
+        jet0 = S.EmissionRegion(;
+            geometry=Geometries.Conical(;axis, φj, z=1e-3 .. 50),
+            ne=Profiles.Axial(S.PowerLaw(-2; val0=1, s0=1)),
+            bc.B,
+            velocity=S.VelocitySpec(Directions.Radial(), S.beta, Profiles.Constant(0.995)),
+            m.model,
         ) |> S.prepare_for_computations
         jet0 = @set jet0.model.Ca_ordered = 9 / jet0.model.sinavg_a
 
@@ -283,17 +292,17 @@ function bk_jet_thick_options_image()
 end
 
 function conical_jet_polarization_evpa_image()
+    open(io -> write(io, "conical_jet_polarization_evpa_image()\n"), render_time_log_path, "a")
+
     φj = 2u"°"
     θ = 7u"°"
     axis = SVector(sin(θ), 0, cos(θ))
 
-    ne = S.PowerLawS(-2; val0=1, s0=1)
-    Bscale = S.PowerLawS(-1; val0=1, s0=1)
-
+    Bscale = Profiles.Axial(S.PowerLaw(-1; val0=1, s0=1))
     Bconfigs = (
-        (name="poloidal", B=S.BFieldSpec(Bscale, S.PoloidalField(), identity)),
-        (name="toroidal", B=S.BFieldSpec(Bscale, S.ToroidalField(), identity)),
-        (name="helical ψ=45°", B=S.BFieldSpec(Bscale, S.HelicalField(45u"°"), identity)),
+        (name="poloidal", B=S.BFieldSpec(Bscale, Directions.Axial(), identity)),
+        (name="toroidal", B=S.BFieldSpec(Bscale, Directions.Toroidal(), identity)),
+        (name="helical ψ=45°", B=S.BFieldSpec(Bscale, Directions.Helical(45u"°"), identity)),
     )
 
     model = S.IsotropicPowerLawElectrons(; p=2.3, Cj=1, Ca=0.1)
@@ -303,11 +312,11 @@ function conical_jet_polarization_evpa_image()
         pos = fig[1, c]
         Axis(pos[1, 1]; title="$(bc.name), I + EVPA", aspect=DataAspect(), width=350, height=350)
 
-        jet0 = S.ConicalJet(;
-            axis, φj,
-            s=(1e-3 .. 50),
-            ne, bc.B,
-            speed_profile=(η -> (S.beta, 0.995)),
+        jet0 = S.EmissionRegion(;
+            geometry=Geometries.Conical(; axis, φj, z=1e-3 .. 50),
+            ne=Profiles.Axial(S.PowerLaw(-2; val0=1, s0=1)),
+            bc.B,
+            velocity=S.VelocitySpec(Directions.Radial(), S.beta, Profiles.Constant(0.995)),
             model,
         ) |> S.prepare_for_computations
         jet0 = @set jet0.model.Ca_ordered = 9 / jet0.model.sinavg_a
