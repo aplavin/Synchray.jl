@@ -295,8 +295,7 @@ z_interval(obj::ConicalJet, ray::RayZ) = _rayz_cone_z_interval(obj.axis, obj.φj
 
 @inline is_inside_jet(jet::ConicalJet, x4::FourPosition) = begin
 	(; s, ρ) = jet_cylindrical_coords(jet.axis, x4)
-	(s ∈ jet.s) || return false
-	return ρ ≤ s * tan(jet.φj)
+	return (s ∈ jet.s) && ρ ≤ s * tan(jet.φj)
 end
 
 jet_rotation_matrix(jet::ConicalJet) = jet_rotation_matrix(jet.axis)
