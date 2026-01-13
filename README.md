@@ -30,18 +30,24 @@ cam = S.CameraZ(
     xys=S.grid(S.SVector, xs, ys),
     nz=200, ν=230.0, t=0.0)
 
-jet = S.ConicalJet(
-	axis = SVector(0.0, 0.0, 1.0),
-	φj = 0.03,
-	s = 0.1..10.0,
-	ne = S.PowerLawS(-2; val0=1.0, s0=1.0),
-	B = S.BFieldSpec(S.PowerLawS(-1; val0=1.0, s0=1.0), S.ScalarField(), b -> S.FullyTangled(b)),
-	speed_profile = η -> (S.beta, 0.99),
-	model = S.IsotropicPowerLawElectrons(; p=2.5),
+jet = S.EmissionRegion(
+    geometry = Geometries.Conical(
+        axis = S.SVector(0.0, 0.0, 1.0),
+        φj = 0.03,
+        z = 0.1..10.0,
+    ),
+    ne = Profiles.Axial(S.PowerLaw(-2; val0=1.0, s0=1.0)),
+    B = S.BFieldSpec(
+        Profiles.Axial(S.PowerLaw(-1; val0=1.0, s0=1.0)),
+        Directions.Scalar(),
+        b -> S.FullyTangled(b)
+    ),
+    velocity = S.VelocitySpec(Directions.Axial(), S.beta, Profiles.Constant(0.99)),
+    model = S.IsotropicPowerLawElectrons(; p=2.5),
 )
 
-Iν = S.render(cam, jet, S.Intensity())
+Iν = S.render(cam, S.prepare_for_computations(jet), S.Intensity())
 # Iν is a 256×256 array of per-pixel specific intensities
 ```
 
-`Unitful` inputs/outputs are supported: use `S.withunits(S.ConicalJet; ...)`, `S.withunits(S.CameraZ; ...)`, and `S.withunits(S.render, cam, jet, S.Intensity())`.
+`Unitful` inputs/outputs are supported: construct with unitful values then call `ustrip(region)` and `ustrip(cam)`, and use `S.withunits(S.render, cam, jet, S.Intensity())` to get unitful output intensity.
