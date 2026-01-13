@@ -27,7 +27,7 @@ struct HelicalField{T} <: AbstractJetFieldDirection
 	ψ::T
 end
 
-struct BFieldSpec{Tscale,Tdir,Twrap}
+struct BFieldSpec_OLD{Tscale,Tdir,Twrap}
 	scale::Tscale
 	dir::Tdir
 	wrap::Twrap
@@ -263,7 +263,7 @@ end
 	φj::Tφ
 	s::Ts
 	ne::Tne
-	B::TB
+	B::TB  # BFieldSpec_OLD type
 	speed_profile::Tu
 	model::Tmodel
 end

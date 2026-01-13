@@ -9,7 +9,7 @@
 		φj=0.05,
 		s=1e-3..5,
 		ne=S.PowerLawS(-2; val0=2, s0),
-		B=S.BFieldSpec(S.PowerLawS(-1; val0=3, s0), S.ScalarField(), b -> S.FullyTangled(b)),
+		B=S.BFieldSpec_OLD(S.PowerLawS(-1; val0=3, s0), S.ScalarField(), b -> S.FullyTangled(b)),
 		speed_profile=(η -> (S.beta, 0)),
 		model=S.IsotropicPowerLawElectrons(; p=2.5, Cj=1, Ca=1),
 	)
@@ -101,7 +101,7 @@ end
 		φj=2u"°",
 		s=1e-3u"pc"..50u"pc",
 		ne=S.PowerLawS(-2; val0=2u"cm^-3", s0=1u"pc"),
-		B=S.BFieldSpec(S.PowerLawS(-1; val0=3u"Gauss", s0=1u"pc"), S.ScalarField(), b -> S.FullyTangled(b)),
+		B=S.BFieldSpec_OLD(S.PowerLawS(-1; val0=3u"Gauss", s0=1u"pc"), S.ScalarField(), b -> S.FullyTangled(b)),
 		speed_profile=(η -> (S.beta, 0.0)),
 		model=S.IsotropicPowerLawElectrons(; p=2.5),
 	)
@@ -153,7 +153,7 @@ end
 		φj,
 		s=1e-3..50,
 		ne=S.PowerLawS(-2; val0=1., s0),
-		B=S.BFieldSpec(S.PowerLawS(-1; val0=3., s0), S.ScalarField(), b -> S.FullyTangled(b)),
+		B=S.BFieldSpec_OLD(S.PowerLawS(-1; val0=3., s0), S.ScalarField(), b -> S.FullyTangled(b)),
 		speed_profile=(η -> (S.beta, 0f0)),
 		model=S.IsotropicPowerLawElectrons(; p=2.5, Cj=1.0, Ca=1.0),
 	)
@@ -227,7 +227,7 @@ end
 		φj,
 		s=1e-3..50,
 		ne=S.PowerLawS(-2; val0=1., s0=1.),
-		B=S.BFieldSpec(S.PowerLawS(-1; val0=3., s0=1.), S.ScalarField(), b -> S.FullyTangled(b)),
+		B=S.BFieldSpec_OLD(S.PowerLawS(-1; val0=3., s0=1.), S.ScalarField(), b -> S.FullyTangled(b)),
 		speed_profile=(η -> (S.beta, 0f0)),
 		model=S.IsotropicPowerLawElectrons(; p=2.5, Cj=1.0, Ca=1.0),
 	)
