@@ -84,7 +84,7 @@ end
 	
 	# Rotation matrix is minimal rotation from lab
 	# Axis tilted by θ around lab-y: expect ey == ŷ and (ex, ez) rotated by θ
-	for θ in [0, 0.1, π/2, deg2rad(175)]
+	@testset for θ in [0, 0.1, π/2, deg2rad(175)]
 		axis_y = normalize(SVector(sin(θ), 0, cos(θ)))
 		geom_y = Geometries.Conical(axis_y, 0.1, 1.0 .. 5.0)
 		R_y = S.rotation_lab_to_local(geom_y)
