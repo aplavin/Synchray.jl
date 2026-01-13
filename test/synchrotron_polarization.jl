@@ -332,7 +332,7 @@ end
 	end
 end
 
-@testitem "Unitful + ConicalJet: works; Stokes I matches scalar when α=0" begin
+@testitem "Unitful + EmissionRegion: works; Stokes I matches scalar when α=0" begin
 	import Synchray as S
 	using Test
 	using Unitful, UnitfulAstro
@@ -342,15 +342,13 @@ end
 	# pipeline once polarized absorption is present (dichroism generates Q which feeds back
 	# into dI/ds). In the absorption-free limit (α=0), both must agree because I is just the
 	# line integral of j_I and j_I = j_⊥ + j_∥ by construction.
-	jet = S.withunits(S.ConicalJet;
-		axis=SVector(0, 0, 1),
-		φj=2u"°",
-		s=1e-3u"pc"..50u"pc",
-		speed_profile=(η -> (S.beta, 0.0)),
-		ne=S.PowerLaw(-2; val0=2u"cm^-3", s0=1u"pc"),
-		B=S.BFieldSpec_OLD(S.PowerLaw(-1; val0=3u"Gauss", s0=1u"pc"), S.PoloidalField(), b -> b),
+	region = S.EmissionRegion(;
+		geometry=S.Geometries.Conical(axis=SVector(0, 0, 1), φj=2u"°", z=1e-3u"pc"..50u"pc"),
+		ne=S.Profiles.Axial(S.PowerLaw(-2; val0=2u"cm^-3", s0=1u"pc")),
+		B=S.BFieldSpec(S.Profiles.Axial(S.PowerLaw(-1; val0=3u"Gauss", s0=1u"pc")), S.Directions.Axial(), b -> b),
+		velocity=S.VelocitySpec(S.Directions.Axial(), S.beta, S.Profiles.Constant(0.0)),
 		model=S.IsotropicPowerLawElectrons(; p=2.5, Cj=1.0, Ca=0.0),
-	)
+	) |> ustrip
 
 	cam = S.withunits(S.CameraZ;
 		xys=grid(SVector, range(0.01u"pc"..0.1u"pc", 2), range(-0.001u"pc"..0.001u"pc", 2)),
@@ -359,11 +357,11 @@ end
 		t=0u"yr",
 	)
 
-	img_I = S.render(cam, jet, S.Intensity())
-	img_IQU = S.render(cam, jet, S.IntensityIQU())
+	img_I = S.render(cam, region, S.Intensity())
+	img_IQU = S.render(cam, region, S.IntensityIQU())
 	@test getproperty.(img_IQU, :I) ≈ img_I
 
-	img_I_u = S.withunits(S.render, cam, jet, S.Intensity())
-	img_IQU_u = S.withunits(S.render, cam, jet, S.IntensityIQU())
+	img_I_u = S.withunits(S.render, cam, region, S.Intensity())
+	img_IQU_u = S.withunits(S.render, cam, region, S.IntensityIQU())
 	@test getproperty.(img_IQU_u, :I) ≈ img_I_u
 end
