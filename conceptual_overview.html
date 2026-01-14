@@ -217,17 +217,18 @@
               <div class="nodebox tinted row1 colL" id="node-magnetic">
                 <h3>Magnetic field</h3>
                 <ul class="lines">
-                  <li>arbitrary field: <code>B(x,t)</code></li>
-                  <li>ordered / <code>FullyTangled</code> / <code>TangledOrderedMixture</code></li>
+                  <li><code>BFieldSpec(scale, dir, wrap)</code></li>
+                  <li>scale: <code>Profiles.*</code> (e.g. <code>Profiles.Axial(PowerLaw(...))</code>) for spatial dependence</li>
+                  <li>dir: <code>Directions.Axial/Radial/Toroidal/Helical(ψ)</code></li>
+                  <li>wrap: ordered / <code>FullyTangled</code> / <code>TangledOrderedMixture</code></li>
                 </ul>
               </div>
 
               <div class="nodebox tinted row1 colL" id="node-particles">
                 <h3>Electrons</h3>
                 <ul class="lines">
-                  <li>arbitrary density profile: <code>nₑ(x,t)</code></li>
-                  <li>energy distribution (e.g. power-law with <code>γmin</code>/<code>γmax</code>)</li>
-                  <li>isotropic / pitch-angle concentration</li>
+                  <li>density: <code>Profiles.*</code> (e.g. <code>Profiles.Axial(PowerLaw(...))</code>)</li>
+                  <li><code>Isotropic</code>- or <code>Anisotropic</code>- <code>PowerLawElectrons</code></li>
                 </ul>
               </div>
             </div>
@@ -239,34 +240,38 @@
             </div>
 
             <div class="stack" style="grid-column: 1; grid-row: 2;">
-              <div class="nodebox tinted row2 colL" id="node-velocity">
-                <h3>Velocity profile</h3>
-                <p class="line"><code>u(x)</code>: bulk 4-velocity (<code>four_velocity</code>)</p>
+              <div class="nodebox tinted row2 colL" id="node-geometry">
+                <h3>Geometries</h3>
+                <ul class="lines">
+                  <li>ray intersection <code>z_interval()</code>, containment <code>is_inside()</code></li>
+                  <li><code>Geometries.Conical(axis, φj, z)</code> with natural coords (z, ρ, η)</li>
+                  <li>slab / sphere / ellipsoid</li>
+                </ul>
               </div>
 
-              <div class="nodebox tinted row2 colL" id="node-geometry">
-                <h3>Geometry</h3>
+              <div class="nodebox tinted row2 colL" id="node-velocity">
+                <h3>Velocity</h3>
                 <ul class="lines">
-                  <li>provides ray intersection, <code>z_interval()</code></li>
-                    <li>slab / sphere / ellipsoid</li>
-                    <li>cone, includes helpers:<br>
-                    <code>B</code> and <code>nₑ</code> ~ r<sup>k</sup><br>
-                    <code>B</code>: <code>Poloidal()</code> / <code>Toroidal()</code> / <code>Helical(ψ)</code><br>
-                        u: radial, arbitrary transverse profile
-                    </li>
+                  <li><code>VelocitySpec(dir, kind, scale)</code></li>
+                  <li>dir: <code>Directions.Axial/Radial/...</code></li>
+                  <li>scale: <code>Profiles.*</code> (e.g. <code>Profiles.Transverse(...)</code>) for spatial dependence</li>
                 </ul>
               </div>
 
               <div class="nodebox tinted row2 colL" id="node-patterns">
                 <h3>Patterns/knots</h3>
-                <p class="line">modulate nₑ and/or |B′| in a time-dependent fashion</p>
+                <ul class="lines">
+                  <li><code>Profiles.Modified(base, pattern)</code> for particle density or another quantity</li>
+                  <li><code>Patterns.EllipsoidalKnot(x_c0, u, sizing, profile)</code></li>
+                  <li>SR-consistent world-tube, time-dependent modulation</li>
+                </ul>
               </div>
             </div>
 
             <div class="nodebox tinted row2 colR" id="node-medium" style="grid-column: 2; grid-row: 2;">
-              <h3>Medium</h3>
-              <p class="line">geometry + velocity + microphysics + patterns</p>
-              <p class="line"><code>AbstractMedium</code> / <code>AbstractSynchrotronMedium</code></p>
+              <h3>EmissionRegion</h3>
+              <p class="line">geometry + ne + B + velocity + model</p>
+              <p class="line"><code>EmissionRegion &lt;: AbstractSynchrotronMedium</code></p>
               <p class="line">a composed object the renderer queries along rays</p>
             </div>
 
@@ -274,9 +279,9 @@
               <div class="nodebox tinted row3 colL" id="node-what">
                 <h3>Targets</h3>
                 <ul class="lines">
-                  <li><code>Intensity</code>: I or <code>IQU</code></li>
-                  <li><code>OpticalDepth</code> τ</li>
-                  <li><code>SpectralIndex</code> α (using autodiff)</li>
+                  <li><code>Intensity()</code>: I or <code>IntensityIQU()</code></li>
+                  <li><code>OpticalDepth()</code> τ</li>
+                  <li><code>SpectralIndex()</code> α (using autodiff)</li>
                 </ul>
               </div>
 
@@ -287,7 +292,10 @@
 
               <div class="nodebox tinted row3 colL" id="node-units">
                 <h3>Units</h3>
-                <p class="line">(optional)<br><code>withunits(...)</code>: strip units before rendering and restore them in the result</p>
+                <ul class="lines">
+                  <li><code>ustrip(obj)</code>: convert unitful inputs</li>
+                  <li><code>withunits(...)</code>: restore units in result</li>
+                </ul>
               </div>
             </div>
 
@@ -302,7 +310,7 @@
     </section>
 
     <footer style="margin: 28px 0 10px 0; opacity: 0.7; font-size: 12px;">
-      Generated as a repository artifact (static HTML). Last updated: 2026-01-06.
+      Generated as a repository artifact (static HTML). Last updated: 2026-01-14.
     </footer>
   </main>
 
