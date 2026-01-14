@@ -76,7 +76,7 @@ function field_direction end
 
 # Radial: outward from origin (normalized position vector)
 @inline field_direction(::Directions.Radial, geom, x4) = begin
-    r = SVector(x4.x, x4.y, x4.z)
+    r = @swiz x4.xyz
     r_norm = norm(r)
     return iszero(r_norm) ? zero(r) : r / r_norm
 end
@@ -84,32 +84,19 @@ end
 # Toroidal: azimuthal around axis
 @inline field_direction(::Directions.Toroidal, geom, x4) = begin
     axis = geometry_axis(geom)
-    r = SVector(x4.x, x4.y, x4.z)
-    s = dot(axis, r)
-    r_perp = r - s * axis
-    ρ = norm(r_perp)
+    (; r_perp, ρ) = _cylindrical_coords(axis, x4)
     
-    if iszero(ρ)
-        return zero(axis)
-    end
-    
-    e_r = r_perp / ρ
-    return cross(axis, e_r)
+    return iszero(ρ) ? zero(axis) : cross(axis, r_perp / ρ)
 end
+
+prepare_for_computations(h::Directions.Helical) = @modify(Geometries.AngleTrigCached_fromangle, h.ψ)
 
 # Helical: mix of axial and toroidal
 @inline field_direction(h::Directions.Helical, geom, x4) = begin
     axis = geometry_axis(geom)
-    r = SVector(x4.x, x4.y, x4.z)
-    s = dot(axis, r)
-    r_perp = r - s * axis
-    ρ = norm(r_perp)
+    (; r_perp, ρ) = _cylindrical_coords(axis, x4)
     
-    e_phi = if iszero(ρ)
-        zero(axis)
-    else
-        cross(axis, r_perp / ρ)
-    end
+    e_phi = iszero(ρ) ? zero(axis) : cross(axis, r_perp / ρ)
     
     sψ, cψ = sincos(h.ψ)
     v = cψ * axis + sψ * e_phi

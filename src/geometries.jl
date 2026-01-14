@@ -25,13 +25,16 @@ abstract type AbstractGeometry end
 
 """Helper struct for caching trig values"""
 struct AngleTrigCached{T}
-	tan::T
+	sin::T
 	cos::T
+	tan::T
 end
 
-Base.tan(x::AngleTrigCached) = x.tan
+Base.sin(x::AngleTrigCached) = x.sin
 Base.cos(x::AngleTrigCached) = x.cos
-AngleTrigCached_fromangle(φ) = AngleTrigCached(tan(φ), cos(φ))
+Base.tan(x::AngleTrigCached) = x.tan
+Base.sincos(x::AngleTrigCached) = (x.sin, x.cos)
+AngleTrigCached_fromangle(φ) = AngleTrigCached(sin(φ), cos(φ), tan(φ))
 
 """
     Conical{Ta, Tφ, Tz}
