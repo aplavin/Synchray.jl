@@ -18,6 +18,7 @@ end
     # Test profile types exist and are callable
     @test Profiles.Axial(s -> s^-2) isa Profiles.Axial
     @test Profiles.Transverse(η -> exp(-η^2)) isa Profiles.Transverse
+    @test Profiles.Radial(r -> exp(-r^2)) isa Profiles.Radial
     @test Profiles.AxialTransverse(s -> s^-2, η -> exp(-η^2)) isa Profiles.AxialTransverse
     @test Profiles.Natural(c -> c.z * c.η) isa Profiles.Natural
     @test Profiles.Raw((g, x4) -> 1.0) isa Profiles.Raw
@@ -45,6 +46,11 @@ end
     coords = S.natural_coords(geom, x4)
     p_trans = Profiles.Transverse(η -> 2η)
     @test p_trans(geom, x4) ≈ 2 * coords.η
+    
+    # Radial profile
+    r = norm(@swiz x4.xyz)
+    p_radial = Profiles.Radial(r -> 3r)
+    @test p_radial(geom, x4) ≈ 3 * r
     
     # AxialTransverse profile
     p_prod = Profiles.AxialTransverse(s -> s^2, η -> 3η)

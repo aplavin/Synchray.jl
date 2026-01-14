@@ -56,6 +56,20 @@ struct Transverse{F}
 end
 
 """
+    Radial{F}
+
+Profile depending only on the distance from the origin `r = |x⃗|`.
+
+# Example
+```julia
+ne = Profiles.Radial(r -> exp(-r^2))
+```
+"""
+struct Radial{F}
+    f::F
+end
+
+"""
     AxialTransverse{Fz, Fη}
 
 Profile as a separable product of axial and transverse functions: `f(z) * g(η)`.
@@ -175,6 +189,11 @@ end
     return p.f(coords.η)
 end
 
+@inline function (p::Profiles.Radial)(geom, x4)
+    r = norm(@swiz x4.xyz)
+    return p.f(r)
+end
+
 @inline function (p::Profiles.AxialTransverse)(geom, x4)
     coords = natural_coords(geom, x4)
     return p.f_z(coords.z) * p.f_η(coords.η)
@@ -201,12 +220,14 @@ prepare_for_computations(pl::Profiles.PowerLaw) = @modify(FixedExponent, pl.exp)
 prepare_for_computations(p::Profiles.Modified) = modify(prepare_for_computations, p, @o _.base _.modifier)
 prepare_for_computations(p::Profiles.Axial) = modify(prepare_for_computations, p, @o _.f)
 prepare_for_computations(p::Profiles.Transverse) = modify(prepare_for_computations, p, @o _.f)
+prepare_for_computations(p::Profiles.Radial) = modify(prepare_for_computations, p, @o _.f)
 prepare_for_computations(p::Profiles.AxialTransverse) = modify(prepare_for_computations, p, @o _.f_z _.f_η)
 
 ustrip(pl::Profiles.PowerLaw; argu, valu) = Profiles.PowerLaw(pl.exp; val0=_u_to_code(pl.val0, valu), s0=_u_to_code(pl.s0, argu))
 ustrip(li::Profiles.LinearInterp; argu, valu) = Profiles.LinearInterp(map(((x, y),) -> (_u_to_code(x, argu), _u_to_code(y, valu)), li.points))
 ustrip(p::Profiles.Axial; valu) = @modify(f -> ustrip(f; valu, argu=UCTX.L0), p.f)
 ustrip(p::Profiles.Transverse; valu) = @modify(f -> ustrip(f; valu, argu=1), p.f)
+ustrip(p::Profiles.Radial; valu) = @modify(f -> ustrip(f; valu, argu=UCTX.L0), p.f)
 ustrip(p::Profiles.AxialTransverse; valu) = @p let
     p
     @modify(ustrip(_; valu, argu=UCTX.L0), __.f_z)
