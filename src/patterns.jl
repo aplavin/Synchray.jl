@@ -75,6 +75,71 @@ GaussianBump(f_peak) = GaussianBump(; f_peak=float(f_peak))
 		one(float(g.f_peak))
 
 """
+    TophatBump{Tf}
+
+A tophat/step function profile: constant enhancement inside, base value outside.
+
+# Fields
+- `f_peak::Tf`: Multiplicative factor for χ < 1
+
+# Physical meaning
+- Used for sharp boundaries (e.g., beam edges)
+- The profile is `f(χ) = f_peak` for χ < 1, otherwise `f(χ) = 1`
+"""
+struct TophatBump{Tf}
+	f_peak::Tf
+end
+
+@inline (t::TophatBump)(χ) = χ < 1 ? t.f_peak : one(t.f_peak)
+
+"""
+    PrecessingNozzle{Tθ, Tφ, TT, T, TP}
+
+A precessing nozzle pattern that creates an enhanced-emission channel rotating within a conical geometry.
+
+The nozzle axis precesses around the geometry's primary axis, and only plasma emitted when the
+nozzle was pointing near the current radial direction receives enhancement.
+
+# Time convention
+All times are in the **lab frame**. The pattern accounts for ballistic plasma flow: plasma at position `r`
+observed at lab time `t` was **ejected** at `t_ej = t - r/β_flow` (flow travel time). The nozzle orientation 
+at ejection time determines whether the plasma receives enhancement (frozen-flow picture).
+
+# Fields
+- `θ_precession::Tθ`: Precession angle from geometry axis (radians)
+- `θ_nozzle::Tφ`: Nozzle cone half-opening angle (radians)
+- `period::TT`: Precession period in lab frame code time units
+- `φ0::T`: Initial phase (default: 0)
+- `β_flow::T`: Flow speed for emission-time calculation (c=1 units)
+- `profile::TP`: Profile function mapping normalized angle to enhancement factor
+
+# Usage
+Use as a modifier in `Profiles.Modified`:
+```julia
+ne = Profiles.Modified(
+    Profiles.Axial(base_density),
+    Patterns.PrecessingNozzle(
+        θ_precession = 0.02,
+        θ_nozzle = 0.005,
+        period = 50.0,
+        β_flow = 0.99,
+        profile = Patterns.TophatBump(10.0)
+    )
+)
+```
+"""
+struct PrecessingNozzle{Tθ, Tφ, TT, T, TP}
+	θ_precession::Tθ
+	θ_nozzle::Tφ
+	period::TT
+	φ0::T
+	β_flow::T
+	profile::TP
+end
+PrecessingNozzle(θ_precession, θ_nozzle, period, φ0, β_flow, profile) = PrecessingNozzle(θ_precession, θ_nozzle, period, promote(φ0, β_flow)..., profile)
+PrecessingNozzle(; θ_precession, θ_nozzle, period, φ0=0, β_flow, profile) = PrecessingNozzle(θ_precession, θ_nozzle, period, φ0, β_flow, profile)
+
+"""
     EllipsoidalKnot{TX, TU, TS, TP}
 
 An SR-consistent "world-tube" pattern with an ellipsoidal profile in the knot rest frame.
@@ -123,6 +188,13 @@ end # module Patterns
 @inline function (knot::Patterns.EllipsoidalKnot)(geom, x4, base_val)
 	χ = _knot_chi(knot, geom, x4)
 	factor = knot.profile(χ)
+	return base_val * factor
+end
+
+"""Evaluate precessing nozzle as a modifier: (geom, x4, base_val) -> modified_val"""
+@inline function (nozzle::Patterns.PrecessingNozzle)(geom, x4, base_val)
+	χ = _nozzle_chi(nozzle, geom, x4)
+	factor = nozzle.profile(χ)
 	return base_val * factor
 end
 
@@ -190,6 +262,57 @@ As the knot moves outward, it expands to keep a fixed fraction of the local jet 
 end
 
 # ============================================================================
+# Implementation: Rotating beam evaluation
+# ============================================================================
+
+"""
+Compute the normalized angular distance from the nozzle axis for a precessing nozzle pattern.
+
+Returns χ = sin(angle) / sin(θ_nozzle), so χ < 1 means inside the nozzle cone.
+For small angles, this is approximately χ ≈ angle / θ_nozzle.
+"""
+@inline _nozzle_chi(nozzle::Patterns.PrecessingNozzle, geom, x4::FourPosition) = begin
+	r_vec = @swiz x4.xyz
+	r = norm(r_vec)
+	
+	# Ejection time (lab frame): when was this plasma ejected from the nozzle?
+	# Plasma travels ballistically at speed β_flow, so travel time is r/β_flow
+	t_ej = x4.t - r / nozzle.β_flow
+	
+	# Nozzle axis direction at ejection time
+	nozzle_dir = _nozzle_axis_at_time(nozzle, geom, t_ej)
+	
+	# Angular distance from nozzle axis
+	cos_angle = dot(r_vec, nozzle_dir) / r
+
+	# For small angles, use sin(angle) / sin(θ_nozzle) ≈ angle / θ_nozzle
+	# Compute sin directly from cos to avoid acos() call: sin²θ + cos²θ = 1
+	sin_angle = √(max(0, 1 - cos_angle^2))
+	
+	# Normalize: χ = sin(angle) / sin(θ_nozzle), so χ = 0 on axis, χ = 1 at nozzle edge
+	return sin_angle / sin(nozzle.θ_nozzle)
+end
+
+"""
+Compute the nozzle axis direction at a given lab frame time.
+
+The nozzle axis precesses around the geometry's primary axis with the given period.
+Time `t` is in the lab frame.
+"""
+@inline _nozzle_axis_at_time(nozzle::Patterns.PrecessingNozzle, geom, t) = begin
+	# Precession phase at this lab frame time
+	phase = 2π * t / nozzle.period + nozzle.φ0
+	
+	# Nozzle direction: rotate around axis by angle θ_precession
+	sθ, cθ = sincos(nozzle.θ_precession)
+	sφ, cφ = sincos(phase)
+	
+	# Express in local frame, then rotate to lab frame
+	R = rotation_lab_to_local(geom)
+	return R * SVector(sθ * cφ, sθ * sφ, cθ)
+end
+
+# ============================================================================
 # Validation and preparation
 # ============================================================================
 
@@ -239,3 +362,10 @@ end
 validate_pattern(knot::Patterns.EllipsoidalKnot, geom) = nothing
 
 ustrip(knot::Patterns.EllipsoidalKnot) = @modify(x -> _u_to_code(x, UCTX.L0), knot.x_c0)
+
+"""
+Prepare precessing nozzle for computations by caching trig values.
+"""
+prepare_for_computations(nozzle::Patterns.PrecessingNozzle) = modify(Geometries.AngleTrigCached_fromangle, nozzle, @o _.θ_precession _.θ_nozzle)
+
+ustrip(nozzle::Patterns.PrecessingNozzle) = modify(x -> _u_to_code(x, _t0(UCTX)), nozzle, @o _.period)
