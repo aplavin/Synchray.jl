@@ -236,6 +236,7 @@ end
 ustrip(p::Profiles.Modified; valu) = @p let
     p
     @modify(ustrip(_; valu), __.base)
+    @modify(ustrip, __.modifier)
 end
 
 end
