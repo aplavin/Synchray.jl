@@ -1,3 +1,40 @@
+@testitem "TophatBump profile" begin
+	import Synchray as S
+
+	bump = S.Patterns.TophatBump(10.0)
+
+	# Inside beam (χ < 1)
+	@test bump(0.5) == 10.0
+	@test bump(0.99) == 10.0
+
+	# Outside beam (χ ≥ 1)
+	@test bump(1.0) == 1.0
+	@test bump(1.5) == 1.0
+end
+
+@testitem "GaussianBump profile" begin
+	import Synchray as S
+
+	bump = S.Patterns.GaussianBump(f_peak=5.0, χ_threshold=16.0)
+
+	# At center (χ = 0)
+	@test bump(0.0) ≈ 5.0
+
+	# Intermediate values - should decay smoothly
+	@test 1.0 < bump(2.0) < 5.0
+	@test 1.0 < bump(4.0) < bump(2.0)
+
+	# Far away (beyond threshold)
+	@test bump(20.0) ≈ 1.0
+	@test bump(100.0) ≈ 1.0
+
+	# Formula verification at specific point
+	# f(χ) = 1 + (f_peak - 1) * exp(-χ/2)
+	χ_test = 2.0
+	expected = 1.0 + (5.0 - 1.0) * exp(-χ_test / 2)
+	@test bump(χ_test) ≈ expected
+end
+
 @testitem "Inverse bump patterns" begin
 	import Synchray as S
 

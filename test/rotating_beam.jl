@@ -1,17 +1,3 @@
-@testitem "TophatBump profile" begin
-    import Synchray as S
-    
-    bump = S.Patterns.TophatBump(10.0)
-    
-    # Inside beam (χ < 1)
-    @test bump(0.5) == 10.0
-    @test bump(0.99) == 10.0
-    
-    # Outside beam (χ ≥ 1)
-    @test bump(1.0) == 1.0
-    @test bump(1.5) == 1.0
-end
-
 @testitem "PrecessingNozzle - static case (θ_precession = 0)" begin
     import Synchray as S
     
