@@ -49,13 +49,13 @@
 		]
 
 		@testset for (; label, θ, zpred) in cases
-			regionθ = @set region.geometry.axis = SVector(sin(θ), 0, cos(θ))
+			regionθ = @set geometry_axis(region) = SVector(sin(θ), 0, cos(θ))
 
 			# Choose a ray that crosses the jet axis at s = s_probe.
-			x0 = regionθ.geometry.axis.x * s_probe
+			x0 = geometry_axis(regionθ).x * s_probe
 			ray_zero = S.RayZ(; x0=S.FourPosition(0, 0, 0, 0), k=2, nz=2048)
 			ray_onaxis = @set ray_zero.x0.x = x0
-			z_cross = regionθ.geometry.axis.z * s_probe
+			z_cross = geometry_axis(regionθ).z * s_probe
 			x4_cross = S.FourPosition(0, x0, 0, z_cross)
 
 			@test S.electron_density(regionθ, x4_cross) > 0
@@ -107,7 +107,7 @@ end
 	knot = S.Patterns.EllipsoidalKnot(
 		x_c0=S.FourPosition(0.0u"pc", 0.0u"pc", 0u"pc", 0u"pc"),
 		# x_c0=S.FourPosition(0.0u"yr", 0.0u"pc", 0u"pc", 2u"pc"),
-		u=construct(S.FourVelocity, S.gamma=>10, S.direction=>region.geometry.axis),
+		u=construct(S.FourVelocity, S.gamma=>10, S.direction=>geometry_axis(region)),
 		sizing=S.Patterns.CrossSectionSizing(0.1, 0.5),
 		profile=S.Patterns.GaussianBump(100),
 	) |> ustrip
@@ -189,7 +189,7 @@ end
 	end
 
 	ray_at_s(ν, s) = begin
-		rxy = (@swiz region.geometry.axis.xy) * s
+		rxy = (@swiz geometry_axis(region).xy) * s
 		S.RayZ(; x0=S.FourPosition(0, rxy..., 0), k=ν, nz=4096)
 	end
 
