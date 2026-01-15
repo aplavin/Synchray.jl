@@ -93,6 +93,32 @@ end
 @inline (t::TophatBump)(χ) = χ < 1 ? t.f_peak : one(t.f_peak)
 
 """
+    InvertedProfile{T}
+
+Wraps a profile to compute exact pointwise reciprocals.
+
+For any profile `p`, `InvertedProfile(p)(χ) == 1 / p(χ)` exactly.
+Use `inv(profile)` to create inverted profiles.
+
+# Example
+```julia
+g = GaussianBump(f_peak=3.0)
+g_inv = inv(g)  # Returns InvertedProfile(g)
+@assert g(χ) * g_inv(χ) ≈ 1.0  # Exact inverse at all χ
+```
+"""
+struct InvertedProfile{T}
+	inner::T
+end
+
+@inline (p::InvertedProfile)(χ) = inv(p.inner(χ))
+
+# Inverse operations: exact pointwise reciprocals
+Base.inv(g::GaussianBump) = InvertedProfile(g)
+Base.inv(t::TophatBump) = TophatBump(inv(t.f_peak))  # Exact via parameter inversion
+Base.inv(p::InvertedProfile) = p.inner  # Double inversion recovers original
+
+"""
     PrecessingNozzle{Tθ, Tφ, TT, T, TP}
 
 A precessing nozzle pattern that creates an enhanced-emission channel rotating within a conical geometry.
