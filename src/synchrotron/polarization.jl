@@ -166,6 +166,8 @@ If `B′ ∥ n′` (vanishing projection), uses an arbitrary screen basis instea
 	return (e_par, e_perp)
 end
 
+linear_polarization_basis_from_B(n′::SVector{3}, B′::FullyTangled) = (SVector(1,0,0), SVector(0,1,0))
+
 @inline stokes_QU_rotation(χ) = let
 	# Rotate Stokes (Q,U) for a basis rotation by χ in the screen plane (2χ law).
 	s, c = sincos(χ)
