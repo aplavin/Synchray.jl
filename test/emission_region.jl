@@ -49,13 +49,13 @@
 		]
 
 		@testset for (; label, θ, zpred) in cases
-			regionθ = @set geometry_axis(region) = SVector(sin(θ), 0, cos(θ))
+			regionθ = @set S.geometry_axis(region) = SVector(sin(θ), 0, cos(θ))
 
 			# Choose a ray that crosses the jet axis at s = s_probe.
-			x0 = geometry_axis(regionθ).x * s_probe
+			x0 = S.geometry_axis(regionθ).x * s_probe
 			ray_zero = S.RayZ(; x0=S.FourPosition(0, 0, 0, 0), k=2, nz=2048)
 			ray_onaxis = @set ray_zero.x0.x = x0
-			z_cross = geometry_axis(regionθ).z * s_probe
+			z_cross = S.geometry_axis(regionθ).z * s_probe
 			x4_cross = S.FourPosition(0, x0, 0, z_cross)
 
 			@test S.electron_density(regionθ, x4_cross) > 0
@@ -107,7 +107,7 @@ end
 	knot = S.Patterns.EllipsoidalKnot(
 		x_c0=S.FourPosition(0.0u"pc", 0.0u"pc", 0u"pc", 0u"pc"),
 		# x_c0=S.FourPosition(0.0u"yr", 0.0u"pc", 0u"pc", 2u"pc"),
-		u=construct(S.FourVelocity, S.gamma=>10, S.direction=>geometry_axis(region)),
+		u=construct(S.FourVelocity, S.gamma=>10, S.direction=>S.geometry_axis(region)),
 		sizing=S.Patterns.CrossSectionSizing(0.1, 0.5),
 		profile=S.Patterns.GaussianBump(100),
 	) |> ustrip
@@ -189,7 +189,7 @@ end
 	end
 
 	ray_at_s(ν, s) = begin
-		rxy = (@swiz geometry_axis(region).xy) * s
+		rxy = (@swiz S.geometry_axis(region).xy) * s
 		S.RayZ(; x0=S.FourPosition(0, rxy..., 0), k=ν, nz=4096)
 	end
 
@@ -239,8 +239,8 @@ end
 	@test f32 ≈ f64  rtol=1e-5
 
 	# Test that coordinate transformation functions preserve Float32
-	rot_mat32 = S.rotation_lab_to_local(region32.geometry)
-	rot_mat64 = S.rotation_lab_to_local(region64.geometry)
+	rot_mat32 = S.rotation_local_to_lab(region32.geometry)
+	rot_mat64 = S.rotation_local_to_lab(region64.geometry)
 	@test eltype(rot_mat32) == Float32
 	@test eltype(rot_mat64) == Float64
 	@test rot_mat32 ≈ rot_mat64

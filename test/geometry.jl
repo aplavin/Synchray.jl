@@ -58,7 +58,7 @@ end
 	geom = S.Geometries.Conical(; axis, φj=0.1, z=1.0 .. 5.0)
 	
 	# Test rotation matrix
-	R = S.rotation_lab_to_local(geom)
+	R = S.rotation_local_to_lab(geom)
 	@test size(R) == (3, 3)
 	@test det(R) ≈ 1  # proper rotation
 	
@@ -70,7 +70,7 @@ end
 	
 	# For axis-aligned geometry, local z should align with axis
 	geom_z = S.Geometries.Conical(; axis=SVector(0, 0, 1), φj=0.1, z=1.0 .. 5.0)
-	R_z = S.rotation_lab_to_local(geom_z)
+	R_z = S.rotation_local_to_lab(geom_z)
 	@test R_z[:, 3] ≈ SVector(0, 0, 1)  # ez = axis
 	
 	# Arbitrary axis roundtrip
@@ -87,7 +87,7 @@ end
 	@testset for θ in [0, 0.1, π/2, deg2rad(175)]
 		axis_y = normalize(SVector(sin(θ), 0, cos(θ)))
 		geom_y = Geometries.Conical(axis_y, 0.1, 1.0 .. 5.0)
-		R_y = S.rotation_lab_to_local(geom_y)
+		R_y = S.rotation_local_to_lab(geom_y)
 		ex, ey, ez = eachcol(R_y)
 		@test ez ≈ axis_y
 		@test ey ≈ SVector(0, 1, 0)
@@ -96,7 +96,7 @@ end
 		# Axis tilted by θ around lab-x: expect ex == x̂ and (ey, ez) rotated by θ
 		axis_x = normalize(SVector(0, sin(θ), cos(θ)))
 		geom_x = Geometries.Conical(axis_x, 0.1, 1.0 .. 5.0)
-		R_x = S.rotation_lab_to_local(geom_x)
+		R_x = S.rotation_local_to_lab(geom_x)
 		ex, ey, ez = eachcol(R_x)
 		@test ez ≈ axis_x
 		@test ex ≈ SVector(1, 0, 0)

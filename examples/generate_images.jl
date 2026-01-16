@@ -133,7 +133,7 @@ function bk_jet_image()
     axis_for_viewing_angle(θ) = SVector(sin(θ), 0.0, cos(θ))
 
     jet0 = S.EmissionRegion(
-        geometry = Geometries.Conical(; axis=SVector(NaN, NaN, NaN), φj, z=1e-3 .. 50),
+        geometry = Geometries.Conical(; axis=SVector(1, 0, 0), φj, z=1e-3 .. 50),
         ne = Profiles.Axial(S.PowerLaw(-2; val0=1.0, s0=1.0)),
         B = S.BFieldSpec(Profiles.Axial(S.PowerLaw(-1; val0=1.0, s0=1.0)), Directions.Scalar(), b->S.FullyTangled(b)),
         velocity = S.VelocitySpec(Directions.Radial(), S.gamma, Profiles.Transverse(Profiles.LinearInterp(((0.3, 10), (0.8, 8))))),

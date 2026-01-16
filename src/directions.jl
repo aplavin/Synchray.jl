@@ -84,8 +84,8 @@ end
 # Toroidal: azimuthal around axis
 @inline field_direction(::Directions.Toroidal, geom, x4) = begin
     axis = geometry_axis(geom)
-    (; r_perp, ρ) = _cylindrical_coords(axis, x4)
-    
+    (; r_perp, ρ) = _cylindrical_coords(rotation_local_to_lab(geom), x4)
+
     return iszero(ρ) ? zero(axis) : cross(axis, r_perp / ρ)
 end
 
@@ -94,10 +94,10 @@ prepare_for_computations(h::Directions.Helical) = @modify(Geometries.AngleTrigCa
 # Helical: mix of axial and toroidal
 @inline field_direction(h::Directions.Helical, geom, x4) = begin
     axis = geometry_axis(geom)
-    (; r_perp, ρ) = _cylindrical_coords(axis, x4)
-    
+    (; r_perp, ρ) = _cylindrical_coords(rotation_local_to_lab(geom), x4)
+
     e_phi = iszero(ρ) ? zero(axis) : cross(axis, r_perp / ρ)
-    
+
     sψ, cψ = sincos(h.ψ)
     v = cψ * axis + sψ * e_phi
     return iszero(v) ? zero(v) : v / norm(v)

@@ -332,10 +332,9 @@ Time `t` is in the lab frame.
 	# Nozzle direction: rotate around axis by angle θ_precession
 	sθ, cθ = sincos(nozzle.θ_precession)
 	sφ, cφ = sincos(phase)
-	
+
 	# Express in local frame, then rotate to lab frame
-	R = rotation_lab_to_local(geom)
-	return R * SVector(sθ * cφ, sθ * sφ, cθ)
+	return rotate_local_to_lab(geom, SVector(sθ * cφ, sθ * sφ, cθ))
 end
 
 # ============================================================================
@@ -356,7 +355,8 @@ Physical meaning: if the knot size is tied to the jet radius, the knot must not
 expand faster than light in its own rest frame.
 """
 function _validate_knot_causality(sizing::Patterns.CrossSectionSizing, u::FourVelocity, geom::Geometries.Conical)
-	ds_dtau = dot(geom.axis, @swiz u.xyz)
+	axis = geometry_axis(geom)
+	ds_dtau = dot(axis, @swiz u.xyz)
 	v_perp = abs(sizing.f_perp * tan(geom.φj) * ds_dtau)
 	v_parallel = sizing.q * v_perp
 	(v_perp < 1 && v_parallel < 1) ||

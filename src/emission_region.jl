@@ -73,7 +73,7 @@ end
 end
 
 # Visualization helpers forward to geometry
-rotation_lab_to_local(region::EmissionRegion) = rotation_lab_to_local(region.geometry)
+rotation_local_to_lab(region::EmissionRegion) = rotation_local_to_lab(region.geometry)
 rotate_lab_to_local(region::EmissionRegion, r::SVector{3}) = rotate_lab_to_local(region.geometry, r)
 rotate_local_to_lab(region::EmissionRegion, r_local::SVector{3}) = rotate_local_to_lab(region.geometry, r_local)
 ray_in_local_coords(ray, region::EmissionRegion; z_range) = ray_in_local_coords(ray, region.geometry; z_range)

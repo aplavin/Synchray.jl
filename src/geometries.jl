@@ -6,6 +6,9 @@ for emission regions.
 """
 module Geometries
 
+using ..Synchray
+import ..Synchray as S
+
 """
     AbstractGeometry
 
@@ -37,36 +40,76 @@ Base.sincos(x::AngleTrigCached) = (x.sin, x.cos)
 AngleTrigCached_fromangle(φ) = AngleTrigCached(sin(φ), cos(φ), tan(φ))
 
 """
-    Conical{Ta, Tφ, Tz}
+    Conical{TR, Tφ, Tz}
 
-Conical geometry with axis, half-opening angle, and axial extent.
+Conical geometry with rotation matrix, half-opening angle, and axial extent.
 
 # Fields
-- `axis::Ta`: Unit vector defining the cone axis
+- `R_local_to_lab::TR`: 3×3 rotation matrix that maps local jet frame to lab frame (columns are local basis vectors in lab frame)
 - `φj::Tφ`: Half-opening angle
 - `z::Tz`: Axial extent interval (along-axis coordinate range)
+
+# Constructor
+Use `Conical(; axis, φj, z)` where `axis` is a unit vector defining the cone axis.
+The rotation matrix is computed automatically.
+
+# Matrix usage
+- Lab → local: `r_local = R_local_to_lab' * r_lab` (transpose needed)
+- Local → lab: `r_lab = R_local_to_lab * r_local` (direct)
 """
-@kwdef struct Conical{Ta, Tφ, Tz} <: AbstractGeometry
-	axis::Ta
+struct Conical{TR, Tφ, Tz} <: AbstractGeometry
+	R_local_to_lab::TR
 	φj::Tφ
 	z::Tz
+
+	# Inner constructor: validate that R_local_to_lab is a matrix, not a vector
+	# This prevents old code from creating Conical with an axis instead of rotation matrix
+	function Conical(R_local_to_lab::SMatrix{3,3}, φj, z)
+		return new{typeof(R_local_to_lab), typeof(φj), typeof(z)}(R_local_to_lab, φj, z)
+	end
+
+	# Fallback for invalid types (like SVector) - convert axis to rotation matrix
+	function Conical(axis::SVector{3}, φj, z)
+		@assert isapprox(norm(axis), 1; atol=√eps(float(eltype(axis))))
+		R = S._axis_to_rotation(axis)
+		return new{typeof(R), typeof(φj), typeof(z)}(R, φj, z)
+	end
 end
+Conical(; axis::AbstractVector, φj, z) = Conical(axis, φj, z)
 
 end # module Geometries
 
 
 """Prepare for computations by caching trig values"""
-prepare_for_computations(g::Geometries.Conical) = Geometries.Conical(g.axis, Geometries.AngleTrigCached_fromangle(g.φj), g.z)
+prepare_for_computations(g::Geometries.Conical) = @modify(Geometries.AngleTrigCached_fromangle, g.φj)
 ustrip(g::Geometries.Conical) = @modify(z -> _u_to_code(z, UCTX.L0), g.z)
 
-@unstable @accessor geometry_axis(g::Geometries.Conical) = g.axis
+"""Extract the axis vector (third column of rotation matrix) from a Conical geometry"""
+@inline geometry_axis(g::Geometries.Conical) = g.R_local_to_lab[:,3]
+Accessors.set(g::Geometries.Conical, ::typeof(geometry_axis), v::SVector{3}) = Geometries.Conical(v, g.φj, g.z)
 
 """
-Compute cylindrical coordinates relative to axis.
-Returns: spatial position `r`, axial distance `z`, perpendicular component `r_perp`, cylindrical radius `ρ`.
+Compute cylindrical coordinates from rotation matrix.
+
+Takes rotation matrix R_local_to_lab and spacetime position x4.
+Returns:
+- `r`: spatial position in lab frame
+- `z`: axial distance (z-coordinate in local frame)
+- `r_local`: position in local frame (where z is along axis)
+- `r_perp`: perpendicular component in lab frame (r - z*axis)
+- `ρ`: cylindrical radius (distance from axis in transverse plane)
 """
-@inline _cylindrical_coords(axis, x4) = begin
+@inline _cylindrical_coords(R, x4) = begin
 	r = @swiz x4.xyz
+	# if we needed r_local, that's probably optimal:
+	# r_local = R' * r  # Transform to local frame (R' maps lab → local)
+	# z = r_local[3]    # Axial coordinate is z-component in local frame
+	# ρ = hypot(r_local[1], r_local[2])  # Cylindrical radius in transverse plane
+	# # Perpendicular component: zero out z in local frame, transform back to lab
+	# r_perp = R * SVector(r_local[1], r_local[2], zero(z))
+
+	# but in practice, we don't need r_local:
+	axis = R[:, 3]  # Third column is axis in lab frame
 	z = dot(axis, r)
 	r_perp = r - z * axis
 	ρ = norm(r_perp)
@@ -82,7 +125,7 @@ Returns `(z, ρ, η)` where:
 - `η`: normalized radial coordinate `η = ρ / (z * tan(φj))`
 """
 @inline function natural_coords(g::Geometries.Conical, x4)
-	(; z, ρ) = _cylindrical_coords(g.axis, x4)
+	(; z, ρ) = _cylindrical_coords(g.R_local_to_lab, x4)
 	η = ρ / (z * tan(g.φj))
 	return (; z, ρ, η)
 end
@@ -92,7 +135,8 @@ end
 
 Returns just the axial coordinate `z` (optimized version).
 """
-@inline natural_coords(g::Geometries.Conical, x4, ::Val{:z}) = dot(g.axis, @swiz x4.xyz)
+@inline natural_coords(g::Geometries.Conical, x4, ::Val{:z}) =
+	dot(geometry_axis(g), @swiz x4.xyz)
 
 """
     is_inside(g::Conical, x4) -> Bool
@@ -100,7 +144,7 @@ Returns just the axial coordinate `z` (optimized version).
 Test if position is inside the conical volume.
 """
 @inline function is_inside(g::Geometries.Conical, x4)
-	(; z, ρ) = _cylindrical_coords(g.axis, x4)
+	(; z, ρ) = _cylindrical_coords(g.R_local_to_lab, x4)
 	return (z ∈ g.z) && ρ ≤ z * tan(g.φj)
 end
 
@@ -117,12 +161,13 @@ function z_interval(g::Geometries.Conical, ray)
 	
 	c2 = cos(g.φj)^2
 	r0 = SVector(ray.x0.x, ray.x0.y, ray.x0.z)
-	az = g.axis.z
+	axis = geometry_axis(g)
+	az = axis.z
 
 	# Cone inequality: (a⋅r)^2 ≥ c^2 * (r⋅r).
 	# With r(z)=r0+z*e_z and r0⋅e_z=0:
 	# (α0 + az*z)^2 - c^2*(|r0|^2 + z^2) >= 0
-	α0 = dot(g.axis, r0)
+	α0 = dot(axis, r0)
 	r02 = dot(r0, r0)
 	A = az^2 - c2
 	B = 2 * α0 * az
@@ -218,18 +263,20 @@ end
 end
 
 """
-    rotation_lab_to_local(geom) -> SMatrix{3,3}
+    rotation_local_to_lab(geom) -> SMatrix{3,3}
 
-Return the 3×3 rotation matrix `R` for minimal rotation from lab frame that maps
-lab `ẑ` axis to `geometry_axis(geom)`.
+Return the 3×3 rotation matrix `R` that maps local jet frame to lab frame.
 
 Matrix columns are lab-frame images of the local basis vectors.
+Constructed via minimal rotation from lab `ẑ` axis to `geometry_axis(geom)`.
 
-- lab → local coordinates: `r_local = R' * r_lab`
-- local → lab coordinates: `r_lab = R * r_local`
+Usage:
+- lab → local coordinates: `r_local = R' * r_lab` (transpose needed)
+- local → lab coordinates: `r_lab = R * r_local` (direct)
 """
-function rotation_lab_to_local(geom::Geometries.AbstractGeometry)
-	axis = geometry_axis(geom)
+rotation_local_to_lab(geom::Geometries.Conical) = geom.R_local_to_lab
+
+function _axis_to_rotation(axis::SVector{3})
 	ẑ = SVector(0, 0, 1)
 	x̂ = SVector(1, 0, 0)
 	ŷ = SVector(0, 1, 0)
@@ -247,16 +294,14 @@ end
 Convert a lab-frame spatial 3-position `r` to local coordinates defined by
 the geometry rotation matrix.
 """
-rotate_lab_to_local(geom::Geometries.AbstractGeometry, r::SVector{3}) = 
-	rotation_lab_to_local(geom)' * r
+@inline rotate_lab_to_local(geom::Geometries.AbstractGeometry, r::SVector{3}) = rotation_local_to_lab(geom)' * r
 
 """
     rotate_local_to_lab(geom, r_local::SVector{3}) -> SVector{3}
 
 Convert a local-frame spatial 3-position back to lab coordinates.
 """
-rotate_local_to_lab(geom::Geometries.AbstractGeometry, r_local::SVector{3}) = 
-	rotation_lab_to_local(geom) * r_local
+@inline rotate_local_to_lab(geom::Geometries.AbstractGeometry, r_local::SVector{3}) = rotation_local_to_lab(geom) * r_local
 
 """
     ray_in_local_coords(ray, geom; z_range) -> StructArray{SVector{3}}
