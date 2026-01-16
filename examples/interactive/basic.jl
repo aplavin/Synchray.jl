@@ -147,8 +147,8 @@ lines!(0..1, @lift x->$γ_cross(x))
 
 camera = @lift S.CameraZ(;
     xys=grid(SVector,
-            x=range(-5..30, length=2*$params.img.npix) .* u"pc",
-            y=range(-5..5, length=$params.img.npix) .* u"pc"),
+            x=range(-5..30, length=2*$params.img.npix) .* u"pc" |> LinRange,
+            y=range(-5..5, length=$params.img.npix) .* u"pc" |> LinRange),
     ν=$params.img.ν1, $params.img.nz, $params.img.t,
     mapfunc=_tmap) |> ustrip
 
@@ -292,8 +292,8 @@ lines(fig[2,1][1,1], (@lift @p $img_iqu.I(x=Near(20u"pc"))  __ ./ maximum(__)))
 
 fig |> display
 
-# params[] = @set $(params[]).img.ν1 = params[].img.ν1
-# @profview @time params[] = @set $(params[]).img.ν1 = params[].img.ν1
+# @time params[] = @set $(params[]).img.ν1 = params[].img.ν1;
+# # @profview @time params[] = @set $(params[]).img.ν1 = params[].img.ν1;
 # @profview for _ in 1:20
 # 	@time params[] = @set $(params[]).img.ν1 = params[].img.ν1
 # end
