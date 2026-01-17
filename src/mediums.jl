@@ -44,6 +44,7 @@ end
 Base.:≈(a::FullyTangled, b::FullyTangled; kwargs...) = isapprox(a.strength, b.strength; kwargs...)
 Base.:*(a::Number, b::FullyTangled) = FullyTangled(a * b.strength)
 Base.:*(a::FullyTangled, b::Number) = FullyTangled(a.strength * b)
+Base.zero(::FullyTangled) = FullyTangled(0)
 
 """
 Magnetic field described by a mixture of:
