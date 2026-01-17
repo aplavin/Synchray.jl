@@ -154,7 +154,7 @@ If `B′ ∥ n′` (vanishing projection), uses an arbitrary screen basis instea
 """
 @inline linear_polarization_basis_from_B(n′::SVector{3}, B′::SVector{3}) = begin
 	# Return both screen-plane axes tied to B′: e_par ∥ proj(B′), e_perp ⟂ proj(B′).
-	b̂ = normalize(B′)
+	b̂ = iszero(B′) ? B′ : normalize(B′)
 	@assert all(!isnan, b̂)
 	bp = _project_to_plane(b̂, n′)
 	if dot(bp, bp) == 0

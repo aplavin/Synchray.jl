@@ -318,7 +318,9 @@ end
 
 		@testset "Magnetic field degeneracies" begin
 			n = SVector(0, 0, 1)
-			@test_throws AssertionError S.linear_polarization_basis_from_B(n, SVector(0, 0, 0))
+			(e_par, e_perp) = S.linear_polarization_basis_from_B(n, SVector(0, 0, 0))
+			@test norm(e_par) ≈ 1
+			@test norm(e_perp) ≈ 1
 
 			(e_par, e_perp) = S.linear_polarization_basis_from_B(n, n)
 			@test norm(e_par) ≈ 1
