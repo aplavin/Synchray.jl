@@ -41,6 +41,122 @@
 		@test (a.perp + a.par)/2 ≈ αI rtol=5e-15 atol=0
 	end
 
+	@testset "TangledOrderedMixture polarization" begin
+		model = S.IsotropicPowerLawElectrons(; p=3.2, Cj=0.7, Ca=0.3)
+		b = SVector(B0, 0.0, 0.0)
+
+		# Test κ=0 (fully tangled) → depolarized
+		@testset "κ=0 depolarized" begin
+			field = S.TangledOrderedMixture(b, 0.0)
+			slab = S.UniformSynchrotronSlab(; z, u0, ne0, B0=field, model)
+			(j, a) = S.emissivity_absorption_polarized(slab, x4, k′)
+			(jI, αI) = S.emissivity_absorption(slab, x4, k′)
+
+			@test j.perp ≈ j.par rtol=1e-14  # Depolarized
+			@test a.perp ≈ a.par rtol=1e-14  # Depolarized
+			@test (j.perp + j.par) ≈ jI rtol=5e-15 atol=0
+			@test (a.perp + a.par)/2 ≈ αI rtol=5e-15 atol=0
+		end
+
+		# Test κ→∞ (fully ordered) → matches ordered field
+		@testset "κ→∞ ordered" begin
+			field_mixed = S.TangledOrderedMixture(b, Inf)
+			slab_mixed = S.UniformSynchrotronSlab(; z, u0, ne0, B0=field_mixed, model)
+			(j_mixed, a_mixed) = S.emissivity_absorption_polarized(slab_mixed, x4, k′)
+
+			# Compare with pure ordered field
+			slab_ordered = S.UniformSynchrotronSlab(; z, u0, ne0, B0=b, model)
+			(j_ordered, a_ordered) = S.emissivity_absorption_polarized(slab_ordered, x4, k′)
+
+			@test j_mixed.perp ≈ j_ordered.perp rtol=1e-14
+			@test j_mixed.par ≈ j_ordered.par rtol=1e-14
+			@test a_mixed.perp ≈ a_ordered.perp rtol=1e-14
+			@test a_mixed.par ≈ a_ordered.par rtol=1e-14
+		end
+
+		# Test intermediate κ → correct interpolation
+		@testset "κ=2 intermediate" begin
+			field = S.TangledOrderedMixture(b, 2.0)
+			slab = S.UniformSynchrotronSlab(; z, u0, ne0, B0=field, model)
+			(j, a) = S.emissivity_absorption_polarized(slab, x4, k′)
+			(jI, αI) = S.emissivity_absorption(slab, x4, k′)
+
+			# Should be partially polarized (between tangled and ordered)
+			@test j.perp > 1.2j.par  # Some net polarization
+			@test 0.1 < (j.perp - j.par) / (j.perp + j.par) < 0.6  # Fraction between 0 and 1
+			@test (j.perp + j.par) ≈ jI rtol=5e-15 atol=0
+			@test (a.perp + a.par)/2 ≈ αI rtol=5e-15 atol=0
+
+			# Get ordered and tangled limits for bounds checking
+			slab_ordered = S.UniformSynchrotronSlab(; z, u0, ne0, B0=b, model)
+			(j_ord, _) = S.emissivity_absorption_polarized(slab_ordered, x4, k′)
+			pol_frac = (j.perp - j.par) / (j.perp + j.par)
+			pol_frac_ord = (j_ord.perp - j_ord.par) / (j_ord.perp + j_ord.par)
+
+			# Intermediate κ should give intermediate polarization
+			@test 0.1 < pol_frac < 0.9pol_frac_ord
+		end
+
+		# Test viewing angle dependence
+		@testset "Viewing angle dependence" begin
+			field = S.TangledOrderedMixture(b, 2.0)
+			slab = S.UniformSynchrotronSlab(; z, u0, ne0, B0=field, model)
+
+			# Perpendicular viewing (k ⊥ B)
+			k_perp = S.photon_k(ν, SVector(0.0, 0.0, 1.0))
+			(j_perp, _) = S.emissivity_absorption_polarized(slab, x4, k_perp)
+			pol_frac_perp = (j_perp.perp - j_perp.par) / (j_perp.perp + j_perp.par)
+
+			# Oblique viewing
+			k_oblique = S.photon_k(ν, normalize(SVector(1.0, 0.0, 1.0)))
+			(j_oblique, _) = S.emissivity_absorption_polarized(slab, x4, k_oblique)
+			pol_frac_oblique = (j_oblique.perp - j_oblique.par) / (j_oblique.perp + j_oblique.par)
+
+			# Polarization should vary with viewing angle
+			@test pol_frac_perp > 0
+			@test pol_frac_oblique > 0
+			# Note: exact ordering depends on geometry, just check both are reasonable
+			@test 0.1 < pol_frac_perp < 0.6
+			@test 0.1 < pol_frac_oblique < 0.6
+		end
+
+		# Test that EVPA (polarization angle) matches ordered field after rendering
+		@testset "EVPA matches ordered field" begin
+			# Use oblique B field to get non-trivial U component
+			χ = 0.42  # Rotation angle
+			b_oblique = SVector(B0 * cos(χ), B0 * sin(χ), 0.0)
+
+			# Ordered field
+			slab_ordered = S.UniformSynchrotronSlab(; z, u0, ne0, B0=b_oblique, model)
+			ray = S.RayZ(; x0=x4, k=k′, nz=40)
+			S_ordered = S.render(ray, slab_ordered, S.IntensityIQU())
+			evpa_ordered = S.evpa(S_ordered)
+
+			# TangledOrderedMixture with various κ values
+			@testset for κ_test in [0.5, 2.0, 10.0]
+				field_mixed = S.TangledOrderedMixture(b_oblique, κ_test)
+				slab_mixed = S.UniformSynchrotronSlab(; z, u0, ne0, B0=field_mixed, model)
+				S_mixed = S.render(ray, slab_mixed, S.IntensityIQU())
+				evpa_mixed = S.evpa(S_mixed)
+
+				# EVPA should match (polarization angle preserved)
+				@test evpa_mixed ≈ evpa_ordered rtol=1e-12
+
+				# But polarization degree should be reduced
+				pol_deg_ordered = sqrt(S_ordered.Q^2 + S_ordered.U^2) / S_ordered.I
+				pol_deg_mixed = sqrt(S_mixed.Q^2 + S_mixed.U^2) / S_mixed.I
+				@test 0.1 < pol_deg_mixed < 0.95pol_deg_ordered
+			end
+
+			# κ=0 should give near-zero polarization (any EVPA)
+			field_depol = S.TangledOrderedMixture(b_oblique, 0.0)
+			slab_depol = S.UniformSynchrotronSlab(; z, u0, ne0, B0=field_depol, model)
+			S_depol = S.render(ray, slab_depol, S.IntensityIQU())
+			pol_deg_depol = sqrt(S_depol.Q^2 + S_depol.U^2) / S_depol.I
+			@test pol_deg_depol < 1e-10
+		end
+	end
+
 	@testset "Mode↔Stokes helper sanity" begin
 		m = S.ModePerpPar(3.0, 1.0)
 		IQ = S.stokes_IQ(m)

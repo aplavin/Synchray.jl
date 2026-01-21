@@ -46,6 +46,57 @@ end
 @inline stokes_IQU(m::ModePerpParU) = StokesIQU(m.perp + m.par, m.perp - m.par, m.U)
 
 
+@inline _emissivity_absorption_polarized_mixture(
+	model::IsotropicPowerLawElectrons,
+	jI, αI,
+	field::TangledOrderedMixture,
+	k′::FourFrequency
+) = begin
+	# Compute effective polarization for incoherent tangled+ordered mixture.
+	# Tangled component: unpolarized (Π=0)
+	# Ordered component: polarized (Π_j, Π_α)
+	# Effective: Π_eff = Π * f * (I_ordered / I_total)
+
+	# Get intrinsic polarization fractions
+	p = _value(model.p)
+	Πj = _Pi_j(p)
+	Πα = _Pi_a(p)
+
+	# Compute mixing fraction
+	κ = field.kappa
+	f = κ == Inf ? one(float(κ)) : κ / (one(κ) + κ)
+
+	# Recompute viewing angle factors
+	ν = frequency(k′)
+	b = field.b
+	B = norm(b)
+	n = (@swiz k′.xyz) / ν
+	sinθ = norm(cross(b, n)) / B
+	sinθ = clamp(sinθ, 0, 1)
+
+	# Compute angle-factor exponents
+	qj = _half(model.p + StaticNum{1}())
+	qa = _half(model.p + StaticNum{2}())
+
+	# Compute ordered angle factors
+	Aj_ordered = sinθ^qj
+	Aa_ordered = sinθ^qa
+
+	# Compute mixed angle factors (as in Stokes-I code)
+	Aj_mixed = muladd(f, Aj_ordered - model.sinavg_j, model.sinavg_j)
+	Aa_mixed = muladd(f, Aa_ordered - model.sinavg_a, model.sinavg_a)
+
+	# Effective polarization fractions with safe division
+	Πj_eff = Aj_mixed > 0 ? Πj * f * Aj_ordered / Aj_mixed : zero(Πj)
+	Πα_eff = Aa_mixed > 0 ? Πα * f * Aa_ordered / Aa_mixed : zero(Πα)
+
+	# Split into normal modes using effective fractions
+	j = ModePerpPar((1 + Πj_eff)/2 * jI, (1 - Πj_eff)/2 * jI)
+	a = ModePerpPar((1 + Πα_eff) * αI, (1 - Πα_eff) * αI)
+
+	return (j, a)
+end
+
 @inline emissivity_absorption_polarized(obj::AbstractSynchrotronMedium, x4, k′) = begin
 	# Return *comoving-frame* polarized emissivity/absorption in the intrinsic field basis:
 	# (j_⊥, j_∥), (α_⊥, α_∥). For the currently implemented models we split the existing
@@ -58,6 +109,11 @@ end
 		j = ModePerpPar(jI/2, jI/2)
 		a = ModePerpPar(αI, αI)
 		return (j, a)
+	elseif field isa TangledOrderedMixture
+		# Incoherent mixture: tangled (unpolarized) + ordered (polarized) components.
+		# Effective polarization weighted by intensity contributions.
+		model = synchrotron_model(obj)
+		return _emissivity_absorption_polarized_mixture(model, jI, αI, field, k′)
 	end
     @assert field isa SVector{3}
 
@@ -167,6 +223,8 @@ If `B′ ∥ n′` (vanishing projection), uses an arbitrary screen basis instea
 end
 
 linear_polarization_basis_from_B(n′::SVector{3}, B′::FullyTangled) = (SVector(1,0,0), SVector(0,1,0))
+
+linear_polarization_basis_from_B(n′::SVector{3}, B′::TangledOrderedMixture) = linear_polarization_basis_from_B(n′, B′.b)
 
 @inline stokes_QU_rotation(χ) = let
 	# Rotate Stokes (Q,U) for a basis rotation by χ in the screen plane (2χ law).

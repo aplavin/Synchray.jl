@@ -301,9 +301,11 @@ function conical_jet_polarization_evpa_image()
     model = S.IsotropicPowerLawElectrons(; p=2.3, Cj=1, Ca=0.1)
 
     fig = Figure()
+
+    # Row 1: Ordered fields
     for (c, bc) in enumerate(Bconfigs)
         pos = fig[1, c]
-        Axis(pos[1, 1]; title="$(bc.name), I + EVPA", aspect=DataAspect(), width=350, height=350)
+        Axis(pos[1, 1]; title="$(bc.name), ordered", aspect=DataAspect(), width=350, height=350)
 
         jet0 = S.EmissionRegion(;
             geometry = Geometries.Conical(; axis, φj, z=1e-3 .. 50),
@@ -323,6 +325,35 @@ function conical_jet_polarization_evpa_image()
         hidespines!()
         hidedecorations!()
     end
+
+    # Row 2: TangledOrderedMixture fields (κ=2)
+    κ = 2.0
+    for (c, bc) in enumerate(Bconfigs)
+        pos = fig[2, c]
+        Axis(pos[1, 1]; title="$(bc.name), κ=$(κ)", aspect=DataAspect(), width=350, height=350)
+
+        # Wrap field in TangledOrderedMixture
+        B_mixed = @set $(bc.B).wrap = b -> S.TangledOrderedMixture(b, κ)
+
+        jet0 = S.EmissionRegion(;
+            geometry = Geometries.Conical(; axis, φj, z=1e-3 .. 50),
+            ne = Profiles.Axial(S.PowerLaw(-2; val0=1, s0=1)),
+            B = B_mixed,
+            velocity = S.VelocitySpec(Directions.Radial(), S.beta, Profiles.Constant(0.995)),
+            model,
+        ) |> S.prepare_for_computations
+        jet0 = @set jet0.model.Ca_ordered = 9 / jet0.model.sinavg_a
+
+        img_IQU = render_field(jet0; extent=3, ν=1, what=S.IntensityIQU())
+        img_I = getproperty.(img_IQU, :I)
+
+        plt = heatmap!(img_I; colormap=:magma, colorscale=SymLog(1e-4 * maximum(img_I)))
+        evpa_ticks!(img_IQU; step=5, min_I_frac=1e-5)
+        Colorbar(pos[1, 2], plt; tickformat=EngTicks(:symbol))
+        hidespines!()
+        hidedecorations!()
+    end
+
     resize_to_layout!()
     save(joinpath(outdir, "conical_jet_polarization_evpa.png"), fig)
     fig
@@ -337,4 +368,4 @@ function main()
     conical_jet_polarization_evpa_image()
 end
 
-main()
+# main()
