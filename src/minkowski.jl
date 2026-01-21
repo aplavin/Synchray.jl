@@ -95,6 +95,22 @@ Supported inputs:
 @inline gamma(u::FourVelocity) = u.t
 @inline gamma(β::SVector{3}) = inv(√(1 - dot(β, β)))
 
+# Temporary helper functions for scalar beta <-> gamma conversion
+# TODO: Remove once API is standardized to use gamma everywhere
+"""
+    _beta_from_gamma(γ)
+
+Convert Lorentz factor γ to speed β (temporary helper).
+"""
+@inline _beta_from_gamma(γ) = √(1 - γ^-2)
+
+"""
+    _gamma_from_beta(β)
+
+Convert speed β to Lorentz factor γ (temporary helper).
+"""
+@inline _gamma_from_beta(β) = inv(√(1 - β^2))
+
 """
     FourVelocity(β)
 
@@ -127,7 +143,7 @@ end
 @inline construct(::Type{FourVelocity}, (_, γ)::Pair{typeof(gamma)}, (_, dir)::Pair{typeof(direction)}) = let
     @assert γ isa Number
     @assert dir isa SVector{3}
-	β = √(1 - γ^-2)
+	β = _beta_from_gamma(γ)
     return FourVelocity(γ, (γ * β) * dir)
 end
 
