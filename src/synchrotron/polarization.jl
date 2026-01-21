@@ -46,15 +46,18 @@ end
 @inline stokes_IQU(m::ModePerpParU) = StokesIQU(m.perp + m.par, m.perp - m.par, m.U)
 
 
-@inline _emissivity_absorption_polarized_mixture(
-	model::IsotropicPowerLawElectrons,
-	jI, αI,
-	field::TangledOrderedMixture,
-	k′::FourFrequency
-) = begin
-	# Compute effective polarization for incoherent tangled+ordered mixture.
-	# Tangled component: unpolarized (Π=0)
-	# Ordered component: polarized (Π_j, Π_α)
+# Dispatch on field type for polarized coefficients
+
+@inline _emissivity_absorption_polarized_field(model, jI, αI, field::FullyTangled, k′) = begin
+	# Conservative placeholder: unresolved tangling depolarizes.
+	j = ModePerpPar(jI/2, jI/2)
+	a = ModePerpPar(αI, αI)
+	return (j, a)
+end
+
+@inline _emissivity_absorption_polarized_field(model::IsotropicPowerLawElectrons, jI, αI, field::TangledOrderedMixture, k′) = begin
+	# Incoherent mixture: tangled (unpolarized) + ordered (polarized) components.
+	# Effective polarization weighted by intensity contributions.
 	# Effective: Π_eff = Π * f * (I_ordered / I_total)
 
 	# Get intrinsic polarization fractions
@@ -97,27 +100,8 @@ end
 	return (j, a)
 end
 
-@inline emissivity_absorption_polarized(obj::AbstractSynchrotronMedium, x4, k′) = begin
-	# Return *comoving-frame* polarized emissivity/absorption in the intrinsic field basis:
-	# (j_⊥, j_∥), (α_⊥, α_∥). For the currently implemented models we split the existing
-	# scalar Stokes-I coefficients using the RL thin-limit polarization fractions Π_j, Π_α.
-	(jI, αI) = emissivity_absorption(obj, x4, k′)
-	field = magnetic_field(obj, x4)
-
-	if field isa FullyTangled
-		# Conservative placeholder: unresolved tangling depolarizes.
-		j = ModePerpPar(jI/2, jI/2)
-		a = ModePerpPar(αI, αI)
-		return (j, a)
-	elseif field isa TangledOrderedMixture
-		# Incoherent mixture: tangled (unpolarized) + ordered (polarized) components.
-		# Effective polarization weighted by intensity contributions.
-		model = synchrotron_model(obj)
-		return _emissivity_absorption_polarized_mixture(model, jI, αI, field, k′)
-	end
-    @assert field isa SVector{3}
-
-	model = synchrotron_model(obj)
+@inline _emissivity_absorption_polarized_field(model, jI, αI, field::SVector{3}, k′) = begin
+	# Ordered field: use intrinsic polarization fractions.
 	p = _value(model.p)
 	Πj = _Pi_j(p)
 	Πα = _Pi_a(p)
@@ -132,6 +116,16 @@ end
 	# For absorption in normal modes: αI = (α_⊥ + α_∥)/2.
 	a = ModePerpPar((1 + Πα) * αI, (1 - Πα) * αI)
 	return (j, a)
+end
+
+@inline emissivity_absorption_polarized(obj::AbstractSynchrotronMedium, x4, k′::FourFrequency) = begin
+	# Return *comoving-frame* polarized emissivity/absorption in the intrinsic field basis:
+	# (j_⊥, j_∥), (α_⊥, α_∥). For the currently implemented models we split the existing
+	# scalar Stokes-I coefficients using the RL thin-limit polarization fractions Π_j, Π_α.
+	(jI, αI) = emissivity_absorption(obj, x4, k′)
+	field = magnetic_field(obj, x4)
+	model = synchrotron_model(obj)
+	return _emissivity_absorption_polarized_field(model, jI, αI, field, k′)
 end
 
 
