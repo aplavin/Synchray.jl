@@ -118,7 +118,7 @@ end
 	return (j, a)
 end
 
-@inline emissivity_absorption_polarized(obj::AbstractSynchrotronMedium, x4, k′::FourFrequency) = begin
+@inline emissivity_absorption_polarized(obj::AbstractSynchrotronMedium, x4, k′) = begin
 	# Return *comoving-frame* polarized emissivity/absorption in the intrinsic field basis:
 	# (j_⊥, j_∥), (α_⊥, α_∥). For the currently implemented models we split the existing
 	# scalar Stokes-I coefficients using the RL thin-limit polarization fractions Π_j, Π_α.
