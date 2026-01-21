@@ -148,3 +148,97 @@ end
 		@test factor_enhance * factor_suppress ≈ 1.0
 	end
 end
+
+@testitem "Complemented bump patterns" begin
+	import Synchray as S
+
+	@testset "TophatBump complement - spatial inverse" begin
+		b = S.Patterns.TophatBump(3.0)
+		bc = S.Patterns.complement(b)
+
+		# Test complement relation at key χ values
+		# Relation: complement(χ) = original(χ) / f_peak
+
+		# Inside (χ < 1): original enhanced, complement normal
+		χ_inside = 0.5
+		@test b(χ_inside) ≈ 3.0
+		@test bc(χ_inside) ≈ 1.0
+		@test bc(χ_inside) ≈ b(χ_inside) / 3.0
+
+		# At center (χ = 0)
+		@test b(0.0) ≈ 3.0
+		@test bc(0.0) ≈ 1.0
+		@test bc(0.0) ≈ b(0.0) / 3.0
+
+		# Outside (χ ≥ 1): original normal, complement suppressed
+		χ_outside = 5.0
+		@test b(χ_outside) ≈ 1.0
+		@test bc(χ_outside) ≈ 1/3
+		@test bc(χ_outside) ≈ b(χ_outside) / 3.0
+
+		# Double complement recovers original
+		bcc = S.Patterns.complement(bc)
+		@test bcc === b  # Identity check
+		@test bcc(0.0) ≈ b(0.0)
+		@test bcc(0.5) ≈ b(0.5)
+		@test bcc(5.0) ≈ b(5.0)
+	end
+
+	@testset "GaussianBump complement - spatial inverse" begin
+		g = S.Patterns.GaussianBump(f_peak=5.0, χ_threshold=16.0)
+		gc = S.Patterns.complement(g)
+
+		# Test complement relation at key χ values
+		# Relation: complement(χ) = original(χ) / f_peak
+
+		# At center (χ = 0): original at peak, complement normal
+		@test g(0.0) ≈ 5.0
+		@test gc(0.0) ≈ 1.0
+		@test gc(0.0) ≈ g(0.0) / 5.0
+
+		# Small χ: smooth transition
+		χ_small = 0.5
+		@test g(χ_small) > 1.0  # Enhanced
+		@test gc(χ_small) < 1.0  # Suppressed
+		@test gc(χ_small) ≈ g(χ_small) / 5.0
+
+		# Large χ: original at baseline, complement suppressed
+		χ_large = 5.0
+		@test 1.0 < g(χ_large) < 5.0  # Between baseline and peak
+		@test gc(χ_large) ≈ g(χ_large) / 5.0
+
+		# Very large χ (beyond threshold): should approach 1/f_peak
+		χ_very_large = 20.0
+		@test g(χ_very_large) ≈ 1.0
+		@test gc(χ_very_large) ≈ 1/5
+		@test gc(χ_very_large) ≈ g(χ_very_large) / 5.0
+
+		# Double complement recovers original
+		gcc = S.Patterns.complement(gc)
+		@test gcc === g  # Identity check
+		for χ in [0.0, 0.5, 5.0, 20.0]
+			@test gcc(χ) ≈ g(χ)
+		end
+	end
+
+	@testset "Complement edge case: f_peak = 1" begin
+		# Identity case: both original and complement should be identity
+		b_id = S.Patterns.TophatBump(1.0)
+		bc_id = S.Patterns.complement(b_id)
+
+		for χ in [0.0, 0.5, 1.5, 5.0]
+			@test b_id(χ) ≈ 1.0
+			@test bc_id(χ) ≈ 1.0
+			@test bc_id(χ) ≈ b_id(χ) / 1.0
+		end
+
+		g_id = S.Patterns.GaussianBump(f_peak=1.0)
+		gc_id = S.Patterns.complement(g_id)
+
+		for χ in [0.0, 1.0, 5.0, 20.0]
+			@test g_id(χ) ≈ 1.0
+			@test gc_id(χ) ≈ 1.0
+			@test gc_id(χ) ≈ g_id(χ) / 1.0
+		end
+	end
+end

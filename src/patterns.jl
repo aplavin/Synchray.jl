@@ -119,6 +119,62 @@ Base.inv(t::TophatBump) = TophatBump(inv(t.f_peak))  # Exact via parameter inver
 Base.inv(p::InvertedProfile) = p.inner  # Double inversion recovers original
 
 """
+    ComplementedProfile{T}
+
+Wraps a profile to compute its spatial complement (swaps inside/outside regions).
+
+For bump profiles `p(χ)` with `p(0) = f_peak` and `p(∞) = 1`, the complement has
+`c(0) = 1` and `c(∞) = 1/f_peak`. This is achieved via the formula: `c(χ) = p(χ) / f_peak`.
+
+Physical meaning:
+- Original: "Enhance pattern region by factor f_peak, normal elsewhere"
+- Complement: "Normal in pattern region, suppress elsewhere by factor 1/f_peak"
+
+Use `Patterns.complement(profile)` to create complemented profiles.
+
+# Example
+```julia
+# TophatBump: enhance inside, normal outside
+bump = TophatBump(f_peak=3.0)
+@assert bump(0.5) ≈ 3.0  # Inside: enhanced
+@assert bump(1.5) ≈ 1.0  # Outside: normal
+
+# Complement: normal inside, suppress outside
+comp = Patterns.complement(bump)
+@assert comp(0.5) ≈ 1.0    # Inside: normal
+@assert comp(1.5) ≈ 1/3    # Outside: suppressed
+
+# Double complement recovers original
+@assert Patterns.complement(Patterns.complement(bump))(χ) ≈ bump(χ)  # for all χ
+```
+"""
+struct ComplementedProfile{T}
+	inner::T
+end
+
+@inline (p::ComplementedProfile)(χ) = p.inner(χ) / p.inner.f_peak
+
+# Complement operations
+"""
+    complement(profile)
+
+Create the spatial complement of a bump profile.
+
+For bumps with `p(0) = f_peak` and `p(∞) = 1`, returns a complemented profile with
+`c(0) = 1` and `c(∞) = 1/f_peak`, effectively swapping which spatial region is modified.
+
+# Example
+```julia
+bump = TophatBump(10.0)
+comp = Patterns.complement(bump)
+comp(0.5)  # Returns 1.0 (normal inside)
+comp(1.5)  # Returns 0.1 (suppressed outside)
+```
+"""
+complement(p) = ComplementedProfile(p)
+complement(p::ComplementedProfile) = p.inner  # Double complement = identity
+
+"""
     PrecessingNozzle{Tθ, Tφ, TT, T, TP}
 
 A precessing nozzle pattern that creates an enhanced-emission channel rotating within a conical geometry.

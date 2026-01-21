@@ -168,7 +168,7 @@ jet = @lift let
         θ_nozzle = $params.nozzle.wfrac * $params.geom.opening_ang,     # nozzle cone half-angle
         period = $params.nozzle.period,        # precession period in code time
         β_flow = √(1 - $γ_cross(1)^-2),      # flow speed
-        profile = S.Patterns.TophatBump($params.nozzle.mul),
+        profile = S.Patterns.complement(S.Patterns.TophatBump($params.nozzle.mul)),
     )
 
 
