@@ -119,11 +119,14 @@ end
 	return j, α
 end
 
-# TangledOrderedMixture with anisotropic electrons:
-# - Tangled component (f→0): no preferred direction, electrons isotropize → use isotropic angle-averages
-# - Ordered component (f→1): coherent field direction, pitch-angle anisotropy applies → use φ(θ_Bn)
-# - Mixed: A = (1-f) * ⟨sin^q θ⟩ + f * φ(θ_Bn) * sin^q θ
-@inline _synchrotron_coeffs(model::AnisotropicPowerLawElectrons, n_e, field::TangledOrderedMixture, k′::FourFrequency) = let
+# Unified TangledOrderedMixture method for both isotropic and anisotropic electrons (same pattern as polarization).
+# This is defined here (in anisotropic_electrons.jl) because both types need to be loaded for the Union type.
+@inline _synchrotron_coeffs(
+	model::Union{IsotropicPowerLawElectrons, AnisotropicPowerLawElectrons},
+	n_e,
+	field::TangledOrderedMixture,
+	k′::FourFrequency
+) = let
 	ν = frequency(k′)
 	(;p, Cj_ordered, Ca_ordered, sinavg_j, sinavg_a) = model
 	κ = field.kappa
@@ -138,11 +141,7 @@ end
 	@assert dot(n, n) ≈ 1
 	sinθ = norm(cross(b, n)) / B
 	sinθ = clamp(sinθ, 0, 1)
-
-	# Angle for anisotropy factor.
 	cosθ = dot(b, n) / B
-	cos2θ = cosθ^2
-	φ = _phi_theta(model, cos2θ)
 
 	# Minimal ordering model: mix between isotropic-direction average (κ=0) and fully ordered (κ→∞).
 	f = κ == Inf ? one(float(κ)) : κ / (one(κ) + κ)
@@ -150,9 +149,13 @@ end
 	qj = _half(p + StaticNum{1}())
 	qa = _half(p + StaticNum{2}())
 
-	# For anisotropic electrons:
-	# - Tangled component: isotropic average (sinavg)
-	# - Ordered component: anisotropy factor × viewing angle (φ × sinθ^q)
+	# Dispatch to model-specific pitch-angle factor
+	# (φ=1 for isotropic, φ(θ) for anisotropic)
+	φ = _phi_theta(model, cosθ^2)
+
+	# For anisotropic electrons: tangled component uses isotropic average,
+	# ordered component includes anisotropy factor φ(θ_Bn).
+	# For isotropic electrons: φ=1, so this reduces to the previous formula.
 	Aj = muladd(f, φ * sinθ^qj - sinavg_j, sinavg_j)
 	Aa = muladd(f, φ * sinθ^qa - sinavg_a, sinavg_a)
 

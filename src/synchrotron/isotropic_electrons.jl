@@ -181,33 +181,4 @@ end
 	return j, α
 end
 
-@inline _synchrotron_coeffs(model::IsotropicPowerLawElectrons, n_e, field::TangledOrderedMixture, k′::FourFrequency) = let
-	ν = frequency(k′)
-	(;p, Cj_ordered, Ca_ordered, sinavg_j, sinavg_a) = model
-	κ = field.kappa
-	@assert κ ≥ 0
-
-	b = field.b
-	B = norm(b)
-	invν = inv(ν)
-
-	# Ordered viewing angle from the preferred direction.
-	n = (@swiz k′.xyz) * invν
-	@assert dot(n, n) ≈ 1
-	sinθ = norm(cross(b, n)) / B
-	sinθ = clamp(sinθ, 0, 1)
-
-	# Minimal ordering model: mix between isotropic-direction average (κ=0) and fully ordered (κ→∞).
-	f = κ == Inf ? one(float(κ)) : κ / (one(κ) + κ)
-
-	qj = _half(p + StaticNum{1}())
-	qa = _half(p + StaticNum{2}())
-	Aj = muladd(f, sinθ^qj - sinavg_j, sinavg_j)
-	Aa = muladd(f, sinθ^qa - sinavg_a, sinavg_a)
-
-	B_over_ν = B * invν
-	common = B_over_ν^_half(p)
-	j = Cj_ordered * n_e * common * sqrt(B * ν) * Aj
-	α = Ca_ordered * n_e * common * B * invν^2 * Aa
-	return j, α
-end
+# TangledOrderedMixture: unified method now in anisotropic_electrons.jl (loaded after both types are defined)
