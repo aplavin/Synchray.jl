@@ -46,6 +46,8 @@ end
 @unstable prepare_for_computations(model::IsotropicPowerLawElectrons) = @modify(FixedExponent, model.p)
 ustrip(model::IsotropicPowerLawElectrons) = model
 
+# Pitch-angle factor for isotropic electrons: no anisotropy modulation.
+@inline _phi_theta(model::IsotropicPowerLawElectrons, cos2θ) = 1
 
 """
 		IsotropicPowerLawElectrons(; p, γmin=1, γmax=Inf, Cj=nothing, Ca=nothing)

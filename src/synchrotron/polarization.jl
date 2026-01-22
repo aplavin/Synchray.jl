@@ -45,7 +45,6 @@ end
 @inline stokes_IQ(m::ModePerpPar) = (I=m.perp + m.par, Q=m.perp - m.par)
 @inline stokes_IQU(m::ModePerpParU) = StokesIQU(m.perp + m.par, m.perp - m.par, m.U)
 
-
 # Dispatch on field type for polarized coefficients
 
 @inline _emissivity_absorption_polarized_field(model, jI, αI, field::FullyTangled, k′) = begin
@@ -55,10 +54,16 @@ end
 	return (j, a)
 end
 
-@inline _emissivity_absorption_polarized_field(model::IsotropicPowerLawElectrons, jI, αI, field::TangledOrderedMixture, k′) = begin
+# Unified method for TangledOrderedMixture polarization (both isotropic and anisotropic electrons)
+@inline _emissivity_absorption_polarized_field(
+	model::Union{IsotropicPowerLawElectrons, AnisotropicPowerLawElectrons},
+	jI, αI,
+	field::TangledOrderedMixture,
+	k′::FourFrequency
+) = begin
 	# Incoherent mixture: tangled (unpolarized) + ordered (polarized) components.
-	# Effective polarization weighted by intensity contributions.
-	# Effective: Π_eff = Π * f * (I_ordered / I_total)
+	# Effective: Π_eff = Π * f * (A_ordered / A_mixed)
+	# For anisotropic electrons, A_ordered includes the pitch-angle factor φ(θ_Bn).
 
 	# Get intrinsic polarization fractions
 	p = _value(model.p)
@@ -69,69 +74,22 @@ end
 	κ = field.kappa
 	f = κ == Inf ? one(float(κ)) : κ / (one(κ) + κ)
 
-	# Recompute viewing angle factors
+	# Compute viewing angles
 	ν = frequency(k′)
 	b = field.b
 	B = norm(b)
 	n = (@swiz k′.xyz) / ν
 	sinθ = norm(cross(b, n)) / B
 	sinθ = clamp(sinθ, 0, 1)
-
-	# Compute angle-factor exponents
-	qj = _half(model.p + StaticNum{1}())
-	qa = _half(model.p + StaticNum{2}())
-
-	# Compute ordered angle factors
-	Aj_ordered = sinθ^qj
-	Aa_ordered = sinθ^qa
-
-	# Compute mixed angle factors (as in Stokes-I code)
-	Aj_mixed = muladd(f, Aj_ordered - model.sinavg_j, model.sinavg_j)
-	Aa_mixed = muladd(f, Aa_ordered - model.sinavg_a, model.sinavg_a)
-
-	# Effective polarization fractions with safe division
-	Πj_eff = Aj_mixed > 0 ? Πj * f * Aj_ordered / Aj_mixed : zero(Πj)
-	Πα_eff = Aa_mixed > 0 ? Πα * f * Aa_ordered / Aa_mixed : zero(Πα)
-
-	# Split into normal modes using effective fractions
-	j = ModePerpPar((1 + Πj_eff)/2 * jI, (1 - Πj_eff)/2 * jI)
-	a = ModePerpPar((1 + Πα_eff) * αI, (1 - Πα_eff) * αI)
-
-	return (j, a)
-end
-
-@inline _emissivity_absorption_polarized_field(model::AnisotropicPowerLawElectrons, jI, αI, field::TangledOrderedMixture, k′) = begin
-	# Incoherent mixture: tangled (unpolarized) + ordered (polarized) components.
-	# For anisotropic electrons, the ordered component includes the anisotropy factor φ(θ_Bn).
-	# Effective: Π_eff = Π * f * (φ * I_ordered) / I_total
-
-	# Get intrinsic polarization fractions
-	p = _value(model.p)
-	Πj = _Pi_j(p)
-	Πα = _Pi_a(p)
-
-	# Compute mixing fraction
-	κ = field.kappa
-	f = κ == Inf ? one(float(κ)) : κ / (one(κ) + κ)
-
-	# Recompute viewing angle and anisotropy factors
-	ν = frequency(k′)
-	b = field.b
-	B = norm(b)
-	n = (@swiz k′.xyz) / ν
-	sinθ = norm(cross(b, n)) / B
-	sinθ = clamp(sinθ, 0, 1)
-
-	# Angle for anisotropy factor
 	cosθ = dot(b, n) / B
-	cos2θ = cosθ^2
-	φ = _phi_theta(model, cos2θ)
 
 	# Compute angle-factor exponents
 	qj = _half(model.p + StaticNum{1}())
 	qa = _half(model.p + StaticNum{2}())
 
-	# Compute ordered angle factors (with anisotropy)
+	# Compute ordered component angle factors using pitch-angle anisotropy factor
+	# (φ=1 for isotropic electrons, φ(θ_Bn) for anisotropic electrons)
+	φ = _phi_theta(model, cosθ^2)
 	Aj_ordered = φ * sinθ^qj
 	Aa_ordered = φ * sinθ^qa
 
@@ -266,7 +224,7 @@ If `B′ ∥ n′` (vanishing projection), uses an arbitrary screen basis instea
 	return (e_par, e_perp)
 end
 
-linear_polarization_basis_from_B(n′::SVector{3}, B′::FullyTangled) = (SVector(1,0,0), SVector(0,1,0))
+linear_polarization_basis_from_B(n′::SVector{3}, B′::FullyTangled) = _arbitrary_screen_basis(n′)
 
 linear_polarization_basis_from_B(n′::SVector{3}, B′::TangledOrderedMixture) = linear_polarization_basis_from_B(n′, B′.b)
 
