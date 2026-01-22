@@ -160,6 +160,161 @@ end
 	end
 end
 
+@testitem "Polarized synchrotron coeffs - AnisotropicPowerLawElectrons + TangledOrderedMixture" begin
+	import Synchray as S
+	using Test
+
+	ν = 2.0
+	x4 = S.FourPosition(0.0, 0.0, 0.0, 0.0)
+	k′ = S.photon_k(ν, SVector(0.0, 0.0, 1.0))
+	u0 = S.FourVelocity(SVector(0.0, 0.0, 0.0))
+	ne0 = 1.3
+	B0 = 0.9
+	z = 0.0..1.0
+	b = SVector(B0, 0.0, 0.0)
+
+	@testset "η=1 matches IsotropicPowerLawElectrons" begin
+		p = 3.2
+		# Create both models with same parameters
+		model_iso = S.IsotropicPowerLawElectrons(; p, Cj=0.7, Ca=0.3)
+		model_aniso = S.AnisotropicPowerLawElectrons(; p, η=1.0, Cj=0.7, Ca=0.3)
+
+		for κ in [0.0, 2.0, Inf]
+			field = S.TangledOrderedMixture(b, κ)
+
+			# Test Stokes-I coefficients
+			slab_iso = S.UniformSynchrotronSlab(; z, u0, ne0, B0=field, model=model_iso)
+			slab_aniso = S.UniformSynchrotronSlab(; z, u0, ne0, B0=field, model=model_aniso)
+
+			(jI_iso, αI_iso) = S.emissivity_absorption(slab_iso, x4, k′)
+			(jI_aniso, αI_aniso) = S.emissivity_absorption(slab_aniso, x4, k′)
+
+			@test jI_aniso ≈ jI_iso rtol=1e-12
+			@test αI_aniso ≈ αI_iso rtol=1e-12
+
+			# Test polarized coefficients
+			(j_iso, a_iso) = S.emissivity_absorption_polarized(slab_iso, x4, k′)
+			(j_aniso, a_aniso) = S.emissivity_absorption_polarized(slab_aniso, x4, k′)
+
+			@test j_aniso.perp ≈ j_iso.perp rtol=1e-12
+			@test j_aniso.par ≈ j_iso.par rtol=1e-12
+			@test a_aniso.perp ≈ a_iso.perp rtol=1e-12
+			@test a_aniso.par ≈ a_iso.par rtol=1e-12
+		end
+	end
+
+	@testset "κ=0 depolarized for anisotropic electrons" begin
+		model = S.AnisotropicPowerLawElectrons(; p=2.5, η=0.5, Cj=0.7, Ca=0.3)
+		field = S.TangledOrderedMixture(b, 0.0)
+		slab = S.UniformSynchrotronSlab(; z, u0, ne0, B0=field, model)
+
+		(j, a) = S.emissivity_absorption_polarized(slab, x4, k′)
+		(jI, αI) = S.emissivity_absorption(slab, x4, k′)
+
+		# Should be depolarized
+		@test j.perp ≈ j.par rtol=1e-14
+		@test a.perp ≈ a.par rtol=1e-14
+		@test (j.perp + j.par) ≈ jI rtol=5e-15 atol=0
+		@test (a.perp + a.par)/2 ≈ αI rtol=5e-15 atol=0
+	end
+
+	@testset "κ→∞ matches ordered anisotropic field" begin
+		model = S.AnisotropicPowerLawElectrons(; p=2.5, η=0.5, Cj=0.7, Ca=0.3)
+
+		field_mixed = S.TangledOrderedMixture(b, Inf)
+		slab_mixed = S.UniformSynchrotronSlab(; z, u0, ne0, B0=field_mixed, model)
+		(j_mixed, a_mixed) = S.emissivity_absorption_polarized(slab_mixed, x4, k′)
+
+		slab_ordered = S.UniformSynchrotronSlab(; z, u0, ne0, B0=b, model)
+		(j_ordered, a_ordered) = S.emissivity_absorption_polarized(slab_ordered, x4, k′)
+
+		@test j_mixed.perp ≈ j_ordered.perp rtol=1e-14
+		@test j_mixed.par ≈ j_ordered.par rtol=1e-14
+		@test a_mixed.perp ≈ a_ordered.perp rtol=1e-14
+		@test a_mixed.par ≈ a_ordered.par rtol=1e-14
+	end
+
+	@testset "κ=2 intermediate polarization" begin
+		model = S.AnisotropicPowerLawElectrons(; p=2.5, η=0.5, Cj=0.7, Ca=0.3)
+		field = S.TangledOrderedMixture(b, 2.0)
+		slab = S.UniformSynchrotronSlab(; z, u0, ne0, B0=field, model)
+
+		(j, a) = S.emissivity_absorption_polarized(slab, x4, k′)
+		(jI, αI) = S.emissivity_absorption(slab, x4, k′)
+
+		# Should be polarized but not fully
+		@test j.perp > j.par
+		@test 0.1 < (j.perp - j.par) / (j.perp + j.par) < 0.9
+		@test (j.perp + j.par) ≈ jI rtol=5e-15 atol=0
+		@test (a.perp + a.par)/2 ≈ αI rtol=5e-15 atol=0
+
+		# Polarization should be less than fully ordered case
+		slab_ordered = S.UniformSynchrotronSlab(; z, u0, ne0, B0=b, model)
+		(j_ord, _) = S.emissivity_absorption_polarized(slab_ordered, x4, k′)
+		pol_frac = (j.perp - j.par) / (j.perp + j.par)
+		pol_frac_ord = (j_ord.perp - j_ord.par) / (j_ord.perp + j_ord.par)
+
+		@test 0.1 < pol_frac < 0.95pol_frac_ord
+	end
+
+	@testset "EVPA matches ordered field" begin
+		model = S.AnisotropicPowerLawElectrons(; p=2.5, η=0.5, Cj=0.7, Ca=0.3)
+		χ = 0.42
+		b_oblique = SVector(B0 * cos(χ), B0 * sin(χ), 0.0)
+
+		slab_ordered = S.UniformSynchrotronSlab(; z, u0, ne0, B0=b_oblique, model)
+		ray = S.RayZ(; x0=x4, k=k′, nz=40)
+		S_ordered = S.render(ray, slab_ordered, S.IntensityIQU())
+		evpa_ordered = S.evpa(S_ordered)
+
+		@testset for κ_test in [0.5, 2.0, 10.0]
+			field_mixed = S.TangledOrderedMixture(b_oblique, κ_test)
+			slab_mixed = S.UniformSynchrotronSlab(; z, u0, ne0, B0=field_mixed, model)
+			S_mixed = S.render(ray, slab_mixed, S.IntensityIQU())
+			evpa_mixed = S.evpa(S_mixed)
+
+			@test evpa_mixed ≈ evpa_ordered rtol=1e-12
+
+			pol_deg_ordered = sqrt(S_ordered.Q^2 + S_ordered.U^2) / S_ordered.I
+			pol_deg_mixed = sqrt(S_mixed.Q^2 + S_mixed.U^2) / S_mixed.I
+			@test 0.1 < pol_deg_mixed < 0.95pol_deg_ordered
+		end
+
+		# κ=0 should be fully depolarized
+		field_depol = S.TangledOrderedMixture(b_oblique, 0.0)
+		slab_depol = S.UniformSynchrotronSlab(; z, u0, ne0, B0=field_depol, model)
+		S_depol = S.render(ray, slab_depol, S.IntensityIQU())
+		pol_deg_depol = sqrt(S_depol.Q^2 + S_depol.U^2) / S_depol.I
+		@test pol_deg_depol < 1e-10
+	end
+
+	@testset "Anisotropy effect on polarization" begin
+		# Test that different η values affect polarization degree correctly
+		p = 2.5
+		κ = 2.0
+		field = S.TangledOrderedMixture(b, κ)
+
+		# η < 1: electrons along field
+		model_along = S.AnisotropicPowerLawElectrons(; p, η=0.3, Cj=0.7, Ca=0.3)
+		slab_along = S.UniformSynchrotronSlab(; z, u0, ne0, B0=field, model=model_along)
+		(j_along, _) = S.emissivity_absorption_polarized(slab_along, x4, k′)
+
+		# η > 1: electrons perpendicular to field
+		model_perp = S.AnisotropicPowerLawElectrons(; p, η=3.0, Cj=0.7, Ca=0.3)
+		slab_perp = S.UniformSynchrotronSlab(; z, u0, ne0, B0=field, model=model_perp)
+		(j_perp, _) = S.emissivity_absorption_polarized(slab_perp, x4, k′)
+
+		# Both should be polarized but with different degrees
+		pol_frac_along = (j_along.perp - j_along.par) / (j_along.perp + j_along.par)
+		pol_frac_perp = (j_perp.perp - j_perp.par) / (j_perp.perp + j_perp.par)
+
+		@test pol_frac_along > 0.01
+		@test pol_frac_perp > 0.01
+		# The magnitudes should differ due to different anisotropies
+		@test abs(pol_frac_along - pol_frac_perp) > 0.01
+	end
+end
+
 
 @testitem "Polarized synchrotron coeffs - helpers" begin
 	import Synchray as S
