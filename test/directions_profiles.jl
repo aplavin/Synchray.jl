@@ -21,14 +21,17 @@ end
     geom = S.Geometries.Conical(SVector(0, 0, 1), 0.1, 1.0 .. 10.0)
     axis = SVector(0.0, 0.0, 1.0)
 
-    # Test position off-axis
-    x4 = S.FourPosition(0.0, 1.0, 0.0, 5.0)  # at (x=1, y=0, z=5)
+    # Test position off-axis: (x=1, y=0, z=5)
+    x4 = S.FourPosition(0.0, 1.0, 0.0, 5.0)
+    r = SVector(1.0, 0.0, 5.0)
 
     # Expected basis vectors at this position
-    e_r_expected = SVector(1.0, 0.0, 0.0)  # radial: pointing in +x direction
-    e_phi_expected = SVector(0.0, 1.0, 0.0)  # toroidal: pointing in +y direction
+    # Radial: from origin (NOT from axis!)
+    e_r_expected = r / norm(r)  # ≈ (0.196, 0, 0.981)
+    # Toroidal: azimuthal around axis
+    e_phi_expected = SVector(0.0, 1.0, 0.0)
 
-    @testset "ψ=0 gives pure radial" begin
+    @testset "ψ=0 gives pure radial (from origin)" begin
         dir = Directions.HelicalRT(0.0)
         v = S.field_direction(dir, geom, x4)
         @test norm(v) ≈ 1.0
@@ -42,26 +45,28 @@ end
         @test v ≈ e_phi_expected atol=1e-10
     end
 
-    @testset "ψ=π/4 gives equal mix" begin
+    @testset "ψ=π/4 gives normalized mix" begin
         dir = Directions.HelicalRT(π/4)
         v = S.field_direction(dir, geom, x4)
         @test norm(v) ≈ 1.0
-        expected = (e_r_expected + e_phi_expected) / sqrt(2)
+        # e_r and e_phi are NOT orthogonal, so must normalize
+        raw = (e_r_expected + e_phi_expected) / sqrt(2)
+        expected = raw / norm(raw)
         @test v ≈ expected atol=1e-10
     end
 
-    @testset "Result is perpendicular to axis" begin
+    @testset "Result is always unit vector" begin
         for ψ in [0.0, π/6, π/4, π/3, π/2]
             dir = Directions.HelicalRT(ψ)
             v = S.field_direction(dir, geom, x4)
-            @test abs(dot(v, axis)) < 1e-10
+            @test norm(v) ≈ 1.0
         end
     end
 
-    @testset "On-axis returns zero" begin
-        x4_on_axis = S.FourPosition(0.0, 0.0, 0.0, 5.0)
+    @testset "At origin returns zero" begin
+        x4_origin = S.FourPosition(0.0, 0.0, 0.0, 0.0)
         dir = Directions.HelicalRT(π/4)
-        v = S.field_direction(dir, geom, x4_on_axis)
+        v = S.field_direction(dir, geom, x4_origin)
         @test norm(v) ≈ 0.0
     end
 end

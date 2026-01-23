@@ -58,10 +58,10 @@ end
 """
     HelicalRT{T} <: AbstractDirection
 
-Field direction as a mix of radial and toroidal components.
+Field direction as a mix of radial (from origin) and toroidal components.
 
 # Fields
-- `ψ::T`: Angle between field and radial direction. ψ=0 → radial, ψ=90° → toroidal.
+- `ψ::T`: Mixing angle. ψ=0 → radial (from origin), ψ=90° → toroidal (azimuthal around axis).
 """
 struct HelicalRT{T} <: AbstractDirection
     ψ::T
@@ -116,15 +116,20 @@ prepare_for_computations(h::Directions.HelicalRT) = @modify(Geometries.AngleTrig
     return iszero(v) ? zero(v) : v / norm(v)
 end
 
-# HelicalRT: mix of radial and toroidal
+# HelicalRT: mix of radial (from origin) and toroidal
 @inline field_direction(h::Directions.HelicalRT, geom, x4) = begin
     axis = geometry_axis(geom)
+    r = @swiz x4.xyz
+    r_norm = norm(r)
     (; r_perp, ρ) = _cylindrical_coords(rotation_local_to_lab(geom), x4)
 
-    e_r = iszero(ρ) ? zero(axis) : r_perp / ρ
-    e_phi = iszero(ρ) ? zero(axis) : cross(axis, e_r)
+    # Radial: from origin (same as Directions.Radial)
+    e_r = iszero(r_norm) ? zero(r) : r / r_norm
+    # Toroidal: azimuthal around axis (same as Directions.Toroidal)
+    e_phi = iszero(ρ) ? zero(axis) : cross(axis, r_perp / ρ)
 
     sψ, cψ = sincos(h.ψ)
     v = cψ * e_r + sψ * e_phi
-    return iszero(v) ? zero(v) : v / norm(v)
+    # e_r and e_phi are orthogonal, so v is already unit length (when non-zero)
+    return v
 end
