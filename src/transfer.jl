@@ -262,7 +262,7 @@ ray_contribution_profile(obj::AbstractMedium, ray::RayZ) = begin
 		else
 			( Jinv / Ainv ) * (1 - exp(-Δτ))
 		end
-		(; z, x4, Δτ, dIinv_source)
+		(; z, x4, Δτ, Δz, dIinv_source)
 	end
 
 	# τ_front[i] = Σ_{j>i} Δτ[j]
