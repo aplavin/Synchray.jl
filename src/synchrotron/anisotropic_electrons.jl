@@ -43,6 +43,7 @@ struct AnisotropicPowerLawElectrons{Tp,Tη,Tγ,TC,Tavg,TP}
 end
 
 @unstable prepare_for_computations(model::AnisotropicPowerLawElectrons) = @modify(FixedExponent, model.p)
+ustrip(model::AnisotropicPowerLawElectrons) = model
 
 # In the isotropic model, θ_{Bn} enters only through B_perp = |B'| sinθ_{Bn}.
 # Here we additionally apply an anisotropy weight φ(θ_{Bn}), but since φ depends only on cos²θ,
