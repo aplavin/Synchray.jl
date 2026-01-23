@@ -5,12 +5,65 @@
     @test Directions.Axial() isa Directions.AbstractDirection
     @test Directions.Radial() isa Directions.AbstractDirection
     @test Directions.Toroidal() isa Directions.AbstractDirection
-    @test Directions.Helical(π/4) isa Directions.AbstractDirection
-    
+    @test Directions.HelicalAT(π/4) isa Directions.AbstractDirection
+    @test Directions.HelicalRT(π/4) isa Directions.AbstractDirection
+
     # Scalar returns 1
     geom = nothing  # not used for Scalar
     x4 = S.FourPosition(0, 0, 0, 1)
     @test S.field_direction(Directions.Scalar(), geom, x4) == 1
+end
+
+@testitem "HelicalRT direction" begin
+    import Synchray as S
+
+    # Setup: conical geometry with z-axis
+    geom = S.Geometries.Conical(SVector(0, 0, 1), 0.1, 1.0 .. 10.0)
+    axis = SVector(0.0, 0.0, 1.0)
+
+    # Test position off-axis
+    x4 = S.FourPosition(0.0, 1.0, 0.0, 5.0)  # at (x=1, y=0, z=5)
+
+    # Expected basis vectors at this position
+    e_r_expected = SVector(1.0, 0.0, 0.0)  # radial: pointing in +x direction
+    e_phi_expected = SVector(0.0, 1.0, 0.0)  # toroidal: pointing in +y direction
+
+    @testset "ψ=0 gives pure radial" begin
+        dir = Directions.HelicalRT(0.0)
+        v = S.field_direction(dir, geom, x4)
+        @test norm(v) ≈ 1.0
+        @test v ≈ e_r_expected atol=1e-10
+    end
+
+    @testset "ψ=π/2 gives pure toroidal" begin
+        dir = Directions.HelicalRT(π/2)
+        v = S.field_direction(dir, geom, x4)
+        @test norm(v) ≈ 1.0
+        @test v ≈ e_phi_expected atol=1e-10
+    end
+
+    @testset "ψ=π/4 gives equal mix" begin
+        dir = Directions.HelicalRT(π/4)
+        v = S.field_direction(dir, geom, x4)
+        @test norm(v) ≈ 1.0
+        expected = (e_r_expected + e_phi_expected) / sqrt(2)
+        @test v ≈ expected atol=1e-10
+    end
+
+    @testset "Result is perpendicular to axis" begin
+        for ψ in [0.0, π/6, π/4, π/3, π/2]
+            dir = Directions.HelicalRT(ψ)
+            v = S.field_direction(dir, geom, x4)
+            @test abs(dot(v, axis)) < 1e-10
+        end
+    end
+
+    @testset "On-axis returns zero" begin
+        x4_on_axis = S.FourPosition(0.0, 0.0, 0.0, 5.0)
+        dir = Directions.HelicalRT(π/4)
+        v = S.field_direction(dir, geom, x4_on_axis)
+        @test norm(v) ≈ 0.0
+    end
 end
 
 @testitem "Profiles module" begin

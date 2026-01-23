@@ -44,15 +44,27 @@ Forms azimuthal loops around the axis.
 struct Toroidal <: AbstractDirection end
 
 """
-    Helical{T} <: AbstractDirection
+    HelicalAT{T} <: AbstractDirection
 
 Field direction as a helical mix of axial and toroidal components.
 
 # Fields
-- `ψ::T`: Pitch angle (angle between field and axis)
+- `ψ::T`: Pitch angle (angle between field and axis). ψ=0 → axial, ψ=90° → toroidal.
 """
-struct Helical{T} <: AbstractDirection
-    ψ::T  # pitch angle
+struct HelicalAT{T} <: AbstractDirection
+    ψ::T
+end
+
+"""
+    HelicalRT{T} <: AbstractDirection
+
+Field direction as a mix of radial and toroidal components.
+
+# Fields
+- `ψ::T`: Angle between field and radial direction. ψ=0 → radial, ψ=90° → toroidal.
+"""
+struct HelicalRT{T} <: AbstractDirection
+    ψ::T
 end
 
 end # module Directions
@@ -89,10 +101,11 @@ end
     return iszero(ρ) ? zero(axis) : cross(axis, r_perp / ρ)
 end
 
-prepare_for_computations(h::Directions.Helical) = @modify(Geometries.AngleTrigCached_fromangle, h.ψ)
+prepare_for_computations(h::Directions.HelicalAT) = @modify(Geometries.AngleTrigCached_fromangle, h.ψ)
+prepare_for_computations(h::Directions.HelicalRT) = @modify(Geometries.AngleTrigCached_fromangle, h.ψ)
 
-# Helical: mix of axial and toroidal
-@inline field_direction(h::Directions.Helical, geom, x4) = begin
+# HelicalAT: mix of axial and toroidal
+@inline field_direction(h::Directions.HelicalAT, geom, x4) = begin
     axis = geometry_axis(geom)
     (; r_perp, ρ) = _cylindrical_coords(rotation_local_to_lab(geom), x4)
 
@@ -100,5 +113,18 @@ prepare_for_computations(h::Directions.Helical) = @modify(Geometries.AngleTrigCa
 
     sψ, cψ = sincos(h.ψ)
     v = cψ * axis + sψ * e_phi
+    return iszero(v) ? zero(v) : v / norm(v)
+end
+
+# HelicalRT: mix of radial and toroidal
+@inline field_direction(h::Directions.HelicalRT, geom, x4) = begin
+    axis = geometry_axis(geom)
+    (; r_perp, ρ) = _cylindrical_coords(rotation_local_to_lab(geom), x4)
+
+    e_r = iszero(ρ) ? zero(axis) : r_perp / ρ
+    e_phi = iszero(ρ) ? zero(axis) : cross(axis, e_r)
+
+    sψ, cψ = sincos(h.ψ)
+    v = cψ * e_r + sψ * e_phi
     return iszero(v) ? zero(v) : v / norm(v)
 end

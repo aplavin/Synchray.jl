@@ -12,7 +12,7 @@ Specification for magnetic field with direction, magnitude profile, and wrapping
 ```julia
 B = BFieldSpec(
     Profiles.Axial(s -> s^-1),
-    Directions.Helical(π/4),
+    Directions.HelicalAT(π/4),
     b -> TangledOrderedMixture(b; kappa=5)
 )
 ```

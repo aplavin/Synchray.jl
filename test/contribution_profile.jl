@@ -108,7 +108,7 @@ end
 		ne = S.Profiles.Constant(1.0),
 		B = S.BFieldSpec(
 			S.Profiles.Constant(0.5),
-			S.Directions.Helical(π/6),
+			S.Directions.HelicalAT(π/6),
 			identity
 		),
 		velocity = S.VelocitySpec(S.Directions.Axial(), S.gamma, S.Profiles.Constant(10)),

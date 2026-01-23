@@ -240,8 +240,8 @@ function bk_jet_thick_options_image()
         (name="tangled", B=S.BFieldSpec(Bscale, Directions.Scalar(), b -> S.FullyTangled(b))),
         (name="poloidal", B=S.BFieldSpec(Bscale, Directions.Axial(), identity)),
         (name="toroidal", B=S.BFieldSpec(Bscale, Directions.Toroidal(), identity)),
-        (name="helical ψ=5°", B=S.BFieldSpec(Bscale, Directions.Helical(5u"°"), identity)),
-        (name="helical ψ=85°", B=S.BFieldSpec(Bscale, Directions.Helical(85u"°"), identity)),
+        (name="helical ψ=5°", B=S.BFieldSpec(Bscale, Directions.HelicalAT(5u"°"), identity)),
+        (name="helical ψ=85°", B=S.BFieldSpec(Bscale, Directions.HelicalAT(85u"°"), identity)),
         (name="mixture κ=1", B=S.BFieldSpec(Bscale, Directions.Axial(), b -> S.TangledOrderedMixture(b; kappa=1))),
     )
 
@@ -295,7 +295,7 @@ function conical_jet_polarization_evpa_image()
     Bconfigs = (
         (name="poloidal", B=S.BFieldSpec(Bscale, Directions.Axial(), identity)),
         (name="toroidal", B=S.BFieldSpec(Bscale, Directions.Toroidal(), identity)),
-        (name="helical ψ=45°", B=S.BFieldSpec(Bscale, Directions.Helical(45u"°"), identity)),
+        (name="helical ψ=45°", B=S.BFieldSpec(Bscale, Directions.HelicalAT(45u"°"), identity)),
     )
 
     model = S.IsotropicPowerLawElectrons(; p=2.3, Cj=1, Ca=0.1)
