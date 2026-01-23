@@ -28,8 +28,30 @@ jobs:
             ssh-agent -a $SSH_AUTH_SOCK > /dev/null
             ssh-add - <<< "${{ secrets.SSH_PRIVATE_KEY }}"
       - run: julia -e 'using Pkg; pkg"registry add General git@github.com:aplavin/MyRegistry.git"'
+      - name: Set dispatch_doctor_mode to error
+        run: |
+          julia -e 'using Preferences: set_preferences!; set_preferences!("Synchray", "dispatch_doctor_mode" => "error")'
       - uses: julia-actions/julia-buildpkg@v1
       - uses: julia-actions/julia-runtest@v1
+
+  examples:
+    timeout-minutes: 40
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: julia-actions/setup-julia@v2
+        with:
+          version: '1'
+      - uses: julia-actions/cache@v2
+      - run: |
+            mkdir -p ~/.ssh
+            ssh-keyscan github.com >> ~/.ssh/known_hosts
+            ssh-agent -a $SSH_AUTH_SOCK > /dev/null
+            ssh-add - <<< "${{ secrets.SSH_PRIVATE_KEY }}"
+      - run: julia -e 'using Pkg; pkg"registry add General git@github.com:aplavin/MyRegistry.git"'
+      - name: Set dispatch_doctor_mode to error
+        run: |
+          julia -e 'using Preferences: set_preferences!; set_preferences!("Synchray", "dispatch_doctor_mode" => "error")'
       - name: Set up examples environment
         run: julia --project -e 'using Pkg; Pkg.develop(path=".."); Pkg.instantiate()'
         working-directory: examples
