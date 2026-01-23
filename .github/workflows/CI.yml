@@ -28,9 +28,6 @@ jobs:
             ssh-agent -a $SSH_AUTH_SOCK > /dev/null
             ssh-add - <<< "${{ secrets.SSH_PRIVATE_KEY }}"
       - run: julia -e 'using Pkg; pkg"registry add General git@github.com:aplavin/MyRegistry.git"'
-      - name: Set dispatch_doctor_mode to error
-        run: |
-          julia -e 'using Pkg; Pkg.add("Preferences"); using Preferences: set_preferences!; using UUIDs; set_preferences!((UUID("00000000-0000-4000-b000-202512310000"), "Synchray"), "dispatch_doctor_mode" => "error")'
       - uses: julia-actions/julia-buildpkg@v1
       - uses: julia-actions/julia-runtest@v1
 
