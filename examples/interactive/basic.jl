@@ -98,7 +98,6 @@ params, = SliderGrid(fig[1,1][1,1], AccessibleModel((;
         nz=P(discreterange(log, 2..300, length=50)),
         dynrange=P(LogUniform(1..1e5), 1e3),
         ν1=P(LogUniform(1..1e3), 15)*u"GHz",
-        yslice=P(-5..5)*u"pc",
     ),
     time=(
         t=P(-0.1..10)u"yr",
@@ -110,7 +109,7 @@ params, = SliderGrid(fig[1,1][1,1], AccessibleModel((;
         viewing_ang=P(LogUniform(0.1..80))u"°",
         opening_ang=P(LogUniform(0.1..80))u"°",
         ctrjet=P([false, true], false),
-        vel_hel_ψ=P(0..90)u"°",
+        β_φ=P(0..0.01, 0),
     ),
     B=(
         B0=P(LogUniform(1e-5..1e5))*u"Gauss",
@@ -179,6 +178,9 @@ jet = @lift let
     ne = $params.knot.enabled ? S.Profiles.Modified(ne_base, knot) :
          $params.nozzle.enabled ? S.Profiles.Modified(ne_base, nozzle) :
          ne_base
+
+    velocity_along = S.VelocitySpec(S.Directions.Radial(), S.gamma, S.Profiles.Transverse($γ_cross))
+
     region = S.EmissionRegion(;
         geometry = S.Geometries.Conical(; axis, φj=$params.geom.opening_ang, z=$params.geom.z),
         ne,
@@ -189,9 +191,7 @@ jet = @lift let
             $params.B.ordered == 0 ? b->S.FullyTangled(b) :
             b->S.TangledOrderedMixture(b; kappa=$params.B.ordered / (1 - $params.B.ordered)),
         ),
-        velocity = S.VelocitySpec(
-            $params.geom.vel_hel_ψ == 0 ? S.Directions.Radial() : S.Directions.HelicalRT($params.geom.vel_hel_ψ),
-            S.gamma, S.Profiles.Transverse($γ_cross)),
+        velocity = $params.geom.β_φ == 0 ? velocity_along : velocity_along + S.VelocitySpec(S.Directions.Toroidal(), S.beta, S.Profiles.RigidRotation(β_ref=$params.geom.β_φ, ρ_ref=1u"pc")),
         model = $params.electrons.anis ?
             S.AnisotropicPowerLawElectrons(;$params.electrons.p, η=$params.electrons.anis_η) :
             S.IsotropicPowerLawElectrons(;$params.electrons.p),
@@ -200,10 +200,13 @@ jet = @lift let
     S.prepare_for_computations(region |> ustrip)
 end::Any
 
+xy_sel = Observable(SVector(0., 0.)u"pc")
+yslice = @lift $xy_sel.y  # $params.img.yslice
+
 Jcontrib = @lift let
     # x-range from camera FOV
     x_range = range(extrema(axiskeys($camera.xys, 1))..., 150)
-    y = $params.img.yslice / S.UCTX.L0
+    y = $yslice / S.UCTX.L0
 
     res = flatmap(x_range) do x_u
         u = S.UCTX.L0 |> u"pc"
@@ -226,19 +229,27 @@ Jcontrib = @lift let
     res
 end
 
-let 
+let
     pos = fig[1:2,2][0,1]
     ax = Axis(pos[1,1];
         xlabel="s (along jet axis)",
         ylabel="h (perpendicular)",
-        title="Emission contribution (jet crossection)",
         aspect=3,
         backgroundcolor=:black,)
-    scatter!(ax, 
+    scatter!(ax,
         (@lift FPlot($Jcontrib, (@o ustrip(_.s)), (@o ustrip(_.h)), color=:contrib, markersize=(@o ustrip(_.s) /100 + 3))),
         colormap=:inferno, colorrange=(0, 1))
+
+    # Draw the (0,0) pixel's ray in jet-plane coordinates
+    ray_path = @lift let
+        xy = S._u_to_code($xy_sel, S.UCTX.L0)
+        ray = S.RayZ(; x0=S.FourPosition($camera.t, xy..., 0.0), k=$camera.ν, nz=$camera.nz)
+        axis_z = S.geometry_axis($jet).z
+        z_range = 0±(1e4u"pc" / S.UCTX.L0)
+        S.ray_in_local_coords(ray, $jet; z_range) * (S.UCTX.L0 |> u"pc" |> ustrip)
+    end
+    lines!(ax, (@lift (@swiz $ray_path.zx)); color=:cyan, linewidth=1, linestyle=:dash, xautolimits=false, yautolimits=false)
 end
-# lines!((@lift sightline($jet, $params.z)); to_xy_attrs(autolimits=false)...)
 
 # # let img = @lift map(xj -> S.jet_at(Val(:j_nu_contrib), $jet, xj, params[].ν_obs, params[].z) |> ustrip, JG[])
 # # 	image(fig[2,0][1,1], img, colormap=:turbo, colorscale=(@lift SymLog(1e-8maximum($img))))
@@ -266,8 +277,13 @@ img_si = @lift S.render($camera, $jet, S.SpectralIndex())
         axis=(;title="Total intensity")
     )
     contour!((@lift $img_iqu.I), color=(:gray, 0.5), linewidth=1, levels=@lift @p maximum($img_iqu.I) maprange(log, (0.05/$params.img.dynrange * __)..__, length=30))
-    hlines!((@lift ustrip($params.img.yslice)); color=(:white, 0.5), linestyle=:dash)
+    hlines!((@lift ustrip($yslice)); color=(:white, 0.5), linestyle=:dash)
+    scatter!((@lift ustrip($xy_sel)); color=:transparent, markersize=15, marker=:circle, strokewidth=1, strokecolor=:cyan)
     Colorbar(pos[1,2], hm)
+
+on(mouse_position_obs(ax; key=Mouse.left)) do pos
+    xy_sel[] = pos * u"pc"
+end
 
 lines(fig[2,1][1,1], (@lift @p $img_iqu.I(x=Near(20u"pc"))  __ ./ maximum(__)))
 
