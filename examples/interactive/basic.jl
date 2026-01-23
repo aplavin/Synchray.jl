@@ -184,12 +184,14 @@ jet = @lift let
         ne,
         B = S.BFieldSpec(
             S.Profiles.Axial(S.PowerLaw(-1; val0=$params.B.B0, s0=1u"pc")),
-            $params.B.ordered > 0 ? S.Directions.Helical($params.B.helixψ) : S.Directions.Scalar(),
+            $params.B.ordered > 0 ? S.Directions.HelicalAT($params.B.helixψ) : S.Directions.Scalar(),
             $params.B.ordered == 1 ? identity :
             $params.B.ordered == 0 ? b->S.FullyTangled(b) :
             b->S.TangledOrderedMixture(b; kappa=$params.B.ordered / (1 - $params.B.ordered)),
         ),
-        velocity = S.VelocitySpec(S.Directions.Helical($params.geom.vel_hel_ψ), S.gamma, S.Profiles.Transverse($γ_cross)),
+        velocity = S.VelocitySpec(
+            $params.geom.vel_hel_ψ == 0 ? S.Directions.Radial() : S.Directions.HelicalRT($params.geom.vel_hel_ψ),
+            S.gamma, S.Profiles.Transverse($γ_cross)),
         model = $params.electrons.anis ?
             S.AnisotropicPowerLawElectrons(;$params.electrons.p, η=$params.electrons.anis_η) :
             S.IsotropicPowerLawElectrons(;$params.electrons.p),
@@ -207,9 +209,9 @@ Jcontrib = @lift let
         u = S.UCTX.L0 |> u"pc"
         x = S._u_to_code(x_u, S.UCTX.L0)
         ray = S.RayZ(; x0=S.FourPosition($camera.t, x, y, 0.0), k=$camera.ν, nz=$camera.nz)
-        prof = S.ray_contribution_profile($jet, ray)
+        prof = S.ray_contribution_profile_IQU($jet, ray)
 
-        maxcontrib = maximum(prof.dIν_to_obs; init=zero(eltype(prof.dIν_to_obs)))
+        maxcontrib = maximum(s -> s.I, prof.dIν_to_obs; init=0.0)
         map(prof) do step
             x4 = step.x4
             r_lab = SVector(x4.x, x4.y, x4.z)
@@ -218,7 +220,7 @@ Jcontrib = @lift let
             h_val = r_local[1]
             contrib = step.dIν_to_obs
 
-            (;s=s_val*u, h=h_val*u, contrib=contrib / maxcontrib)
+            (;s=s_val*u, h=h_val*u, contrib=contrib.I / maxcontrib)
         end
     end |> StructArray
     res
