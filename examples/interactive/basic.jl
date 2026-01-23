@@ -108,6 +108,7 @@ params, = SliderGrid(fig[1,1][1,1], AccessibleModel((;
         viewing_ang=P(LogUniform(0.1..80))u"°",
         opening_ang=P(LogUniform(0.1..80))u"°",
         ctrjet=P([false, true], false),
+        vel_hel_ψ=P(0..90)u"°",
     ),
     B=(
         B0=P(LogUniform(1e-5..1e5))*u"Gauss",
@@ -142,8 +143,8 @@ end
 γpoints = Observable([(x=0., γ=10.), (x=1., γ=10.)])
 ip = InteractivePoints(γpoints)
 axplot(scatter, widgets=[ip])(fig[1,1][2,1], (@lift FPlot($γpoints, (@o _.x), (@o _.γ))); axis=(;height=250, limits=(0..1, 0..50), title="Transverse velocity profile"))
-γ_cross = @lift Profiles.LinearInterp(@p $γpoints map(_.x => _.γ) Tuple)
-lines!(0..1, @lift x->$γ_cross(x))
+γ_cross = @lift Profiles.LinearInterp(@p $γpoints map(_.x => _.γ) Tuple)::Any
+lines!(0..1, @lift (x->$γ_cross(x))::Any)
 
 camera = @lift S.CameraZ(;
     xys=grid(SVector,
@@ -184,7 +185,7 @@ jet = @lift let
             $params.B.ordered ? S.Directions.Helical($params.B.helixψ) : S.Directions.Scalar(),
             $params.B.ordered ? identity : b->S.FullyTangled(b),
         ),
-        velocity = S.VelocitySpec(S.Directions.Axial(), S.gamma, S.Profiles.Transverse($γ_cross)),
+        velocity = S.VelocitySpec(S.Directions.Helical($params.geom.vel_hel_ψ), S.gamma, S.Profiles.Transverse($γ_cross)),
         model = $params.electrons.anis ?
             S.AnisotropicPowerLawElectrons(;$params.electrons.p, η=$params.electrons.anis_η) :
             S.IsotropicPowerLawElectrons(;$params.electrons.p),
