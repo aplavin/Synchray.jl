@@ -55,11 +55,30 @@ end
     return region.B.wrap(b_mag * b_dir)
 end
 
-@inline function four_velocity(region::EmissionRegion, x4)
-    g = region.geometry
-    speed_val = region.velocity.scale(g, x4)
-    v_dir = field_direction(region.velocity.dir, g, x4)
-    return construct(FourVelocity, region.velocity.kind => speed_val, direction => v_dir)
+# Generic dispatch to velocity-specific implementation
+@inline four_velocity(region::EmissionRegion, x4) = four_velocity(region.velocity, region.geometry, x4)
+
+# For VelocitySpec: direction + magnitude from profile
+@inline function four_velocity(vel::VelocitySpec, geom, x4)
+    speed_val = vel.scale(geom, x4)
+    v_dir = field_direction(vel.dir, geom, x4)
+    return construct(FourVelocity, vel.kind => speed_val, direction => v_dir)
+end
+
+# For CombinedVelocity: add β vectors in lab frame
+@inline function four_velocity(vel::CombinedVelocity, geom, x4)
+    # Compute individual 4-velocities
+    u1 = four_velocity(vel.v1, geom, x4)
+    u2 = four_velocity(vel.v2, geom, x4)
+
+    # Extract β vectors: β = (γβ) / γ = spatial / temporal
+    βv1 = @swiz(u1.xyz) / u1.t
+    βv2 = @swiz(u2.xyz) / u2.t
+
+    # Add β vectors (lab-frame vector addition)
+    βv_total = βv1 + βv2
+
+    return FourVelocity(βv_total)
 end
 
 @inline synchrotron_model(region::EmissionRegion) = region.model

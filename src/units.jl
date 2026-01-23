@@ -11,9 +11,13 @@ const UCTX = UnitsContext()
 
 _t0(ctx::UnitsContext) = ctx.L0 / ctx.c
 
+_u_to_code(x::Number, scale::Real) = let
+	@assert scale == 1  # what else can it mean?..
+	NoUnits(x)
+end
 _u_to_code(x::Number, scale::AbstractQuantity) = NoUnits(x / scale)
-_u_to_code(x::AbstractArray, scale::AbstractQuantity) = _u_to_code.(x, scale)
-_u_to_code(x::AbstractInterval, scale::AbstractQuantity) = @modify(x -> _u_to_code(x, scale), endpoints(x)[∗])
+_u_to_code(x::AbstractArray, scale) = _u_to_code.(x, scale)
+_u_to_code(x::AbstractInterval, scale) = @modify(x -> _u_to_code(x, scale), endpoints(x)[∗])
 
 
 @unstable withunits(::typeof(render), cam, obj, what; kwargs...) = _upost_render(render(cam, obj, what; kwargs...), what)

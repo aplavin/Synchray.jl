@@ -151,6 +151,29 @@ struct Modified{Tbase, Tmod}
     modifier::Tmod
 end
 
+"""
+    RigidRotation{T1, T2}
+
+Profile for rigid rotation: β = β_ref × (ρ / ρ_ref).
+
+Returns a value proportional to the distance from the geometry axis,
+implementing constant angular velocity ω = β_ref / ρ_ref.
+
+# Fields
+- `β_ref::T1`: Reference beta at distance ρ_ref from axis
+- `ρ_ref::T2`: Reference distance from axis
+
+# Example
+```julia
+# β_φ = 0.1 at ρ = 1 pc, scaling linearly with ρ
+rotation_profile = Profiles.RigidRotation(β_ref=0.1, ρ_ref=1u"pc")
+```
+"""
+@kwdef struct RigidRotation{T1, T2}
+    β_ref::T1
+    ρ_ref::T2
+end
+
 end # module Profiles
 
 
@@ -213,6 +236,11 @@ end
     return p.modifier(geom, x4, base_val)
 end
 
+@inline function (p::Profiles.RigidRotation)(geom, x4)
+    (; ρ) = _cylindrical_coords(rotation_local_to_lab(geom), x4)
+    return p.β_ref * (ρ / p.ρ_ref)
+end
+
 
 @unstable begin
 
@@ -222,7 +250,9 @@ prepare_for_computations(p::Profiles.Axial) = modify(prepare_for_computations, p
 prepare_for_computations(p::Profiles.Transverse) = modify(prepare_for_computations, p, @o _.f)
 prepare_for_computations(p::Profiles.Radial) = modify(prepare_for_computations, p, @o _.f)
 prepare_for_computations(p::Profiles.AxialTransverse) = modify(prepare_for_computations, p, @o _.f_z _.f_η)
+prepare_for_computations(p::Profiles.RigidRotation) = p
 
+ustrip(p::Profiles.Constant; valu) = Profiles.Constant(_u_to_code(p.val, valu))
 ustrip(pl::Profiles.PowerLaw; argu, valu) = Profiles.PowerLaw(pl.exp; val0=_u_to_code(pl.val0, valu), s0=_u_to_code(pl.s0, argu))
 ustrip(li::Profiles.LinearInterp; argu, valu) = Profiles.LinearInterp(map(((x, y),) -> (_u_to_code(x, argu), _u_to_code(y, valu)), li.points))
 ustrip(p::Profiles.Axial; valu) = @modify(f -> ustrip(f; valu, argu=UCTX.L0), p.f)
@@ -238,5 +268,6 @@ ustrip(p::Profiles.Modified; valu) = @p let
     @modify(ustrip(_; valu), __.base)
     @modify(ustrip, __.modifier)
 end
+ustrip(p::Profiles.RigidRotation; valu) = Profiles.RigidRotation(p.β_ref, _u_to_code(p.ρ_ref, UCTX.L0))
 
 end
