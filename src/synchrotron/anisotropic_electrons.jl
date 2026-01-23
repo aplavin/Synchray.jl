@@ -99,12 +99,11 @@ end
 	(;p, Cj_ordered, Ca_ordered) = model
 
 	n̂ = (@swiz k′.xyz) * invν
-	b2 = dot(b, b)
-	n2 = dot(n̂, n̂)
-	dotbn = dot(b, n̂)
-	Bperp = sqrt(max(b2 * n2 - dotbn^2, 0))
-	cos2θ = dotbn^2 / (b2 * n2)
-	φ = _phi_theta(model, cos2θ)
+	b² = dot(b, b)
+	dotbn² = dot(b, n̂)^2
+	Bperp = sqrt(max(b² - dotbn², 0))
+	cos²θ = dotbn² / b²
+	φ = _phi_theta(model, cos²θ)
 
 	# Previous version (kept for reference; arguably cleaner, but has another sqrt call):
 	# B = norm(b)

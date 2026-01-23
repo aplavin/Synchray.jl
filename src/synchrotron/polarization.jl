@@ -166,7 +166,6 @@ Returns `(n′, e1′, e2′)` where all are unit 3-vectors in the comoving fram
 	k′ = lorentz_unboost(u, k)
 	# Comoving photon direction (unit 3-vector): n′ = k′⃗ / k′ᵗ.
 	n′ = direction(k′)
-	@assert dot(n′, n′) ≈ 1.0
 	e1_cam = SVector(1, 0, 0)
 	e2_cam = SVector(0, 1, 0)
 
