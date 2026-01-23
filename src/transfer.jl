@@ -275,3 +275,118 @@ ray_contribution_profile(obj::AbstractMedium, ray::RayZ) = begin
 
 	return profile₃
 end
+
+
+"""
+	ray_contribution_profile_IQU(obj, ray) -> StructArray
+
+Compute the *per-ray* contribution of each ray step to the final observed Stokes vector
+(I, Q, U) at the camera, accounting for polarization-dependent emission, absorption, and
+basis rotations.
+
+This extends `ray_contribution_profile` to full Stokes polarization.
+
+Mathematical equivalence:
+    sum(profile.dIν_to_obs) ≈ render(ray, obj, IntensityIQU())
+
+Returns a StructArray with the same structure as `ray_contribution_profile`, but with
+`dIν_to_obs` as a StokesIQU vector instead of scalar.
+"""
+ray_contribution_profile_IQU(obj::AbstractMedium, ray::RayZ) = begin
+	seg = z_interval(obj, ray)
+	k = ray.k
+	kz = k.z
+	@assert k == SVector(kz, 0, 0, kz)
+	k1 = k / kz
+
+	νobs = frequency(ray)
+
+	# Same z-grid and step sizing as integrate_ray
+	zs = StepRangeLen(leftendpoint(seg), width(seg) / (ray.nz - 1), isempty(seg) ? 0 : ray.nz)
+	Δz = step(zs)
+	Δλ = Δz / kz
+
+	# Step 1: Forward pass - collect geometry, coefficients, and basis rotations
+	profile₁ = map(StructArray(; z=zs)) do (;z)
+		x4 = ray.x0 + z * k1
+		u = four_velocity(obj, x4)
+		k′ = lorentz_unboost(u, k)
+		ν′ = frequency(k′)
+
+		# Get polarized coefficients
+		(j_modes, α_modes) = emissivity_absorption_polarized(obj, x4, k′)
+		Jinv_modes = j_modes / (ν′^2)
+		Ainv_modes = α_modes * ν′
+
+		# Optical depth per step (mode-wise)
+		Δτ_modes = Ainv_modes * Δλ
+
+		# Get basis rotation: camera → field
+		(n′, e1′, e2′) = comoving_screen_basis(u, k)
+		B′ = magnetic_field(obj, x4)
+		(e_par, e_perp) = linear_polarization_basis_from_B(n′, B′)
+		R_camera_to_field = stokes_QU_rotation(e1′, e2′, e_perp)
+
+		(; z, x4, Δz, Jinv_modes, Ainv_modes, Δτ_modes, R_camera_to_field)
+	end
+
+	# Early return for empty profile (ray misses geometry)
+	if isempty(profile₁)
+		return StructArray((; z=eltype(zs)[], x4=eltype(profile₁.x4)[], Δz=eltype(profile₁.Δz)[], dIν_to_obs=StokesIQU{Float64}[]))
+	end
+
+	# Step 2: Cumulative front optical depth (mode-wise)
+	Δτ_perp_vec = [step.Δτ_modes.perp for step in profile₁]
+	Δτ_par_vec = [step.Δτ_modes.par for step in profile₁]
+	τ_front_perp = reverse(cumsum(reverse(Δτ_perp_vec))) .- Δτ_perp_vec
+	τ_front_par = reverse(cumsum(reverse(Δτ_par_vec))) .- Δτ_par_vec
+
+	# Step 3-5: Emission, attenuation, rotation to camera frame
+	dIν_to_obs = map(eachindex(profile₁)) do i
+		step = profile₁[i]
+
+		# Emission term accounting for step's internal opacity
+		dSinv_emit_modes = if all(step.Δτ_modes .< Δτ_THRESHOLD_LINEAR)
+			step.Jinv_modes * Δλ
+		else
+			ModePerpPar(
+				step.Δτ_modes.perp < Δτ_THRESHOLD_LINEAR ?
+					step.Jinv_modes.perp * Δλ :
+					(step.Jinv_modes.perp / step.Ainv_modes.perp) * (1 - exp(-step.Δτ_modes.perp)),
+				step.Δτ_modes.par < Δτ_THRESHOLD_LINEAR ?
+					step.Jinv_modes.par * Δλ :
+					(step.Jinv_modes.par / step.Ainv_modes.par) * (1 - exp(-step.Δτ_modes.par))
+			)
+		end
+
+		# Convert modes to field-frame Stokes
+		I_emit = dSinv_emit_modes.perp + dSinv_emit_modes.par
+		Q_emit = dSinv_emit_modes.perp - dSinv_emit_modes.par
+		U_emit = zero(I_emit)
+
+		# Front material attenuation (mode-wise)
+		E_perp = exp(-τ_front_perp[i])
+		E_par = exp(-τ_front_par[i])
+
+		I_perp_emit = (I_emit + Q_emit) / 2
+		I_par_emit = (I_emit - Q_emit) / 2
+
+		I_perp_atten = I_perp_emit * E_perp
+		I_par_atten = I_par_emit * E_par
+
+		τ_U_front = (τ_front_perp[i] + τ_front_par[i]) / 2
+		U_atten = U_emit * exp(-τ_U_front)
+
+		I_atten = I_perp_atten + I_par_atten
+		Q_atten = I_perp_atten - I_par_atten
+
+		# Rotate to camera frame
+		R_field_to_camera = step.R_camera_to_field'
+		QU_camera = R_field_to_camera * SVector(Q_atten, U_atten)
+
+		# Convert to observer frequency
+		StokesIQU(I_atten, QU_camera[1], QU_camera[2]) * νobs^3
+	end
+
+	return StructArray((; z=profile₁.z, x4=profile₁.x4, Δz=profile₁.Δz, dIν_to_obs))
+end
