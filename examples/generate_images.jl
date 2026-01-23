@@ -368,4 +368,4 @@ function main()
     conical_jet_polarization_evpa_image()
 end
 
-# main()
+main()
