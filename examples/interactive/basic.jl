@@ -113,7 +113,7 @@ params, = SliderGrid(fig[1,1][1,1], AccessibleModel((;
     B=(
         B0=P(LogUniform(1e-5..1e5))*u"Gauss",
         helixψ=P(0..90)u"°",
-        ordered=P([false,true], false),
+        ordered=P(0..1, 0),
     ),
     electrons=(
         p=P(2:0.25:3, 2.5),
@@ -182,8 +182,10 @@ jet = @lift let
         ne,
         B = S.BFieldSpec(
             S.Profiles.Axial(S.PowerLaw(-1; val0=$params.B.B0, s0=1u"pc")),
-            $params.B.ordered ? S.Directions.Helical($params.B.helixψ) : S.Directions.Scalar(),
-            $params.B.ordered ? identity : b->S.FullyTangled(b),
+            $params.B.ordered > 0 ? S.Directions.Helical($params.B.helixψ) : S.Directions.Scalar(),
+            $params.B.ordered == 1 ? identity :
+            $params.B.ordered == 0 ? b->S.FullyTangled(b) :
+            b->S.TangledOrderedMixture(b; kappa=$params.B.ordered / (1 - $params.B.ordered)),
         ),
         velocity = S.VelocitySpec(S.Directions.Helical($params.geom.vel_hel_ψ), S.gamma, S.Profiles.Transverse($γ_cross)),
         model = $params.electrons.anis ?
