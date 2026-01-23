@@ -90,26 +90,34 @@ end
 @inline _synchrotron_coeffs(model::AnisotropicPowerLawElectrons, n_e, field::FullyTangled, k′::FourFrequency) =
     error("AnisotropicPowerLawElectrons requires an ordered magnetic-field direction, FullyTangled is not supported")
 
-# This corresponds to the ordered-vector `_synchrotron_coeffs` in `isotropic_electrons.jl`.
-# Difference: multiply both coefficients by φ(θ_{Bn}; η), where η is stored on `model`
-# (via `_phi_theta(model, cos2θ)` and cached `model.Pnorm`).
-@inline _synchrotron_coeffs(model::AnisotropicPowerLawElectrons, n_e, b::SVector{3}, k′::FourFrequency) = let
+# Unified ordered-field method for both isotropic and anisotropic electrons (same pattern as TangledOrderedMixture).
+# Uses efficient dot-product-based Bperp computation (better SIMD than cross product).
+# For isotropic electrons: φ=1 (inlined, no cost).
+# For anisotropic electrons: φ(θ_Bn) computed from cos²θ.
+@inline _synchrotron_coeffs(
+	model::Union{IsotropicPowerLawElectrons, AnisotropicPowerLawElectrons},
+	n_e,
+	b::SVector{3},
+	k′::FourFrequency
+) = let
 	ν = frequency(k′)
 	invν = inv(ν)
 	(;p, Cj_ordered, Ca_ordered) = model
 
+	# Photon direction in the comoving frame: k′ = (ν, ν n̂) for a null vector.
 	n̂ = (@swiz k′.xyz) * invν
+
+	# Compute Bperp using dot products (more efficient than cross product + norm).
+	# Uses the identity: |b × n̂|² = |b|²|n̂|² - (b·n̂)² = |b|² - (b·n̂)² (since |n̂|=1).
 	b² = dot(b, b)
 	dotbn² = dot(b, n̂)^2
 	Bperp = sqrt(max(b² - dotbn², 0))
+
+	# Compute pitch-angle factor.
+	# For isotropic: _phi_theta returns 1 immediately (inlined, no cost).
+	# For anisotropic: computes φ(θ_Bn) = [1 + (η-1)cos²θ]^(-p/2) / Pnorm.
 	cos²θ = dotbn² / b²
 	φ = _phi_theta(model, cos²θ)
-
-	# Previous version (kept for reference; arguably cleaner, but has another sqrt call):
-	# B = norm(b)
-	# Bperp = norm(cross(b, n̂))
-	# cosθ = dot(b, n̂) / B
-	# φ = _phi_theta(model, cosθ^2)
 
 	B_over_ν = Bperp * invν
 	common = B_over_ν^_half(p)

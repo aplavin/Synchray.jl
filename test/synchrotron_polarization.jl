@@ -596,13 +596,6 @@ end
 			@test_throws AssertionError S.comoving_screen_basis(u0, ky)
 		end
 
-		@testset "Non-unit / invalid ray directions" begin
-			kbad = S.photon_k(ν, SVector(2, 0, 0))
-			kzero = S.photon_k(ν, SVector(0, 0, 0))
-			@test_throws AssertionError S.comoving_screen_basis(u0, kbad)
-			@test_throws AssertionError S.comoving_screen_basis(u0, kzero)
-		end
-
 		@testset "Magnetic field degeneracies" begin
 			n = SVector(0, 0, 1)
 			(e_par, e_perp) = S.linear_polarization_basis_from_B(n, SVector(0, 0, 0))

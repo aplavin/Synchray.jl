@@ -165,20 +165,4 @@ end
 	return j, α
 end
 
-@inline _synchrotron_coeffs(model::IsotropicPowerLawElectrons, n_e, b::SVector{3}, k′::FourFrequency) = let
-	ν = frequency(k′)
-	invν = inv(ν)
-	(;p, Cj_ordered, Ca_ordered) = model
-
-	# Photon direction in the comoving frame: k′ = (ν, ν n̂) for a null vector.
-	n̂ = (@swiz k′.xyz) * invν
-	Bperp = norm(cross(b, n̂))
-
-	B_over_ν = Bperp * invν
-	common = B_over_ν^_half(p)
-	j = Cj_ordered * n_e * common * sqrt(Bperp * ν)
-	α = Ca_ordered * n_e * common * Bperp * invν^2
-	return j, α
-end
-
-# TangledOrderedMixture: unified method now in anisotropic_electrons.jl (loaded after both types are defined)
+# SVector{3} and TangledOrderedMixture: unified methods now in anisotropic_electrons.jl (loaded after both types are defined)
