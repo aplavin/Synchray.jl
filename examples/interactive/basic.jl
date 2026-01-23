@@ -97,10 +97,12 @@ params, = SliderGrid(fig[1,1][1,1], AccessibleModel((;
         npix=P(discreterange(log, 16..500, length=50)),
         nz=P(discreterange(log, 2..300, length=50)),
         dynrange=P(LogUniform(1..1e5), 1e3),
-        evpastep=P(1:20, 3),
+        ν1=P(LogUniform(1..1e3), 15)*u"GHz",
+        yslice=P(-5..5)*u"pc",
+    ),
+    time=(
         t=P(-0.1..10)u"yr",
         maxt=P(LogUniform(3..1e3))u"yr",
-        ν1=P(LogUniform(1..1e3), 15)*u"GHz",
     ),
     geom=(
         z=(0.1..500)u"pc",
@@ -136,8 +138,8 @@ params, = SliderGrid(fig[1,1][1,1], AccessibleModel((;
     )
 ), AccessibleModels.Auto()); state=sstate, rowgap=2)
 on(events(fig).tick) do tick
-    params[].img.maxt < 3.1u"yr" && return
-	params[] = @set $(params[]).img.t = mod(tick.time, 0..5)/5 * params[].img.maxt
+    params[].time.maxt < 3.1u"yr" && return
+	params[] = @set $(params[]).time.t = mod(tick.time, 0..5)/5 * params[].time.maxt
 end
 
 γpoints = Observable([(x=0., γ=10.), (x=1., γ=10.)])
@@ -150,7 +152,7 @@ camera = @lift S.CameraZ(;
     xys=grid(SVector,
             x=range(-5..30, length=2*$params.img.npix) .* u"pc" |> LinRange,
             y=range(-5..5, length=$params.img.npix) .* u"pc" |> LinRange),
-    ν=$params.img.ν1, $params.img.nz, $params.img.t,
+    ν=$params.img.ν1, $params.img.nz, $params.time.t,
     mapfunc=_tmap) |> ustrip
 
 jet = @lift let
@@ -196,19 +198,43 @@ jet = @lift let
     S.prepare_for_computations(region |> ustrip)
 end::Any
 
-JG = @lift @p grid(SVector, x=range(0±(500*tan($jet.geometry.φj)), 3*$params.img.npix)u"pc", y=[0]u"pc", z=range(0..500, 3*$params.img.npix)u"pc") dropdims(dims=:y) permutedims() @modify(x->ustrip.(x), axiskeys(__)[∗])
-Jimg = @lift map($JG) do rj
-    r = S.rotate_local_to_lab($jet, S._u_to_code(rj, S.UCTX.L0))
-    x = S.event_on_camera_ray($camera, r)
-    (ne=S.is_inside($jet, x) * S.electron_density($jet, x),)
-end |> StructArray
-# Jimg[] |> display
-# camera[]
+Jcontrib = @lift let
+    # x-range from camera FOV
+    x_range = range(extrema(axiskeys($camera.xys, 1))..., 150)
+    y = $params.img.yslice / S.UCTX.L0
 
-let img = @lift $Jimg.ne
+    res = flatmap(x_range) do x_u
+        u = S.UCTX.L0 |> u"pc"
+        x = S._u_to_code(x_u, S.UCTX.L0)
+        ray = S.RayZ(; x0=S.FourPosition($camera.t, x, y, 0.0), k=$camera.ν, nz=$camera.nz)
+        prof = S.ray_contribution_profile($jet, ray)
+
+        maxcontrib = maximum(prof.dIν_to_obs; init=zero(eltype(prof.dIν_to_obs)))
+        map(prof) do step
+            x4 = step.x4
+            r_lab = SVector(x4.x, x4.y, x4.z)
+            r_local = S.rotate_lab_to_local($jet, r_lab)
+            s_val = r_local[3]
+            h_val = r_local[1]
+            contrib = step.dIν_to_obs
+
+            (;s=s_val*u, h=h_val*u, contrib=contrib / maxcontrib)
+        end
+    end |> StructArray
+    res
+end
+
+let 
     pos = fig[1:2,2][0,1]
-    image(pos[1,1], img, colormap=:turbo, colorscale=(@lift SymLog(1/$params.img.dynrange * maximum($img))), 
-        axis=(;title="Electron density (jet crossection)", aspect=3))
+    ax = Axis(pos[1,1];
+        xlabel="s (along jet axis)",
+        ylabel="h (perpendicular)",
+        title="Emission contribution (jet crossection)",
+        aspect=3,
+        backgroundcolor=:black,)
+    scatter!(ax, 
+        (@lift FPlot($Jcontrib, (@o ustrip(_.s)), (@o ustrip(_.h)), color=:contrib, markersize=(@o ustrip(_.s) /100 + 3))),
+        colormap=:inferno, colorrange=(0, 1))
 end
 # lines!((@lift sightline($jet, $params.z)); to_xy_attrs(autolimits=false)...)
 
@@ -238,7 +264,7 @@ img_si = @lift S.render($camera, $jet, S.SpectralIndex())
         axis=(;title="Total intensity")
     )
     contour!((@lift $img_iqu.I), color=(:gray, 0.5), linewidth=1, levels=@lift @p maximum($img_iqu.I) maprange(log, (0.05/$params.img.dynrange * __)..__, length=30))
-    # evpa_ticks!(img_iqu; step=(@lift $params.img.evpastep), min_I_frac=1e-5)
+    hlines!((@lift ustrip($params.img.yslice)); color=(:white, 0.5), linestyle=:dash)
     Colorbar(pos[1,2], hm)
 
 lines(fig[2,1][1,1], (@lift @p $img_iqu.I(x=Near(20u"pc"))  __ ./ maximum(__)))
