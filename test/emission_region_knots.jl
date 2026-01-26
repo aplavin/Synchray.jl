@@ -150,4 +150,77 @@
 		)
 		@test S.validate_pattern(knot_fixed, region.geometry) === nothing
 	end
+
+end
+
+@testitem "retarded_event" begin
+	import Synchray as S
+	using Accessors
+
+	# Geometry needed for _knot_chi
+	geom = S.Geometries.Conical(; axis=SVector(0, 0, 1), φj=0.05, z=1e-3..10)
+
+	# Knot moving along z-axis (simple case)
+	knot_axial = S.Patterns.EllipsoidalKnot(
+		x_c0 = S.FourPosition(0.0, 0.0, 0.0, 2.0),
+		u = S.FourVelocity(SVector(0.0, 0.0, 0.5)),
+		sizing = S.Patterns.FixedSizing(0.2, 0.5),
+		profile = S.Patterns.GaussianBump(2.0),
+	)
+
+	# Knot moving diagonally (off-axis, relativistic)
+	knot_diag = S.Patterns.EllipsoidalKnot(
+		x_c0 = S.FourPosition(0.0, 1.0, 0.5, 3.0),
+		u = construct(S.FourVelocity, S.gamma => 5, S.direction => normalize(SVector(0.2, 0.1, 0.97))),
+		sizing = S.Patterns.FixedSizing(0.1, 0.1),
+		profile = S.Patterns.GaussianBump(2.0),
+	)
+
+	@testset "general (x0, u) method" begin
+		x0 = S.FourPosition(0.0, 1.0, 0.5, 3.0)
+		u = S.FourVelocity(SVector(0.1, 0.05, 0.9))
+		for t_obs in (0.0, 1.0, -1.0)
+			ret = S.retarded_event(x0, u; t_obs)
+			# Null hyperplane condition: t - z = t_obs
+			@test ret.x.t - ret.x.z ≈ t_obs atol=1e-12
+			# Verify on worldline: x = x0 + u*tau
+			@test ret.x ≈ x0 + u * ret.tau atol=1e-12
+		end
+	end
+
+	@testset "knot method matches general method" for knot in (knot_axial, knot_diag)
+		for t_obs in (0.0, 2.0)
+			ret_knot = S.retarded_event(knot; t_obs)
+			ret_gen = S.retarded_event(knot.x_c0, knot.u; t_obs)
+			@test ret_knot.x ≈ ret_gen.x atol=1e-12
+			@test ret_knot.tau ≈ ret_gen.tau atol=1e-12
+		end
+	end
+
+	@testset "consistency with _knot_chi" for knot in (knot_axial, knot_diag)
+		for t_obs in (0.0, 1.0, 5.0, -2.0)
+			ret = S.retarded_event(knot; t_obs)
+			# ret.x is the knot center FourPosition; chi should be 0 there
+			@test S._knot_chi(knot, geom, ret.x) ≈ 0 atol=1e-10
+		end
+	end
+
+	@testset "round-trip with camera_ray_anchor" for knot in (knot_axial, knot_diag)
+		for t_obs in (0.0, 1.0, 5.0)
+			ret = S.retarded_event(knot; t_obs)
+			# camera_ray_anchor should recover (x, y) and t_obs
+			anchor = S.camera_ray_anchor(ret.x)
+			@test anchor.x ≈ ret.x.x atol=1e-12
+			@test anchor.y ≈ ret.x.y atol=1e-12
+			@test anchor.t ≈ t_obs atol=1e-12
+		end
+	end
+
+	@testset "null hyperplane condition" for knot in (knot_axial, knot_diag)
+		for t_obs in (0.0, 1.0, -1.0)
+			ret = S.retarded_event(knot; t_obs)
+			# Retarded event lies on null hyperplane t - z = t_obs
+			@test ret.x.t - ret.x.z ≈ t_obs atol=1e-12
+		end
+	end
 end

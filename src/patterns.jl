@@ -443,6 +443,42 @@ end
 # Default: no validation needed for other geometry types
 validate_pattern(knot::Patterns.EllipsoidalKnot, geom) = nothing
 
+# Design note: For non-inertial worldlines, a cleaner design would be:
+#   worldline(tau) -> FourPosition       # worldline parameterized by proper time
+#   retarded_time(worldline; t_obs) -> tau   # find retarded proper time
+# Current design bundles both for convenience with inertial worldlines.
+"""
+    retarded_event(x0::FourPosition, u::FourVelocity; t_obs=0)
+    retarded_event(knot::EllipsoidalKnot; t_obs=0)
+
+Compute the retarded event on an inertial worldline `x(τ) = x0 + u·τ`.
+
+For the CameraZ convention (orthographic +z rays), this finds the event whose
+light reaches the camera screen (z=0) at observer time `t_obs`. Equivalently,
+it's the intersection of the worldline with the null hyperplane `t - z = t_obs`.
+
+# Returns
+`(; x::FourPosition, tau)` where:
+- `x`: The retarded event (t_lab, x, y, z). Image coordinates are `(x.x, x.y)`.
+- `tau`: The retarded proper time on the worldline.
+
+See also: [`camera_ray_anchor`](@ref), [`event_on_camera_ray`](@ref)
+"""
+@inline function retarded_event(x0::FourPosition, u::FourVelocity; t_obs=zero(x0.t))
+    # Inertial worldline: x(τ) = x0 + u·τ
+    # Null hyperplane condition: t - z = t_obs
+    #
+    # Solve for τ:
+    #   t_obs = x.t - x.z = (x0.t + u.t·τ) - (x0.z + u.z·τ)
+    #   t_obs = (x0.t - x0.z) + τ·(u.t - u.z)
+    #   τ = (t_obs - (x0.t - x0.z)) / (u.t - u.z)
+    tau = (t_obs - (x0.t - x0.z)) / (u.t - u.z)
+    x = x0 + u * tau
+    return (; x, tau)
+end
+
+@inline retarded_event(knot::Patterns.EllipsoidalKnot; t_obs=zero(knot.x_c0.t)) = retarded_event(knot.x_c0, knot.u; t_obs)
+
 ustrip(knot::Patterns.EllipsoidalKnot) = @modify(x -> _u_to_code(x, UCTX.L0), knot.x_c0)
 
 """
