@@ -20,7 +20,7 @@ _ray_z(x0::FourPosition, k::Number, nz::Int) = RayZ(x0, photon_k(k, SVector(0, 0
     cam
     @modify(_u_to_code(_, UCTX.L0), __.xys)
     @modify(_u_to_code(_, UCTX.ν0), __.ν)
-    @modify(_u_to_code(_, _t0(UCTX)), __.t)
+    @modify(_u_to_code(_, UCTX.T0), __.t)
 end
 
 

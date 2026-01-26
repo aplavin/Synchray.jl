@@ -486,4 +486,4 @@ Prepare precessing nozzle for computations by caching trig values.
 """
 prepare_for_computations(nozzle::Patterns.PrecessingNozzle) = modify(Geometries.AngleTrigCached_fromangle, nozzle, @o _.θ_precession _.θ_nozzle)
 
-ustrip(nozzle::Patterns.PrecessingNozzle) = modify(x -> _u_to_code(x, _t0(UCTX)), nozzle, @o _.period)
+ustrip(nozzle::Patterns.PrecessingNozzle) = modify(x -> _u_to_code(x, UCTX.T0), nozzle, @o _.period)

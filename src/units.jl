@@ -1,15 +1,14 @@
-@kwdef struct UnitsContext{TL,TB,Tn,TF,Tc,TI}
+@kwdef struct UnitsContext{TL,TB,Tn,TF,Tc,TI,TT}
 	L0::TL = 1u"cm"        # physical length per 1 code length
 	B0::TB = 1u"Gauss"         # physical B-field per 1 code B
 	ne0::Tn = 1u"cm^-3"    # physical density per 1 code density
 	ν0::TF = 1u"Hz"        # physical frequency per 1 code frequency
 	Iν0::TI = 1u"erg/s/cm^2/Hz/sr"  # physical specific intensity per 1 code specific intensity
 	c::Tc = 1u"c"
+	T0::TT = 1u"cm" / c  # physical time per 1 code time; has to be consistent with L0 and c
 end
 
 const UCTX = UnitsContext()
-
-_t0(ctx::UnitsContext) = ctx.L0 / ctx.c
 
 _u_to_code(x::Number, scale::Real) = let
 	@assert scale == 1  # what else can it mean?..
