@@ -226,7 +226,7 @@ Jcontrib = @lift let
             (;s=s_val*u, h=h_val*u, contrib=contrib.I / maxcontrib)
         end
     end |> StructArray
-    res
+    sort(res; by=x->x.contrib)
 end
 
 let
@@ -237,7 +237,7 @@ let
         aspect=3,
         backgroundcolor=:black,)
     scatter!(ax,
-        (@lift FPlot($Jcontrib, (@o ustrip(_.s)), (@o ustrip(_.h)), color=:contrib, markersize=(@o ustrip(_.s) /100 + 3))),
+        (@lift FPlot($Jcontrib, (@o ustrip(_.s)), (@o ustrip(_.h)), color=:contrib, markersize=10)),
         colormap=:inferno, colorrange=(0, 1))
 
     # Draw the (0,0) pixel's ray in jet-plane coordinates
