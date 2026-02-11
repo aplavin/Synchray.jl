@@ -1,8 +1,8 @@
 using Preferences
-if get(ENV, "GITHUB_ACTIONS", "false") == "true"
-	@info "Running in GitHub Actions; set dispatch_doctor_mode to error"
+# if get(ENV, "GITHUB_ACTIONS", "false") == "true"
+	@info "Setting dispatch_doctor_mode to error"
 	set_preferences!("Synchray", "dispatch_doctor_mode" => "error")
-end
+# end
 
 using TestItems
 using TestItemRunner
