@@ -8,8 +8,8 @@ struct FixedExponent{P} end
 @inline @generated Base.:^(x::Number, ::FixedExponent{P}) where {P} = let
 	P == 1.25 && return :(x * √√x)
 	isinteger(P) ?
-		:(Base.literal_pow(^, x, Val(P))) :
-		:(FastPower.fastpower(x, P))
+		:(Base.literal_pow(^, x, $(Val(Int(P))))) :
+		:(FastPower.fastpower(x, $P))
 end
 
 Base.:-(a::FixedExponent{P}) where {P} = FixedExponent{-P}()
