@@ -5,8 +5,16 @@ Pkg.resolve()
 outdir = joinpath(@__DIR__, "images")
 isdir(outdir) || mkpath(outdir)
 
-const render_time_log_path = joinpath(@__DIR__, "render_times.txt")
-open(render_time_log_path, "w") do _ end
+const HAS_METAL = Sys.isapple()
+@static if HAS_METAL
+    using Metal
+end
+
+const render_time_log_cpu = joinpath(@__DIR__, "render_times.txt")
+open(render_time_log_cpu, "w") do _ end
+
+const render_time_log_metal = joinpath(@__DIR__, "render_times_metal.txt")
+HAS_METAL && open(render_time_log_metal, "w") do _ end
 
 using Synchray
 import Synchray as S
@@ -20,7 +28,7 @@ using Accessors
 function evpa_ticks!(img_IQU; step=16, min_I_frac=0.03, color=:white)
     Imax = maximum(:I, img_IQU)
 
-    subimg = @p let 
+    subimg = @p let
         CartesianIndices(img_IQU)
         first(__):CartesianIndex(step, step):last(__)
         img_IQU[__]
@@ -37,10 +45,10 @@ function evpa_ticks!(img_IQU; step=16, min_I_frac=0.03, color=:white)
 end
 
 
-function render_field(obj; extent, nz=256, npx=256, ν, t=0.0, what=S.Intensity(), adaptive_supersampling=false)
+function render_field_cpu(obj; extent, nz=256, npx=256, ν, t=0.0, what=S.Intensity(), adaptive_supersampling=false)
     cam = S.CameraZ(; xys=grid(SVector, x=range(0±extent, npx), y=range(0±extent, npx)), nz, ν, t)
 
-    result = open(render_time_log_path, "a") do io
+    result = open(render_time_log_cpu, "a") do io
         redirect_stdout(io) do
             S.render(cam, obj, what; adaptive_supersampling)
             label = f"{nameof(typeof(obj)):27s}, {nameof(typeof(what)):15s}, {npx}px × {nz}"
@@ -51,8 +59,27 @@ function render_field(obj; extent, nz=256, npx=256, ν, t=0.0, what=S.Intensity(
     result
 end
 
-function moving_ellipsoid_image()
-    open(io -> write(io, "moving_ellipsoid_image()\n"), render_time_log_path, "a")
+function render_field_metal(obj; extent, nz=512, npx=512, ν, t=0.0, what=S.Intensity(), adaptive_supersampling=false)
+    cam = S.CameraZ(; xys=grid(SVector, x=range(0±extent, npx), y=range(0±extent, npx)), nz, ν=Float32(ν), t)
+
+    obj32 = S.to_float_type(Float32, obj)
+    cam_gpu = @p cam S.to_float_type(Float32) @modify(MtlArray, __.xys)
+
+    result = open(render_time_log_metal, "a") do io
+        redirect_stdout(io) do
+            Array(S.render(cam_gpu, obj32, what))
+            label = f"{nameof(typeof(obj)):27s}, {nameof(typeof(what)):15s}, {npx}px × {nz}"
+            @time label Array(S.render(cam_gpu, obj32, what))
+        end
+    end
+
+    KeyedArray(result; AxisKeysExtra.named_axiskeys(cam.xys)...)
+end
+
+
+function moving_ellipsoid_image(; render_field=render_field_cpu, suffix="")
+    log_path = render_field === render_field_metal ? render_time_log_metal : render_time_log_cpu
+    open(io -> write(io, "moving_ellipsoid_image()\n"), log_path, "a")
 
     βs = [0.0 0.7; 0.9 0.99]
     fig = Figure()
@@ -80,12 +107,13 @@ function moving_ellipsoid_image()
         hidedecorations!()
     end
     resize_to_layout!()
-    save(joinpath(outdir, "moving_ellipsoid.png"), fig)
+    save(joinpath(outdir, "moving_ellipsoid$(suffix).png"), fig)
     fig
 end
 
-function synchrotron_sphere_image()
-    open(io -> write(io, "synchrotron_sphere_image()\n"), render_time_log_path, "a")
+function synchrotron_sphere_image(; render_field=render_field_cpu, suffix="")
+    log_path = render_field === render_field_metal ? render_time_log_metal : render_time_log_cpu
+    open(io -> write(io, "synchrotron_sphere_image()\n"), log_path, "a")
 
     # Two optical-depth regimes by varying absorption normalization.
     regimes = (
@@ -122,12 +150,13 @@ function synchrotron_sphere_image()
         hidedecorations!()
     end
     resize_to_layout!()
-    save(joinpath(outdir, "synchrotron_sphere.png"), fig)
+    save(joinpath(outdir, "synchrotron_sphere$(suffix).png"), fig)
     fig
 end
 
-function bk_jet_image()
-    open(io -> write(io, "bk_jet_image()\n"), render_time_log_path, "a")
+function bk_jet_image(; render_field=render_field_cpu, suffix="")
+    log_path = render_field === render_field_metal ? render_time_log_metal : render_time_log_cpu
+    open(io -> write(io, "bk_jet_image()\n"), log_path, "a")
 
     φj = 4u"°"
     axis_for_viewing_angle(θ) = SVector(sin(θ), 0.0, cos(θ))
@@ -136,7 +165,7 @@ function bk_jet_image()
         geometry = Geometries.Conical(; axis=SVector(1, 0, 0), φj, z=1e-3 .. 50),
         ne = Profiles.Axial(S.PowerLaw(-2; val0=1.0, s0=1.0)),
         B = S.BFieldSpec(Profiles.Axial(S.PowerLaw(-1; val0=1.0, s0=1.0)), Directions.Scalar(), b->S.FullyTangled(b)),
-        velocity = S.VelocitySpec(Directions.Radial(), S.gamma, Profiles.Transverse(Profiles.LinearInterp(((0.3, 10), (0.8, 8))))),
+        velocity = S.VelocitySpec(Directions.Radial(), S.gamma, Profiles.Transverse(Profiles.LinearInterp(((0.3, 10.0), (0.8, 8.0))))),
         model = S.IsotropicPowerLawElectrons(; p=2.3, Cj=1.0, Ca=0.1),
     ) |> S.prepare_for_computations
 
@@ -164,28 +193,32 @@ function bk_jet_image()
         hidedecorations!()
     end
     resize_to_layout!()
-    save(joinpath(outdir, "bk_jet_thin.png"), fig)
+    save(joinpath(outdir, "bk_jet_thin$(suffix).png"), fig)
 
-    for adaptive_supersampling in (false, 4)
-        fig = Figure()
-        jet0 = @set jet0.model.Ca_ordered = 9/jet0.model.sinavg_a
-        for (I, (v, what)) in pairs(collect(Iterators.product(views, whats)))
-            pos = fig[Tuple(I)...]
-            Axis(pos[1,1]; title="$(v.name), $(what.what|>typeof|>nameof) (θ=$(v.θ))", aspect=DataAspect(), width=300, height=300)
-            jet = @set S.geometry_axis(jet0) = axis_for_viewing_angle(v.θ)
-            img = render_field(jet; extent=3, ν=1, what.what, adaptive_supersampling)
-            plt = heatmap!(img; what.kwargs(maximum(img))...)
-            Colorbar(pos[1,2], plt; tickformat=EngTicks(:symbol))
-            hidespines!()
-            hidedecorations!()
+    # Thick jet with optional adaptive supersampling (CPU only)
+    if render_field === render_field_cpu
+        for adaptive_supersampling in (false, 4)
+            fig = Figure()
+            jet0 = @set jet0.model.Ca_ordered = 9/jet0.model.sinavg_a
+            for (I, (v, what)) in pairs(collect(Iterators.product(views, whats)))
+                pos = fig[Tuple(I)...]
+                Axis(pos[1,1]; title="$(v.name), $(what.what|>typeof|>nameof) (θ=$(v.θ))", aspect=DataAspect(), width=300, height=300)
+                jet = @set S.geometry_axis(jet0) = axis_for_viewing_angle(v.θ)
+                img = render_field(jet; extent=3, ν=1, what.what, adaptive_supersampling)
+                plt = heatmap!(img; what.kwargs(maximum(img))...)
+                Colorbar(pos[1,2], plt; tickformat=EngTicks(:symbol))
+                hidespines!()
+                hidedecorations!()
+            end
+            resize_to_layout!()
+            save(joinpath(outdir, adaptive_supersampling!==false ? "bk_jet_thick_ss$(suffix).png" : "bk_jet_thick$(suffix).png"), fig)
         end
-        resize_to_layout!()
-        save(joinpath(outdir, adaptive_supersampling!==false ? "bk_jet_thick_ss.png" : "bk_jet_thick.png"), fig)
     end
 end
 
-function bk_jet_1_knot_snapshots_image()
-    open(io -> write(io, "bk_jet_1_knot_snapshots_image()\n"), render_time_log_path, "a")
+function bk_jet_1_knot_snapshots_image(; render_field=render_field_cpu, suffix="")
+    log_path = render_field === render_field_metal ? render_time_log_metal : render_time_log_cpu
+    open(io -> write(io, "bk_jet_1_knot_snapshots_image()\n"), log_path, "a")
 
     φj = 4u"°"
     θ = 3 * φj  # "small viewing angle", same as in bk_jet_image
@@ -224,12 +257,13 @@ function bk_jet_1_knot_snapshots_image()
         hidedecorations!()
     end
     resize_to_layout!()
-    save(joinpath(outdir, "bk_jet_1_knot_snapshots.png"), fig)
+    save(joinpath(outdir, "bk_jet_1_knot_snapshots$(suffix).png"), fig)
     fig
 end
 
-function bk_jet_thick_options_image()
-    open(io -> write(io, "bk_jet_thick_options_image()\n"), render_time_log_path, "a")
+function bk_jet_thick_options_image(; render_field=render_field_cpu, suffix="")
+    log_path = render_field === render_field_metal ? render_time_log_metal : render_time_log_cpu
+    open(io -> write(io, "bk_jet_thick_options_image()\n"), log_path, "a")
 
     φj = 2u"°"
     θ = 7u"°"
@@ -280,12 +314,13 @@ function bk_jet_thick_options_image()
         hidedecorations!()
     end
     resize_to_layout!()
-    save(joinpath(outdir, "bk_jet_thick_options.png"), fig)
+    save(joinpath(outdir, "bk_jet_thick_options$(suffix).png"), fig)
     fig
 end
 
-function conical_jet_polarization_evpa_image()
-    open(io -> write(io, "conical_jet_polarization_evpa_image()\n"), render_time_log_path, "a")
+function conical_jet_polarization_evpa_image(; render_field=render_field_cpu, suffix="")
+    log_path = render_field === render_field_metal ? render_time_log_metal : render_time_log_cpu
+    open(io -> write(io, "conical_jet_polarization_evpa_image()\n"), log_path, "a")
 
     φj = 2u"°"
     θ = 7u"°"
@@ -355,17 +390,18 @@ function conical_jet_polarization_evpa_image()
     end
 
     resize_to_layout!()
-    save(joinpath(outdir, "conical_jet_polarization_evpa.png"), fig)
+    save(joinpath(outdir, "conical_jet_polarization_evpa$(suffix).png"), fig)
     fig
 end
 
-function main()
-    moving_ellipsoid_image()
-    synchrotron_sphere_image()
-    bk_jet_image()
-    bk_jet_1_knot_snapshots_image()
-    bk_jet_thick_options_image()
-    conical_jet_polarization_evpa_image()
+function main(; kwargs...)
+    moving_ellipsoid_image(; kwargs...)
+    synchrotron_sphere_image(; kwargs...)
+    bk_jet_image(; kwargs...)
+    bk_jet_1_knot_snapshots_image(; kwargs...)
+    bk_jet_thick_options_image(; kwargs...)
+    conical_jet_polarization_evpa_image(; kwargs...)
 end
 
 main()
+HAS_METAL && main(; render_field=render_field_metal, suffix="_metal")

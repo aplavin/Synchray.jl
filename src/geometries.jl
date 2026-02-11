@@ -156,8 +156,8 @@ Compute ray-cone intersection interval in lab `z` coordinate.
 function z_interval(g::Geometries.Conical, ray)
 	# RayZ is a line of sight parameterized by z: r(z) = r0 + z*e_z.
 	# Assumes standard camera convention: ray.x0.z == 0 and cone apex at origin.
-	@assert iszero(ray.x0.z)
-	@assert 0 ≤ leftendpoint(g.z) ≤ rightendpoint(g.z)
+	@boundscheck @assert iszero(ray.x0.z)
+	@boundscheck @assert 0 ≤ leftendpoint(g.z) ≤ rightendpoint(g.z)
 	
 	c2 = cos(g.φj)^2
 	r0 = SVector(ray.x0.x, ray.x0.y, ray.x0.z)
@@ -216,13 +216,13 @@ function z_interval(g::Geometries.Conical, ray)
 				zlo .. zhi
 			else
 				# cone interior outside the roots
-				@assert zlo ≤ 0 ≤ zhi  (zlo, zhi)
+				@boundscheck @assert zlo ≤ 0 ≤ zhi
 				left = infseg.left .. zlo
 				right = zhi .. infseg.right
 				# Prefer the side that overlaps `zs`
 				L = zs ∩ left
 				R = zs ∩ right
-				@assert isempty(L) || isempty(R)
+				@boundscheck @assert isempty(L) || isempty(R)
 				!isempty(L) ? L : R
 			end
 		end

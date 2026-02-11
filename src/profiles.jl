@@ -177,9 +177,10 @@ end
 end # module Profiles
 
 
-@inline (pl::Profiles.PowerLaw)(s) = s > 0 ? pl.val0 * (s / pl.s0)^pl.exp : zero(float(pl.val0))
+@inline (pl::Profiles.PowerLaw)(s) = s > 0 ? pl.val0 * (s / pl.s0)^pl.exp : zero(s / pl.s0)
 
-@inline function (li::Profiles.LinearInterp)(s)
+@inline (li::Profiles.LinearInterp)(s) = _linterp(li, s)  # so that @stable handles it
+function _linterp(li::Profiles.LinearInterp, s)
 	pts = li.points
 	length(pts) == 1 && return last(first(pts))
 	

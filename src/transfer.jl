@@ -5,9 +5,7 @@ AccValue{WHAT}(value) where {WHAT} = AccValue{WHAT, typeof(value)}(value)
 
 _init_acc(::Type{T}, ν0) where {T<:Tuple} = map(a -> _init_acc(a, ν0), fieldtypes(T))
 _init_acc(::Type{Intensity}, ν0) = AccValue{Intensity}(0)
-_init_acc(::Type{IntensityIQU}, ν0) = begin
-	AccValue{IntensityIQU}(StokesIQU(0, 0, 0))
-end
+_init_acc(::Type{IntensityIQU}, ν0) = AccValue{IntensityIQU}(StokesIQU(0, 0, 0))
 _init_acc(::Type{OpticalDepth}, ν0) = AccValue{OpticalDepth}(0)
 struct AccSpectralIndex{TI, TS, DT}
 	Iinv::TI
@@ -55,7 +53,7 @@ _postprocess_acc(acc::AccSpectralIndex, ν, what::Tuple{Intensity,SpectralIndex}
 	return I0, (ν / I0) * dI
 end
 
-const Δτ_THRESHOLD_LINEAR = 1e-2
+const Δτ_THRESHOLD_LINEAR = 0.01f0
 
 
 @inline _integrate_ray_step(acc::AccValue{Intensity}, obj, x4, k, Δλ) = begin
@@ -68,7 +66,7 @@ const Δτ_THRESHOLD_LINEAR = 1e-2
 	# d𝓘/dλ = 𝓙 − 𝓐 𝓘, so over a step Δλ with constant coeffs:
 	# Δτ = 𝓐Δλ and 𝓘_out = 𝓘_in e^(−Δτ) + (𝓙/𝓐)(1−e^(−Δτ)).
 	Δτ = Ainv * Δλ
-	@assert Δτ ≥ 0
+	@boundscheck @assert Δτ ≥ 0
 	Iinv = if Δτ < Δτ_THRESHOLD_LINEAR
         Iinv + (Jinv - Ainv * Iinv) * Δλ
 	else
@@ -80,7 +78,7 @@ end
 
 @inline _rt_step_scalar(y, Jinv, Ainv, Δλ) = begin
 	Δτ = Ainv * Δλ
-	@assert Δτ ≥ 0
+	@boundscheck @assert Δτ ≥ 0
 	if Δτ < Δτ_THRESHOLD_LINEAR
 		return y + (Jinv - Ainv * y) * Δλ
 	end
@@ -147,7 +145,7 @@ end
 	Iinv = acc.Iinv
 	Δτ = Ainv * Δλ′
 	Δτ0 = ForwardDiff.value(Δτ)
-	@assert Δτ0 ≥ 0
+	@boundscheck @assert Δτ0 ≥ 0
 	Iinv = if Δτ0 < Δτ_THRESHOLD_LINEAR
 		Iinv + (Jinv - Ainv * Iinv) * Δλ′
 	else
@@ -164,7 +162,7 @@ _integrate_ray_step(acc::Tuple{AccValue{Intensity}, AccValue{OpticalDepth}}, obj
 
 	Iinv = acc[1].value
 	Δτ = Ainv * Δλ
-	@assert Δτ ≥ 0
+	@boundscheck @assert Δτ ≥ 0
 	Iinv = if Δτ < Δτ_THRESHOLD_LINEAR
         Iinv + (Jinv - Ainv * Iinv) * Δλ
 	else
@@ -181,7 +179,7 @@ integrate_ray(obj::AbstractMedium, ray::RayZ, what=Intensity()) = begin
 
 	k = ray.k
 	kz = k.z
-    @assert k == SVector(kz, 0, 0, kz)
+    @boundscheck @assert k == SVector(kz, 0, 0, kz)
 	# Ray parameterization: k ∥ (1,0,0,1) so events satisfy x(z) = x₀ + z·(1,0,0,1).
 	# With k = ν_cam·(1,0,0,1), we have kᶻ = ν_cam and Δλ = Δz / kᶻ.
     k1 = k / kz
@@ -191,11 +189,12 @@ integrate_ray(obj::AbstractMedium, ray::RayZ, what=Intensity()) = begin
 		_integrate_ray_step(_init_acc(typeof(what), frequency(ray)), obj, ray.x0 + z * k1, k, zero(float(z)))
 	else
 		# zs = range(seg, ray.nz)  # using StepRangeLen constructor directly is faster
+		@boundscheck @assert ray.nz ≥ 0  # to convince compiler that StepRangeLen won't error, necessary for running in Metal
 		zs = StepRangeLen(leftendpoint(seg), width(seg) / (ray.nz - 1), ray.nz)
 		Δz = step(zs)
 		Δλ = Δz / kz
 		acc = _integrate_ray_step(_init_acc(typeof(what), frequency(ray)), obj, ray.x0 + first(zs) * k1, k, Δλ)
-		for z in zs[2:end]
+		for z in Iterators.drop(zs, 1)  # cannot use zs[2:end] because StepRangeLen indexing can throw, failing in Metal
 			# Spacetime stepping along the null ray: x(z) = x₀ + z·k̂, with k̂ = (1,0,0,1).
 			x = ray.x0 + z * k1
 			acc = _integrate_ray_step(acc, obj, x, k, Δλ)
@@ -256,7 +255,7 @@ ray_contribution_profile(obj::AbstractMedium, ray::RayZ) = begin
 		k′ = lorentz_unboost(u, k)
 		(Jinv, Ainv) = emissivity_absorption_invariant(obj, x4, k′)
 		Δτ = Ainv * Δλ
-		@assert Δτ ≥ 0
+		@boundscheck @assert Δτ ≥ 0
 		dIinv_source = if Δτ < Δτ_THRESHOLD_LINEAR
 			Jinv * Δλ
 		else

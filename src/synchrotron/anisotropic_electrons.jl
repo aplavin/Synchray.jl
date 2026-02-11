@@ -138,7 +138,7 @@ end
 	ν = frequency(k′)
 	(;p, Cj_ordered, Ca_ordered, sinavg_j, sinavg_a) = model
 	κ = field.kappa
-	@assert κ ≥ 0
+	@boundscheck @assert κ ≥ 0
 
 	b = field.b
 	B = norm(b)
@@ -146,13 +146,14 @@ end
 
 	# Ordered viewing angle from the preferred direction.
 	n = (@swiz k′.xyz) * invν
-	@assert dot(n, n) ≈ 1
+	@boundscheck @assert dot(n, n) ≈ 1
 	sinθ = norm(cross(b, n)) / B
 	sinθ = clamp(sinθ, 0, 1)
 	cosθ = dot(b, n) / B
 
 	# Minimal ordering model: mix between isotropic-direction average (κ=0) and fully ordered (κ→∞).
-	f = κ == Inf ? one(float(κ)) : κ / (one(κ) + κ)
+	FT = promote_type(typeof(κ), typeof(sinavg_j))
+	f = κ == Inf ? one(FT) : FT(κ) / (one(κ) + κ)
 
 	qj = _half(p + StaticNum{1}())
 	qa = _half(p + StaticNum{2}())

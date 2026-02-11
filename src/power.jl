@@ -17,6 +17,7 @@ Base.:-(a::FixedExponent{P}) where {P} = FixedExponent{-P}()
 @inline _value(p::Real) = p
 @inline _value(::FixedExponent{P}) where {P} = P
 
+@unstable to_float_type(::Type{TF}, obj::FixedExponent{P}) where {TF<:AbstractFloat, P} = FixedExponent(TF(P))
 
 
 struct StaticNum{X} end

@@ -135,14 +135,14 @@ Build a `FourVelocity` from a scalar speed parameter and a spatial unit directio
 - If passed `gamma=>γ` (a scalar), uses `β = √(1 - γ⁻²)` and returns `u = (γ, γβ v̂)`.
 """
 @inline construct(::Type{FourVelocity}, (_, β)::Pair{typeof(beta)}, (_, dir)::Pair{typeof(direction)}) = let
-    @assert β isa Number
-    @assert dir isa SVector{3}
+    @boundscheck @assert β isa Number
+    @boundscheck @assert dir isa SVector{3}
     return FourVelocity(β * dir)
 end
 
 @inline construct(::Type{FourVelocity}, (_, γ)::Pair{typeof(gamma)}, (_, dir)::Pair{typeof(direction)}) = let
-    @assert γ isa Number
-    @assert dir isa SVector{3}
+    @boundscheck @assert γ isa Number
+    @boundscheck @assert dir isa SVector{3}
 	β = _beta_from_gamma(γ)
     return FourVelocity(γ, (γ * β) * dir)
 end

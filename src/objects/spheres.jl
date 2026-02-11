@@ -61,15 +61,15 @@ z_interval(obj::MovingUniformEllipsoid, ray::RayZ) = begin
 	p0 = _spatial_in_rest(u, P0)
 	p1 = _spatial_in_rest(u, P1)
 
-	invsizes2 = inv.(obj.sizes .^ 2)
-	A = sum(invsizes2 .* (p1 .^ 2))
-	B = 2 * sum(invsizes2 .* (p0 .* p1))
-	C = sum(invsizes2 .* (p0 .^ 2)) - one(A)
+	s² = obj.sizes .^ 2
+	A = sum(p1 .^ 2 ./ s²)
+	B = 2 * sum(p0 .* p1 ./ s²)
+	C = sum(p0 .^ 2 ./ s²) - one(A)
 	D = B^2 - 4 * A * C
 
 	if !(D > 0) || iszero(A)
-		z0 = obj.center.z
-		return z0 .. (z0 - eps(float(z0)))
+		z0 = oftype(A, obj.center.z)
+		return z0 .. (z0 - eps(z0))
 	end
 
 	√D = sqrt(D)
@@ -96,7 +96,7 @@ z_interval(obj::UniformSynchrotronSphere, ray::RayZ) = begin
 	r2 = obj.radius^2
 	dxy = (@swiz ray.x0.xy) - (@swiz obj.center.xy)
 	b2 = dot(dxy, dxy)
-	dz = b2 > r2 ? -eps(float(z0)) : √(r2 - b2)
+	dz = b2 > r2 ? -eps(b2) : √(r2 - b2)
 	return (z0 - dz) .. (z0 + dz)
 end
 

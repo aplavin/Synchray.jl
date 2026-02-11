@@ -35,8 +35,8 @@ end
 
 # Fractional linear polarization for power-law electrons, for emissivity and absorption:
 # Π_j(p) ≡ j_Q / j_I,  Π_α(p) ≡ α_Q / α_I.
-@inline _Pi_j(p) = (p + 1) / (p + 7 / 3)
-@inline _Pi_a(p) = (p + 2) / (p + 10 / 3)
+@inline _Pi_j(p::T) where {T} = (p + 1) / (p + T( 7 / 3))
+@inline _Pi_a(p::T) where {T} = (p + 2) / (p + T(10 / 3))
 
 # Convert between Stokes (I,Q) and intrinsic modes (I_⊥, I_∥):
 # I = I_⊥ + I_∥,  Q = I_⊥ − I_∥.
@@ -140,9 +140,10 @@ end
 # Project v into the plane orthogonal to n (i.e. remove the component along n).
 @inline _project_to_plane(v::SVector{3}, n::SVector{3}) = v - dot(v, n) * n
 
-@inline _arbitrary_screen_basis(n::SVector{3}) = begin
+@inline _arbitrary_screen_basis(n::SVector{3,T}) where {T} = begin
 	# Pick a reference axis not too parallel to n and build a right-handed basis.
-	ref = abs(n.x) < 0.9 ? SVector(1, 0, 0) : SVector(0, 1, 0)
+	FT = float(T)
+	ref = abs(n.x) < FT(0.9) ? SVector(1, 0, 0) : SVector(0, 1, 0)
 	e1 = normalize(cross(n, ref))
 	e2 = cross(n, e1)
 	return (e1, e2)
@@ -184,7 +185,7 @@ Returns `(n′, e1′, e2′)` where all are unit 3-vectors in the comoving fram
 		e1′ = -e1′
 		e2′ = -e2′
 	end
-	@assert !iszero(e1′p) && !iszero(e2′p)
+	@boundscheck @assert !iszero(e1′p) && !iszero(e2′p)
 
 	return (n′, e1′, e2′)
 end
@@ -212,7 +213,7 @@ If `B′ ∥ n′` (vanishing projection), uses an arbitrary screen basis instea
 @inline linear_polarization_basis_from_B(n′::SVector{3}, B′::SVector{3}) = begin
 	# Return both screen-plane axes tied to B′: e_par ∥ proj(B′), e_perp ⟂ proj(B′).
 	b̂ = iszero(B′) ? B′ : normalize(B′)
-	@assert all(!isnan, b̂)
+	@boundscheck @assert all(!isnan, b̂)
 	bp = _project_to_plane(b̂, n′)
 	if dot(bp, bp) == 0
 		(e_par, e_perp) = _arbitrary_screen_basis(n′)
