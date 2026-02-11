@@ -24,59 +24,6 @@ import FieldLIC as LIC
 
 
 
-
-
-@eval LIC begin
-function combine(oc::DraperyOverlay, intensity, lic)
-    int_interp = _interpolate_to_lic(intensity, lic)
-    lo, hi = oc.colorrange
-	llo, lhi = extrema(lic)
-	_combine(oc::DraperyOverlay, int_interp, lic, lo, hi, llo, lhi; oc.colorscale, oc.colormap, oc.alpha, oc.dark)
-end
-function _combine(oc::DraperyOverlay, int_interp, lic, lo, hi, llo, lhi; colorscale, colormap, alpha, dark)
-    map(int_interp, lic) do int, l
-		l = (l - llo) / (lhi - llo)
-        # Get base color from intensity
-        int_clamped = clamp(int, lo, hi)
-        t = (colorscale(int_clamped) - colorscale(lo)) / (colorscale(hi) - colorscale(lo))
-        t = clamp(t, 0, 1)
-        base_color = get(colormap, t)
-
-        # LIC texture as grayscale overlay
-        l_clamped = clamp(l, 0, 1)
-        if dark
-            # Dark drapery: blend toward black
-            overlay_color = RGB(0.0, 0.0, 0.0)
-        else
-            # Light drapery: blend toward white
-            overlay_color = RGB(1.0, 1.0, 1.0)
-        end
-		drapery_strength = l_clamped * alpha
-		t == 0 && (drapery_strength *= 0)
-
-        (1 - drapery_strength) * base_color + drapery_strength * overlay_color
-    end
-end
-function combine(oc::BlendLinesOverlay, intensity, lic)
-    int_interp = _interpolate_to_lic(intensity, lic)
-    lo, hi = oc.colorrange
-    map(int_interp, lic) do int, l
-        # Map intensity to color via colormap
-        int_clamped = clamp(int, lo, hi)
-        t = (oc.colorscale(int_clamped) - oc.colorscale(lo)) / (oc.colorscale(hi) - oc.colorscale(lo))
-        t = clamp(t, 0, 1)
-        base_color = get(oc.colormap, t)
-
-        # Blend with line color based on LIC
-        l_clamped = t == 0 ? zero(l) : clamp(l, 0, 1)
-        (1 - l_clamped) * base_color + l_clamped * oc.lic_color
-    end
-end
-end
-
-
-
-
 function _SA_to_regular(sa::StructArray)
 	map((xs...) -> eltype(sa)(Tuple(xs)), getproperties(sa)...)
 end
@@ -237,7 +184,7 @@ let
         aspect=3,
         backgroundcolor=:black,)
     scatter!(ax,
-        (@lift FPlot($Jcontrib, (@o ustrip(_.s)), (@o ustrip(_.h)), color=:contrib, markersize=10)),
+        (@lift FPlot($Jcontrib, (@o ustrip(_.s)), (@o ustrip(_.h)), color=(@o _.contrib), markersize=10)),
         colormap=:inferno, colorrange=(0, 1))
 
     # Draw the (0,0) pixel's ray in jet-plane coordinates
@@ -251,10 +198,6 @@ let
     lines!(ax, (@lift (@swiz $ray_path.zx)); color=:cyan, linewidth=1, linestyle=:dash, xautolimits=false, yautolimits=false)
 end
 
-# # let img = @lift map(xj -> S.jet_at(Val(:j_nu_contrib), $jet, xj, params[].ν_obs, params[].z) |> ustrip, JG[])
-# # 	image(fig[2,0][1,1], img, colormap=:turbo, colorscale=(@lift SymLog(1e-8maximum($img))))
-# # end
-
 img_iqu = @lift let
     (value, time) = @timed S.withunits(S.render, camera[], $jet, S.IntensityIQU())
     @info "" time
@@ -262,24 +205,19 @@ img_iqu = @lift let
 end
 img_si = @lift S.render($camera, $jet, S.SpectralIndex())
 
-# 	img = @lift first.($img_i_si)
-# 	img_si = @lift last.($img_i_si) .|> NoUnits
-
-    # lines(fig[2,0], @lift $img_all.:1(y=Near(0u"pc")))
-
-    pos = fig[1:2,2][1,1]
-    ax, hm = image(pos[1,1], 
-        (@lift $img_iqu.I),
-        colormap=:turbo,
-        colorscale=(@lift SymLog(1/$params.img.dynrange * maximum($img_iqu.I))),
-        colorrange=(@lift (0, 1) .* maximum($img_iqu.I)),
-        interpolate=false,
-        axis=(;title="Total intensity")
-    )
-    contour!((@lift $img_iqu.I), color=(:gray, 0.5), linewidth=1, levels=@lift @p maximum($img_iqu.I) maprange(log, (0.05/$params.img.dynrange * __)..__, length=30))
-    hlines!((@lift ustrip($yslice)); color=(:white, 0.5), linestyle=:dash)
-    scatter!((@lift ustrip($xy_sel)); color=:transparent, markersize=15, marker=:circle, strokewidth=1, strokecolor=:cyan)
-    Colorbar(pos[1,2], hm)
+pos = fig[1:2,2][1,1]
+ax, hm = image(pos[1,1], 
+    (@lift $img_iqu.I),
+    colormap=:turbo,
+    colorscale=(@lift SymLog(1/$params.img.dynrange * maximum($img_iqu.I))),
+    colorrange=(@lift (0, 1) .* maximum($img_iqu.I)),
+    interpolate=false,
+    axis=(;title="Total intensity")
+)
+contour!((@lift $img_iqu.I), color=(:gray, 0.5), linewidth=1, levels=@lift @p maximum($img_iqu.I) maprange(log, (0.05/$params.img.dynrange * __)..__, length=30))
+hlines!((@lift ustrip($yslice)); color=(:white, 0.5), linestyle=:dash)
+scatter!((@lift ustrip($xy_sel)); color=:transparent, markersize=15, marker=:circle, strokewidth=1, strokecolor=:cyan)
+Colorbar(pos[1,2], hm)
 
 on(mouse_position_obs(ax; key=Mouse.left)) do pos
     xy_sel[] = pos * u"pc"
@@ -287,60 +225,46 @@ end
 
 lines(fig[2,1][1,1], (@lift @p $img_iqu.I(x=Near(20u"pc"))  __ ./ maximum(__)))
 
-    pos = fig[1:2,2][2,1]
-    ax, hm = image(pos[1,1], 
-        (@lift LIC.polarization_lic($img_iqu |> _SA_to_regular |> permutedims;
-            # combiner=LIC.BlendLinesOverlay(; lic_color=Makie.RGB(1.0, 1.0, 1.0),
-            #        colormap=Makie.ColorSchemes.turbo,
-            # 	colorscale=SymLog(1/$params.img.dynrange * maximum($img_iqu.I)),
-            # 	colorrange=(0, 1) .* maximum($img_iqu.I),),
-            combiner=LIC.DraperyOverlay(; alpha=0.8, dark=false,
-                colormap=Makie.ColorSchemes.turbo,
-                colorscale=identity,
-                colorrange=(0, 0.7)),
-            # combiner=LIC.DraperyOverlay(; alpha=0.8, dark=true,
-            #        colormap=Makie.ColorSchemes.turbo,
-            # 	colorscale=SymLog(1/$params.img.dynrange * maximum($img_iqu.I)),
-            # 	colorrange=(0, 1) .* maximum($img_iqu.I),),
-            # combiner=LIC.MultiplicativeDrapery(; alpha_dark=0.5, alpha_light=1,
-            #        colormap=Makie.ColorSchemes.turbo,
-            # 	colorscale=SymLog(1/$params.img.dynrange * maximum($img_iqu.I)),
-            # 	colorrange=(0, 1) .* maximum($img_iqu.I),),
-            scale=2,
-            noise_generator=LIC.SparseNoise(density=0.02, seed=42),
-            # noise_generator=LIC.UpscaledNoise(scale=3, seed=42),
-            lic=let L=250
-                LIC.FLIC(float(L), ones(2L+1)/(2L+1); nematic=true)
-            end,
-            flux_threshold=1e-5,
-            max_pol_fraction=0.4,
-            pol_fraction_gamma=0.5,
-            base_quantity=:fraction
-        ) |> permutedims),
-        interpolate=false,
-        axis=(;title="Polarized fraction + orientation")
-    )
+pos = fig[1:2,2][2,1]
+ax, hm = image(pos[1,1], 
+    (@lift LIC.polarization_lic($img_iqu |> _SA_to_regular |> permutedims;
+        # combiner=LIC.BlendLinesOverlay(; lic_color=Makie.RGB(1.0, 1.0, 1.0),
+        #        colormap=Makie.ColorSchemes.turbo,
+        # 	colorscale=SymLog(1/$params.img.dynrange * maximum($img_iqu.I)),
+        # 	colorrange=(0, 1) .* maximum($img_iqu.I),),
+        combiner=LIC.DraperyOverlay(; alpha=0.8, dark=false,
+            colormap=Makie.ColorSchemes.turbo,
+            colorscale=identity,
+            colorrange=(0, 0.7)),
+        # combiner=LIC.DraperyOverlay(; alpha=0.8, dark=true,
+        #        colormap=Makie.ColorSchemes.turbo,
+        # 	colorscale=SymLog(1/$params.img.dynrange * maximum($img_iqu.I)),
+        # 	colorrange=(0, 1) .* maximum($img_iqu.I),),
+        # combiner=LIC.MultiplicativeDrapery(; alpha_dark=0.5, alpha_light=1,
+        #        colormap=Makie.ColorSchemes.turbo,
+        # 	colorscale=SymLog(1/$params.img.dynrange * maximum($img_iqu.I)),
+        # 	colorrange=(0, 1) .* maximum($img_iqu.I),),
+        scale=2,
+        noise_generator=LIC.SparseNoise(density=0.02, seed=42),
+        # noise_generator=LIC.UpscaledNoise(scale=3, seed=42),
+        lic=let L=250
+            LIC.FLIC(float(L), ones(2L+1)/(2L+1); nematic=true)
+        end,
+        flux_threshold=1e-5,
+        max_pol_fraction=0.4,
+        pol_fraction_gamma=0.5,
+        base_quantity=:fraction
+    ) |> permutedims),
+    interpolate=false,
+    axis=(;title="Polarized fraction + orientation")
+)
 
-# 	on(mouse_position_obs(ax)) do pos
-# 		xy_obs = SVector(pos[1], pos[2])*u"pc"
-# 		(;xyz_jet) = closest_to_cone_axis_on_los(jet[], xy_obs)
-# 		@reset xyz_jet.z /= 150
-# 		# @info "" xy_obs xyz_jet
-# 		knots[] = @set $(knots[])[1].x_inj = xyz_jet
-# 	end
-
-    pos = fig[1:2,2][3,1]
-    ax,plt = image(pos[1,1], img_si,
-        colormap=:turbo, colorrange=(-1, 2.6),
-        interpolate=false,
-        axis=(;title="Spectral index")
-    )
-    Colorbar(pos[1,2], plt)
+pos = fig[1:2,2][3,1]
+ax,plt = image(pos[1,1], img_si,
+    colormap=:turbo, colorrange=(-1, 2.6),
+    interpolate=false,
+    axis=(;title="Spectral index")
+)
+Colorbar(pos[1,2], plt)
 
 fig |> display
-
-# @time params[] = @set $(params[]).img.ν1 = params[].img.ν1;
-# # @profview @time params[] = @set $(params[]).img.ν1 = params[].img.ν1;
-# @profview for _ in 1:20
-# 	@time params[] = @set $(params[]).img.ν1 = params[].img.ν1
-# end
