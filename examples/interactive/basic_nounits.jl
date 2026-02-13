@@ -52,7 +52,7 @@ params, = SliderGrid(fig[1,1][1,1], AccessibleModel((;
         maxt=P(LogUniform(3..1e3)),
     ),
     geom=(
-        z=0.1..500,
+        z=0.1..1500,
         viewing_ang=P(LogUniform(0.1..80))u"°",
         opening_ang=P(LogUniform(0.1..80))u"°",
         ctrjet=P([false, true], false),
