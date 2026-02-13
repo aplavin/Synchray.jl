@@ -394,14 +394,116 @@ function conical_jet_polarization_evpa_image(; render_field=render_field_cpu, su
     fig
 end
 
+function precessing_nozzle_snapshots_image(; render_field=render_field_cpu, suffix="")
+    log_path = render_field === render_field_metal ? render_time_log_metal : render_time_log_cpu
+    open(io -> write(io, "precessing_nozzle_snapshots_image()\n"), log_path, "a")
+
+    φj = 4u"°"
+    θ = 3 * φj
+    axis = SVector(sin(θ), 0, cos(θ))
+
+    nozzle = S.Patterns.PrecessingNozzle(
+        θ_precession = 0.02,
+        θ_nozzle = 0.005,
+        period = 50.0,
+        β_flow = 0.995,
+        profile = S.Patterns.TophatBump(100.0),
+    )
+
+    jet = S.EmissionRegion(
+        geometry = S.Geometries.Conical(; axis, φj, z = 1e-3 .. 50.0),
+        ne = S.Profiles.Modified(S.Profiles.Axial(S.PowerLaw(-2; val0=1.0, s0=1.0)), nozzle),
+        B = S.BFieldSpec(S.Profiles.Axial(S.PowerLaw(-1; val0=1.0, s0=1.0)), S.Directions.Scalar(), b -> S.FullyTangled(b)),
+        velocity = S.VelocitySpec(S.Directions.Radial(), S.beta, S.Profiles.Constant(0.995)),
+        model = S.IsotropicPowerLawElectrons(; p=2.3, Cj=1, Ca=1),
+    ) |> S.prepare_for_computations
+
+    ts = [0, 12.5, 25.0]  # period=50, so 0, T/4, T/2
+    whats = [
+        (name="Intensity", what=S.Intensity(), kwargs=p -> (; colormap=:magma, colorscale=SymLog(1e-4 * p))),
+        (name="α", what=S.SpectralIndex(), kwargs=_ -> (; colormap=:balance, colorrange=(-3, 3))),
+    ]
+
+    fig = Figure()
+    for (r, w) in enumerate(whats), (c, t) in enumerate(ts)
+        pos = fig[r, c]
+        Axis(pos[1,1]; title="$(w.name), t=$(t)", aspect=DataAspect(), width=300, height=300)
+        img = render_field(jet; extent=3, ν=1, t, what=w.what)
+        p = w.what isa S.Intensity ? maximum(img) : 1
+        plt = heatmap!(img; w.kwargs(p)...)
+        Colorbar(pos[1,2], plt; tickformat=EngTicks(:symbol))
+        hidespines!()
+        hidedecorations!()
+    end
+    resize_to_layout!()
+    save(joinpath(outdir, "precessing_nozzle_snapshots$(suffix).png"), fig)
+    fig
+end
+
+function jet_combined_velocity_helicalrt_image(; render_field=render_field_cpu, suffix="")
+    log_path = render_field === render_field_metal ? render_time_log_metal : render_time_log_cpu
+    open(io -> write(io, "jet_combined_velocity_helicalrt_image()\n"), log_path, "a")
+
+    φj = 2u"°"
+    θ = 7u"°"
+    axis = SVector(sin(θ), 0, cos(θ))
+
+    Bscale = Profiles.Axial(S.PowerLaw(-1; val0=1, s0=1))
+
+    Bconfigs = (
+        (name="HelicalRT ψ=30°", B=S.BFieldSpec(Bscale, Directions.HelicalRT(30u"°"), identity)),
+        (name="HelicalRT ψ=60°", B=S.BFieldSpec(Bscale, Directions.HelicalRT(60u"°"), identity)),
+    )
+
+    velocity_configs = (
+        (name="radial only",
+         velocity=S.VelocitySpec(Directions.Radial(), S.beta, Profiles.Constant(0.995))),
+        (name="radial + rotation",
+         velocity=S.VelocitySpec(Directions.Radial(), S.beta, Profiles.Constant(0.99)) +
+                  S.VelocitySpec(Directions.Toroidal(), S.beta, Profiles.RigidRotation(; β_ref=0.02, ρ_ref=1.0))),
+    )
+
+    model = S.IsotropicPowerLawElectrons(; p=2.3, Cj=1, Ca=0.1)
+
+    fig = Figure()
+    for (r, vc) in enumerate(velocity_configs), (c, bc) in enumerate(Bconfigs)
+        pos = fig[r, c]
+        Axis(pos[1, 1]; title="$(vc.name), $(bc.name)", aspect=DataAspect(), width=350, height=350)
+
+        jet = S.EmissionRegion(;
+            geometry = Geometries.Conical(; axis, φj, z=1e-3 .. 50),
+            ne = Profiles.AxialTransverse(S.PowerLaw(-2; val0=1, s0=1), η -> exp(-4 * η^2)),
+            bc.B,
+            vc.velocity,
+            model,
+        ) |> S.prepare_for_computations
+
+        img_IQU = render_field(jet; extent=3, ν=1, what=S.IntensityIQU())
+        img_I = getproperty.(img_IQU, :I)
+
+        plt = heatmap!(img_I; colormap=:magma, colorscale=SymLog(1e-4 * maximum(img_I)))
+        evpa_ticks!(img_IQU; step=5, min_I_frac=1e-5)
+        Colorbar(pos[1, 2], plt; tickformat=EngTicks(:symbol))
+        hidespines!()
+        hidedecorations!()
+    end
+    resize_to_layout!()
+    save(joinpath(outdir, "jet_combined_velocity_helicalrt$(suffix).png"), fig)
+    fig
+end
+
 function main(; kwargs...)
     moving_ellipsoid_image(; kwargs...)
     synchrotron_sphere_image(; kwargs...)
     bk_jet_image(; kwargs...)
     bk_jet_1_knot_snapshots_image(; kwargs...)
     bk_jet_thick_options_image(; kwargs...)
+    precessing_nozzle_snapshots_image(; kwargs...)
     conical_jet_polarization_evpa_image(; kwargs...)
+    jet_combined_velocity_helicalrt_image(; kwargs...)
 end
 
-main()
-HAS_METAL && main(; render_field=render_field_metal, suffix="_metal")
+if abspath(PROGRAM_FILE) == @__FILE__
+    main()
+    HAS_METAL && main(; render_field=render_field_metal, suffix="_metal")
+end

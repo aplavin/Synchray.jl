@@ -383,7 +383,7 @@ Time `t` is in the lab frame.
 """
 @inline _nozzle_axis_at_time(nozzle::Patterns.PrecessingNozzle, geom, t) = begin
 	# Precession phase at this lab frame time
-	phase = 2π * t / nozzle.period + nozzle.φ0
+	phase = t * 2*π / nozzle.period + nozzle.φ0
 	
 	# Nozzle direction: rotate around axis by angle θ_precession
 	sθ, cθ = sincos(nozzle.θ_precession)
