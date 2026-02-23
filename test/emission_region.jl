@@ -112,8 +112,8 @@ end
 		profile=S.Patterns.GaussianBump(100),
 	) |> ustrip
 
-	@test region.model.Cj_ordered * region.model.sinavg_j ≈ 1.7e-18 rtol=1e-3
-	@test region.model.Ca_ordered * region.model.sinavg_a ≈ 7.20e13 rtol=1e-3
+	@test region.model.Cj_ordered * region.model.sinavg_j ≈ 1.565e-18 rtol=1e-3
+	@test region.model.Ca_ordered * region.model.sinavg_a ≈ 6.78e12 rtol=1e-3
 
 	cam = ustrip(S.CameraZ(;
 		xys=grid(SVector, range(0.01u"pc"..0.1u"pc", 2), range(-0.001u"pc"..0.001u"pc", 2)),
@@ -127,7 +127,7 @@ end
 	Iν = S.withunits(S.render, cam, region, S.Intensity())
 	@test unit(eltype(Iν)) == u"erg/s/cm^2/Hz/sr"
 	@test ustrip.(Iν) == Iν_nou
-	@test ustrip.(u"Jy/mas^2", Iν) ≈ [121 121; 0.028 0.028]  rtol=1e-2
+	@test ustrip.(u"Jy/mas^2", Iν) ≈ [129 129; 0.0255 0.0255]  rtol=1e-2
 
 	res = S.withunits(S.render, cam, region, (S.Intensity(), S.SpectralIndex()))
 	@test res[1] == Iν

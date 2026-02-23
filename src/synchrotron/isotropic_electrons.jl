@@ -98,40 +98,34 @@ end
 	return (p - 1) / invnorm
 end
 
-# Analytic coefficient helpers (CGS); see e.g. Rybicki & Lightman.
+# Analytic coefficient helpers (CGS).
 # Returns the pair (c5(p), c6(p)) used for power-law synchrotron emissivity/absorption.
-@inline _synchrotron_c5_c6(p) = begin
-	e = 4.8032068e-10           # statC
-	me = ustrip(u"g", u"me")     # g
-	c = ustrip(u"cm/s", 1.0u"c") # cm/s
+#
+# Emissivity:   j_ν = c5 · K · B_perp^{(p+1)/2} · ν^{-(p-1)/2}
+# Absorptivity: α_ν = c6 · K · B_perp^{(p+2)/2} · ν^{-(p+4)/2}
+#
+# where K = n_e·K_per_ne is the power-law normalization constant [N(γ) = K γ^{-p}].
+#
+# Derivation: Rybicki & Lightman (1979) eqs. 6.36 and 6.52 for a power-law electron
+# distribution N(γ) = K γ^{-p}, using the Bessel integral identity
+#   ∫₀^∞ t^s K_ν(t) dt = 2^{s-1} Γ((s+1+ν)/2) Γ((s+1-ν)/2).
+# Validated against Symphony (Pandya+ 2016) numerical integration.
 
-	# dimensionless conversion factor from ν/B
-	A = (2 * pi * me * c) / (3 * e)
-	pref0 = sqrt(3) * e^3 / (16 * pi * me)
-
-	# Stage-1 assumes an isotropically tangled field and averages the viewing-angle factor
-	# ⟨sin^q θ_{Bn}⟩ needed for B_perp^q = (|B'| sinθ_{Bn})^q.
-	sinavg5 = _avg_sin_pow((p + 1) / 2)
-	sinavg6 = _avg_sin_pow((p + 2) / 2)
-
-	c5 = (pref0 / c^2) * (p - 1) * SpecialFunctions.gamma((3p - 1) / 12) * SpecialFunctions.gamma((3p + 7) / 12) * A^(-(p - 1) / 2) * sinavg5
-	c6 = pref0 * (p + 2) * SpecialFunctions.gamma((3p + 2) / 12) * SpecialFunctions.gamma((3p + 10) / 12) * A^(-(p + 2) / 2) * sinavg6
-	return c5, c6
-end
-
-# Same as `_synchrotron_c5_c6`, but for an ordered field without the viewing-angle average.
-# In this case, the standard power-law coefficients depend on B_perp explicitly and there is
-# no built-in ⟨sin^q θ⟩ factor.
+# Ordered-field coefficients (no viewing-angle average).
 @inline _synchrotron_c5_c6_ordered(p) = begin
 	e = 4.8032068e-10           # statC
 	me = ustrip(u"g", u"me")     # g
 	c = ustrip(u"cm/s", 1.0u"c") # cm/s
 
 	A = (2 * pi * me * c) / (3 * e)
-	pref0 = sqrt(3) * e^3 / (16 * pi * me)
+	pref0 = √3 * e^3 / (4 * pi * me * c^2)
 
-	c5 = (pref0 / c^2) * (p - 1) * SpecialFunctions.gamma((3p - 1) / 12) * SpecialFunctions.gamma((3p + 7) / 12) * A^(-(p - 1) / 2)
-	c6 = pref0 * (p + 2) * SpecialFunctions.gamma((3p + 2) / 12) * SpecialFunctions.gamma((3p + 10) / 12) * A^(-(p + 2) / 2)
+	c5 = pref0 / (p + 1) *
+	     A^(-(p - 1) / 2) *
+	     SpecialFunctions.gamma((3p - 1) / 12) * SpecialFunctions.gamma((3p + 19) / 12)
+	c6 = pref0 / (2 * me) *
+	     A^(-p / 2) *
+	     SpecialFunctions.gamma((3p + 2) / 12) * SpecialFunctions.gamma((3p + 22) / 12)
 	return c5, c6
 end
 
