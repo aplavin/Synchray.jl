@@ -230,6 +230,42 @@ end
 	@test α_an ≈ φ * α_iso
 end
 
+@testitem "PitchyPowerLawElectrons: sin(θ)^k scaling" begin
+	import Synchray as S
+	using Test
+
+	p = 2.5
+	ν = 2
+	n_e = 3
+	b = SVector(0, 0, 5)
+
+	θ = acos(0.5)
+	n̂ = SVector(sin(θ), 0, cos(θ))
+	k′ = S.FourFrequency(ν, (ν .* n̂)...)
+
+	model_iso = S.IsotropicPowerLawElectrons(; p, Cj=1, Ca=1)
+	model_k0 = S.PitchyPowerLawElectrons(; p, k=0, Cj=1, Ca=1)
+	model_k2 = S.PitchyPowerLawElectrons(; p, k=2.0, Cj=1, Ca=1)
+
+	(j_iso, α_iso) = S._synchrotron_coeffs(model_iso, n_e, b, k′)
+	@test j_iso > 0 && α_iso > 0
+
+	# k=0 recovers isotropic
+	(j_k0, α_k0) = S._synchrotron_coeffs(model_k0, n_e, b, k′)
+	@test j_k0 ≈ j_iso
+	@test α_k0 ≈ α_iso
+
+	# k=2: verify explicit φ formula
+	(j_k2, α_k2) = S._synchrotron_coeffs(model_k2, n_e, b, k′)
+	cosθ = 0.5
+	φ = (1 - cosθ^2)^(model_k2.k / 2) / model_k2.Pnorm
+	@test j_k2 ≈ φ * j_iso
+	@test α_k2 ≈ φ * α_iso
+
+	# FullyTangled rejected
+	@test_throws ErrorException S._synchrotron_coeffs(model_k2, n_e, S.FullyTangled(5), k′)
+end
+
 @testitem "prepare_for_computations preserves synchrotron coeffs" begin
 	import Synchray as S
 	using Test
@@ -241,6 +277,7 @@ end
 	models = (
 		S.IsotropicPowerLawElectrons(; p=3.2, Cj=0.7, Ca=0.3),
 		S.AnisotropicPowerLawElectrons(; p=2.5, η=0.5, Cj=1, Ca=1),
+		S.PitchyPowerLawElectrons(; p=2.5, k=2.0, Cj=1, Ca=1),
 	)
 
 	b = SVector(1, 0, 2)
@@ -254,7 +291,7 @@ end
 
 	@testset for model in models
 		prepared = S.prepare_for_computations(model)
-		Bs = model isa S.AnisotropicPowerLawElectrons ? B_ordered : (B_ordered..., B_tangled...)
+		Bs = model isa S.IsotropicPowerLawElectrons ? (B_ordered..., B_tangled...) : B_ordered
 
 		@testset for B in Bs
 			(j1, α1) = S._synchrotron_coeffs(model, ne0, B, k′)

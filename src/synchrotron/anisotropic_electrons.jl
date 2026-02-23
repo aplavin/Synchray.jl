@@ -91,12 +91,85 @@ end
 @inline _synchrotron_coeffs(model::AnisotropicPowerLawElectrons, n_e, field::FullyTangled, k′::FourFrequency) =
     error("AnisotropicPowerLawElectrons requires an ordered magnetic-field direction, FullyTangled is not supported")
 
+
+"""
+		PitchyPowerLawElectrons(; p, k=0, γmin=1, γmax=Inf, Cj=nothing, Ca=nothing)
+
+Power-law synchrotron electron model with `sin(ξ)^k` pitch-angle dependence,
+matching rimphony/Symphony's `PitchyPowerLawDistribution`.
+
+The electron distribution is `f(γ, ξ) ∝ sin(ξ)^k · γ^{-p}`, where ξ is the
+electron pitch angle. In the ultrarelativistic beaming limit, this modulates
+the coefficients as
+
+	j_I(θ_{Bn}) = φ(θ_{Bn}) · j_{I,iso}(θ_{Bn}),
+	α_I(θ_{Bn}) = φ(θ_{Bn}) · α_{I,iso}(θ_{Bn}),
+
+with
+
+	φ(θ) = sin(θ)^k / P(k),
+	P(k) = ∫₀¹ dμ (1-μ²)^{k/2} = √π Γ(k/2+1) / (2 Γ(k/2+3/2)).
+
+Semantics of k:
+
+- k = 0: isotropic (recovers `IsotropicPowerLawElectrons`)
+- k > 0: electrons concentrated perpendicular to the field (large pitch angles)
+
+Requires an ordered field direction; rejects `FullyTangled`.
+"""
+struct PitchyPowerLawElectrons{Tp,Tk,Tγ,TC,Tavg,TP}
+	p::Tp
+	k::Tk
+	γmin::Tγ
+	γmax::Tγ
+	Cj_ordered::TC
+	Ca_ordered::TC
+	sinavg_j::Tavg
+	sinavg_a::Tavg
+	Pnorm::TP
+end
+
+@unstable prepare_for_computations(model::PitchyPowerLawElectrons) = @modify(FixedExponent, model.p)
+ustrip(model::PitchyPowerLawElectrons) = model
+
+@inline _phi_theta(model::PitchyPowerLawElectrons, cos2θ) = begin
+	(;k, Pnorm) = model
+	sin2 = clamp(1 - cos2θ, 0, 1)
+	return sin2^_half(k) / Pnorm
+end
+
+function PitchyPowerLawElectrons(; p, k=0, γmin=1, γmax=Inf, Cj=nothing, Ca=nothing)
+	@assert p > 1 && k ≥ 0 && γmin > 0 && γmax > γmin
+
+	qj = _half(p + 1)
+	qa = _half(p + 2)
+	sinavg_j = _avg_sin_pow(qj)
+	sinavg_a = _avg_sin_pow(qa)
+
+	if isnothing(Cj) || isnothing(Ca)
+		@assert isnothing(Cj) && isnothing(Ca)
+		K_per_ne = _K_per_ne(p, γmin, γmax)
+		(c5, c6) = _synchrotron_c5_c6_ordered(p)
+		Cj_ordered = c5 * K_per_ne
+		Ca_ordered = c6 * K_per_ne
+	else
+		Cj_ordered = Cj / sinavg_j
+		Ca_ordered = Ca / sinavg_a
+	end
+
+	Pnorm = sqrt(π) * SpecialFunctions.gamma(k / 2 + 1) / (2 * SpecialFunctions.gamma(k / 2 + 3 / 2))
+	return PitchyPowerLawElectrons(p, k, promote(γmin, γmax)..., promote(Cj_ordered, Ca_ordered)..., promote(sinavg_j, sinavg_a)..., Pnorm)
+end
+
+@inline _synchrotron_coeffs(model::PitchyPowerLawElectrons, n_e, field::FullyTangled, k′::FourFrequency) =
+    error("PitchyPowerLawElectrons requires an ordered magnetic-field direction, FullyTangled is not supported")
+
 # Unified ordered-field method for both isotropic and anisotropic electrons (same pattern as TangledOrderedMixture).
 # Uses efficient dot-product-based Bperp computation (better SIMD than cross product).
 # For isotropic electrons: φ=1 (inlined, no cost).
 # For anisotropic electrons: φ(θ_Bn) computed from cos²θ.
 @inline _synchrotron_coeffs(
-	model::Union{IsotropicPowerLawElectrons, AnisotropicPowerLawElectrons},
+	model::Union{IsotropicPowerLawElectrons, AnisotropicPowerLawElectrons, PitchyPowerLawElectrons},
 	n_e,
 	b::SVector{3},
 	k′::FourFrequency
@@ -130,7 +203,7 @@ end
 # Unified TangledOrderedMixture method for both isotropic and anisotropic electrons (same pattern as polarization).
 # This is defined here (in anisotropic_electrons.jl) because both types need to be loaded for the Union type.
 @inline _synchrotron_coeffs(
-	model::Union{IsotropicPowerLawElectrons, AnisotropicPowerLawElectrons},
+	model::Union{IsotropicPowerLawElectrons, AnisotropicPowerLawElectrons, PitchyPowerLawElectrons},
 	n_e,
 	field::TangledOrderedMixture,
 	k′::FourFrequency

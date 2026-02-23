@@ -56,7 +56,7 @@ end
 
 # Unified method for TangledOrderedMixture polarization (both isotropic and anisotropic electrons)
 @inline _emissivity_absorption_polarized_field(
-	model::Union{IsotropicPowerLawElectrons, AnisotropicPowerLawElectrons},
+	model::Union{IsotropicPowerLawElectrons, AnisotropicPowerLawElectrons, PitchyPowerLawElectrons},
 	jI, αI,
 	field::TangledOrderedMixture,
 	k′::FourFrequency
