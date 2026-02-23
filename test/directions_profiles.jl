@@ -50,7 +50,7 @@ end
         v = S.field_direction(dir, geom, x4)
         @test norm(v) ≈ 1.0
         # e_r and e_phi are NOT orthogonal, so must normalize
-        raw = (e_r_expected + e_phi_expected) / sqrt(2)
+        raw = (e_r_expected + e_phi_expected) / √2
         expected = raw / norm(raw)
         @test v ≈ expected atol=1e-10
     end
@@ -258,7 +258,7 @@ end
 
         # Point at (5, 1, 1): distance from x-axis is √2
         x4_rho_sqrt2 = S.FourPosition(0.0, 5.0, 1.0, 1.0)
-        @test p(geom_x, x4_rho_sqrt2) ≈ sqrt(2) * β_ref
+        @test p(geom_x, x4_rho_sqrt2) ≈ √2 * β_ref
     end
 
     @testset "On-axis gives zero" begin
@@ -312,13 +312,13 @@ end
         βv_combined = @swiz(u_combined.xyz) / u_combined.t
 
         # Check individual components (hardcoded expected values)
-        @test βv_combined[1] ≈ 0.3 / sqrt(26)  # x component
+        @test βv_combined[1] ≈ 0.3 / √26  # x component
         @test βv_combined[2] ≈ 0.4             # y component
-        @test βv_combined[3] ≈ 1.5 / sqrt(26)  # z component
+        @test βv_combined[3] ≈ 1.5 / √26  # z component
 
         # Check total speed and Lorentz factor
         @test norm(βv_combined) ≈ 0.5
-        @test u_combined.t ≈ 2 / sqrt(3)  # γ = 2/√3 ≈ 1.1547
+        @test u_combined.t ≈ 2 / √3  # γ = 2/√3 ≈ 1.1547
     end
 
     @testset "CombinedVelocity with RigidRotation" begin
@@ -336,13 +336,13 @@ end
         x4_at_ref = S.FourPosition(0.0, ρ_ref, 0.0, 5.0)
         u_at_ref = S.four_velocity(combined, geom, x4_at_ref)
         βv_at_ref = @swiz(u_at_ref.xyz) / u_at_ref.t
-        @test norm(βv_at_ref) ≈ sqrt(β_r^2 + β_φ_ref^2) atol=1e-10
+        @test norm(βv_at_ref) ≈ √(β_r^2 + β_φ_ref^2) atol=1e-10
 
         # At ρ = 2 × ρ_ref: β_φ = 2 × β_φ_ref
         x4_at_2ref = S.FourPosition(0.0, 2*ρ_ref, 0.0, 5.0)
         u_at_2ref = S.four_velocity(combined, geom, x4_at_2ref)
         βv_at_2ref = @swiz(u_at_2ref.xyz) / u_at_2ref.t
-        @test norm(βv_at_2ref) ≈ sqrt(β_r^2 + (2*β_φ_ref)^2) atol=1e-10
+        @test norm(βv_at_2ref) ≈ √(β_r^2 + (2*β_φ_ref)^2) atol=1e-10
     end
 
     @testset "Full computation with unitful CombinedVelocity" begin
@@ -376,9 +376,9 @@ end
         # - e_r (radial from origin) = (1/√26, 0, 5/√26)
         # - e_φ (toroidal around z-axis) = (0, 1, 0)
         # Expected: βv = 0.3 × e_r + 0.4 × e_φ = (0.3/√26, 0.4, 1.5/√26)
-        @test βv[1] ≈ 0.3 / sqrt(26) atol=1e-10
+        @test βv[1] ≈ 0.3 / √26 atol=1e-10
         @test βv[2] ≈ 0.4 atol=1e-10
-        @test βv[3] ≈ 1.5 / sqrt(26) atol=1e-10
+        @test βv[3] ≈ 1.5 / √26 atol=1e-10
         @test norm(βv) ≈ 0.5 atol=1e-10
     end
 end

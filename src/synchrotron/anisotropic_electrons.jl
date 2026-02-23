@@ -96,7 +96,7 @@ end
 		PitchyPowerLawElectrons(; p, k=0, γmin=1, γmax=Inf, Cj=nothing, Ca=nothing)
 
 Power-law synchrotron electron model with `sin(ξ)^k` pitch-angle dependence,
-matching rimphony/Symphony's `PitchyPowerLawDistribution`.
+matching rimphony `PitchyPowerLawDistribution`.
 
 The electron distribution is `f(γ, ξ) ∝ sin(ξ)^k · γ^{-p}`, where ξ is the
 electron pitch angle. In the ultrarelativistic beaming limit, this modulates
@@ -157,7 +157,7 @@ function PitchyPowerLawElectrons(; p, k=0, γmin=1, γmax=Inf, Cj=nothing, Ca=no
 		Ca_ordered = Ca / sinavg_a
 	end
 
-	Pnorm = sqrt(π) * SpecialFunctions.gamma(k / 2 + 1) / (2 * SpecialFunctions.gamma(k / 2 + 3 / 2))
+	Pnorm = √π * SpecialFunctions.gamma(k / 2 + 1) / (2 * SpecialFunctions.gamma(k / 2 + 3 / 2))
 	return PitchyPowerLawElectrons(p, k, promote(γmin, γmax)..., promote(Cj_ordered, Ca_ordered)..., promote(sinavg_j, sinavg_a)..., Pnorm)
 end
 
@@ -185,7 +185,7 @@ end
 	# Uses the identity: |b × n̂|² = |b|²|n̂|² - (b·n̂)² = |b|² - (b·n̂)² (since |n̂|=1).
 	b² = dot(b, b)
 	dotbn² = dot(b, n̂)^2
-	Bperp = sqrt(max(b² - dotbn², 0))
+	Bperp = √max(b² - dotbn², 0)
 
 	# Compute pitch-angle factor.
 	# For isotropic: _phi_theta returns 1 immediately (inlined, no cost).
@@ -195,7 +195,7 @@ end
 
 	B_over_ν = Bperp * invν
 	common = B_over_ν^_half(p)
-	j = Cj_ordered * n_e * common * sqrt(Bperp * ν) * φ
+	j = Cj_ordered * n_e * common * √(Bperp * ν) * φ
 	α = Ca_ordered * n_e * common * Bperp * invν^2 * φ
 	return j, α
 end
@@ -243,7 +243,7 @@ end
 
 	B_over_ν = B * invν
 	common = B_over_ν^_half(p)
-	j = Cj_ordered * n_e * common * sqrt(B * ν) * Aj
+	j = Cj_ordered * n_e * common * √(B * ν) * Aj
 	α = Ca_ordered * n_e * common * B * invν^2 * Aa
 	return j, α
 end

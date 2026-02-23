@@ -72,9 +72,9 @@ z_interval(obj::MovingUniformEllipsoid, ray::RayZ) = begin
 		return z0 .. (z0 - eps(z0))
 	end
 
-	√D = sqrt(D)
-	z1 = (-B - √D) / (2 * A)
-	z2 = (-B + √D) / (2 * A)
+	sD = √(D)
+	z1 = (-B - sD) / (2 * A)
+	z2 = (-B + sD) / (2 * A)
 	return min(z1, z2) .. max(z1, z2)
 end
 

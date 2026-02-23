@@ -96,7 +96,7 @@ end
 
 		slab_45 = @set slab_perp.B0 = B0 * normalize(SVector(1, 0, 1))
 
-		expected = (1 / sqrt(2))^((p + 1) / 2)
+		expected = (1 / √2)^((p + 1) / 2)
 		@test (S.render(ray, slab_45) / I_perp) ≈ expected
 	end
 end
@@ -158,7 +158,7 @@ end
 @testitem "Ordered vs tangled consistency" begin
 	import Synchray as S
 
-	avg_sin_pow(q) = sqrt(pi) * S.SpecialFunctions.gamma((q + 2) / 2) / (2 * S.SpecialFunctions.gamma((q + 3) / 2))
+	avg_sin_pow(q) = √pi * S.SpecialFunctions.gamma((q + 2) / 2) / (2 * S.SpecialFunctions.gamma((q + 3) / 2))
 
 	p = 3.2
 	ne0 = 1.3

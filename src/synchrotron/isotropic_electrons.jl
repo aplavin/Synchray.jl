@@ -86,7 +86,7 @@ end
 # If directions are isotropic on the sphere, the relative-angle PDF is p(θ) = (1/2)sinθ on [0, π].
 #   ⟨sin^q θ⟩ = (1/2)∫₀^π sin^{q+1}θ dθ
 #            = √π · Γ((q+2)/2) / (2 · Γ((q+3)/2)).
-@inline _avg_sin_pow(q) = sqrt(pi) * SpecialFunctions.gamma((q + 2) / 2) / (2 * SpecialFunctions.gamma((q + 3) / 2))
+@inline _avg_sin_pow(q) = √pi * SpecialFunctions.gamma((q + 2) / 2) / (2 * SpecialFunctions.gamma((q + 3) / 2))
 
 # Normalization for a power-law electron distribution N(γ) = K γ^{-p} on [γmin, γmax].
 # The number density is
@@ -154,7 +154,7 @@ end
 	invν = inv(ν)
 	B_over_ν = B * invν
 	common = B_over_ν^_half(p)
-	j = Cj_tangled * n_e * common * sqrt(B*ν)
+	j = Cj_tangled * n_e * common * √(B*ν)
 	α = Ca_tangled * n_e * common * B * invν^2
 	return j, α
 end

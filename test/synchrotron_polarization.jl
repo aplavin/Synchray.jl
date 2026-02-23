@@ -147,15 +147,15 @@ end
 
 			@test evpa_mixed ≈ evpa_ordered rtol=1e-12
 
-			pol_deg_ordered = sqrt(S_ordered.Q^2 + S_ordered.U^2) / S_ordered.I
-			pol_deg_mixed = sqrt(S_mixed.Q^2 + S_mixed.U^2) / S_mixed.I
+			pol_deg_ordered = √(S_ordered.Q^2 + S_ordered.U^2) / S_ordered.I
+			pol_deg_mixed = √(S_mixed.Q^2 + S_mixed.U^2) / S_mixed.I
 			@test 0.1 < pol_deg_mixed < 0.95pol_deg_ordered
 		end
 
 		field_depol = S.TangledOrderedMixture(b_oblique, 0.0)
 		slab_depol = S.UniformSynchrotronSlab(; z, u0, ne0, B0=field_depol, model)
 		S_depol = S.render(ray, slab_depol, S.IntensityIQU())
-		pol_deg_depol = sqrt(S_depol.Q^2 + S_depol.U^2) / S_depol.I
+		pol_deg_depol = √(S_depol.Q^2 + S_depol.U^2) / S_depol.I
 		@test pol_deg_depol < 1e-10
 	end
 end
@@ -275,8 +275,8 @@ end
 
 			@test evpa_mixed ≈ evpa_ordered rtol=1e-12
 
-			pol_deg_ordered = sqrt(S_ordered.Q^2 + S_ordered.U^2) / S_ordered.I
-			pol_deg_mixed = sqrt(S_mixed.Q^2 + S_mixed.U^2) / S_mixed.I
+			pol_deg_ordered = √(S_ordered.Q^2 + S_ordered.U^2) / S_ordered.I
+			pol_deg_mixed = √(S_mixed.Q^2 + S_mixed.U^2) / S_mixed.I
 			@test 0.1 < pol_deg_mixed < 0.95pol_deg_ordered
 		end
 
@@ -284,7 +284,7 @@ end
 		field_depol = S.TangledOrderedMixture(b_oblique, 0.0)
 		slab_depol = S.UniformSynchrotronSlab(; z, u0, ne0, B0=field_depol, model)
 		S_depol = S.render(ray, slab_depol, S.IntensityIQU())
-		pol_deg_depol = sqrt(S_depol.Q^2 + S_depol.U^2) / S_depol.I
+		pol_deg_depol = √(S_depol.Q^2 + S_depol.U^2) / S_depol.I
 		@test pol_deg_depol < 1e-10
 	end
 

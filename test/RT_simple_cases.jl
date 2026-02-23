@@ -100,7 +100,7 @@ end
 
 			# Per-ray analytic check
 			for b in (0, 0.4R, 0.8R)
-				ℓ = 2 * sqrt(R^2 - b^2)
+				ℓ = 2 * √(R^2 - b^2)
 				I_num = S.render((@set ray.x0.x = b), sphere)
 				@test I_num ≈ I_exact(j0, α0, δ, ℓ) rtol=6e-3
 			end
@@ -250,7 +250,7 @@ end
 			Iexp = map(xy -> begin
 				(;y) = xy
 				t = 1 - (y^2) / (b^2)
-				ℓ = t > 0 ? 2 * sqrt(t / A) : 0.0
+				ℓ = t > 0 ? 2 * √(t / A) : 0.0
 				(δ^3) * ℓ
 			end, xys)
 			@test count(>(0), Iexp) == 4

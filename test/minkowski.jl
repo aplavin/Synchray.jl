@@ -20,7 +20,7 @@
 		β = SVector(0.3, -0.4, 0.1)
 		u = S.FourVelocity(β)
 		@test S.minkowski_dot(u, u) ≈ -1
-		@test u.t ≈ inv(sqrt(1 - dot(β, β)))
+		@test u.t ≈ inv(√(1 - dot(β, β)))
 		@test S.beta(u) ≈ β
 		@test S.gamma(u) ≈ u.t
 		@test S.gamma(β) ≈ u.t
