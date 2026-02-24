@@ -47,10 +47,8 @@ end
 @unstable @accessor geometry_axis(region::EmissionRegion) = geometry_axis(region.geometry)
 
 # Velocity dispatch: explicit field or derived from worldline
-@inline four_velocity(region::EmissionRegion, x4) = _four_velocity(region.velocity, region.geometry, x4)
-@inline _four_velocity(vel::VelocitySpec, geom, x4) = four_velocity(vel, geom, x4)
-@inline _four_velocity(vel::CombinedVelocity, geom, x4) = four_velocity(vel, geom, x4)
-@inline _four_velocity(::Nothing, geom, x4) = worldline_four_velocity(geom, x4)
+@inline four_velocity(region::EmissionRegion, x4) = four_velocity(region.velocity, region.geometry, x4)
+@inline four_velocity(::Nothing, geom, x4) = four_velocity(geom, x4)
 
 # For VelocitySpec: direction + magnitude from profile
 @inline function four_velocity(vel::VelocitySpec, geom, x4)
