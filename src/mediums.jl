@@ -80,3 +80,24 @@ Base.:≈(a::TangledOrderedMixture, b::TangledOrderedMixture; kwargs...) =
 Base.:*(a::Number, f::TangledOrderedMixture) = TangledOrderedMixture(a * f.b, f.kappa)
 Base.:*(f::TangledOrderedMixture, a::Number) = TangledOrderedMixture(f.b * a, f.kappa)
 
+
+"""
+    CombinedMedium{T<:Tuple} <: AbstractMedium
+
+Multiple non-overlapping media rendered as a single object.
+Each component gets `ray.nz` integration steps.
+
+Objects must be ordered back-to-front (increasing z, i.e. from source toward observer).
+This is the direction of photon propagation: the first object in the tuple is furthest
+from the camera, and its light is attenuated by all subsequent objects.
+
+Construct with positional arguments: `CombinedMedium(obj_back, obj_mid, obj_front)`.
+"""
+struct CombinedMedium{T<:Tuple} <: AbstractMedium
+	objects::T
+end
+CombinedMedium(objs...) = CombinedMedium(objs)
+
+@unstable prepare_for_computations(cm::CombinedMedium) = CombinedMedium(map(prepare_for_computations, cm.objects))
+@unstable ustrip(cm::CombinedMedium) = CombinedMedium(map(ustrip, cm.objects))
+

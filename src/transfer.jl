@@ -206,6 +206,54 @@ integrate_ray(obj::AbstractMedium, ray::RayZ, what=Intensity()) = begin
 end
 
 
+# --- CombinedMedium integration ---
+@inline _integrate_segment(acc, obj, ray, seg) = begin
+	isempty(seg) && return acc
+	k = ray.k
+	kz = k.z
+	k1 = k / kz
+	@boundscheck @assert ray.nz ≥ 0
+	zs = StepRangeLen(leftendpoint(seg), width(seg) / (ray.nz - 1), ray.nz)
+	Δz = step(zs)
+	Δλ = Δz / kz
+	for z in zs
+		x = ray.x0 + z * k1
+		acc = _integrate_ray_step(acc, obj, x, k, Δλ)
+	end
+	return acc
+end
+
+# N=1: delegate directly, zero overhead
+integrate_ray(cm::CombinedMedium{<:Tuple{Any}}, ray::RayZ, what=Intensity()) = integrate_ray(cm.objects[1], ray, what)
+
+# General: integrate objects in tuple order (must be back-to-front)
+integrate_ray(cm::CombinedMedium, ray::RayZ, what=Intensity()) = begin
+	k = ray.k
+	kz = k.z
+	@boundscheck @assert k == SVector(kz, 0, 0, kz)
+	k1 = k / kz
+
+	# Type-promoting zero-step (same pattern as existing integrate_ray)
+	obj1 = first(cm.objects)
+	seg1 = z_interval(obj1, ray)
+	z_init = leftendpoint(seg1)
+	acc = _integrate_ray_step(_init_acc(typeof(what), frequency(ray)), obj1, ray.x0 + z_init * k1, k, zero(float(z_init)))
+
+	acc = _integrate_combined_recursive(acc, cm.objects, ray)
+
+	ν = frequency(ray)
+	return _postprocess_acc(acc, ν, what)
+end
+
+@inline _integrate_combined_recursive(acc, ::Tuple{}, ray) = acc
+@inline _integrate_combined_recursive(acc, objs::Tuple, ray) = begin
+	obj = first(objs)
+	seg = z_interval(obj, ray)
+	acc = _integrate_segment(acc, obj, ray, seg)
+	_integrate_combined_recursive(acc, Base.tail(objs), ray)
+end
+
+
 """
 	ray_contribution_profile(obj, ray) -> NamedTuple
 

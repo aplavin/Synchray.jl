@@ -88,7 +88,7 @@ Inertial (constant-velocity) worldline: `x(τ) = x0 + u * τ`.
 - `x0::TX`: Reference spacetime event (`FourPosition`)
 - `u::TU`: Constant 4-velocity (`FourVelocity`)
 """
-struct InertialWorldline{TX, TU}
+@kwdef struct InertialWorldline{TX, TU}
 	x0::TX
 	u::TU
 end
@@ -102,7 +102,7 @@ Ellipsoidal body moving along a worldline. The shape is defined in the rest fram
 - `center::TW`: Worldline of the center of the ellipsoid (e.g., `InertialWorldline`)
 - `sizes::TS`: Rest-frame semi-axes `SVector{3}` (x, y, z in rest frame)
 """
-struct Ellipsoid{TW, TS} <: AbstractGeometry
+@kwdef struct Ellipsoid{TW, TS} <: AbstractGeometry
 	center::TW
 	sizes::TS
 end
