@@ -131,3 +131,52 @@ end
 	# Corners should form a quadrilateral (not all same point)
 	@test !allequal(corners)
 end
+
+@testitem "Ellipsoid geometry" begin
+	import Synchray as S
+
+	u0 = S.FourVelocity(1.0, 0.0, 0.0, 0.0)  # stationary
+	wl = S.Geometries.InertialWorldline(S.FourPosition(0.0, 0.0, 0.0, 0.0), u0)
+	sizes = SVector(1.0, 1.0, 1.0)
+	geom = S.Geometries.Ellipsoid(wl, sizes)
+
+	# four_velocity returns the worldline velocity
+	@test S.four_velocity(geom, S.FourPosition(0,0,0,0)) === u0
+
+	# prepare_for_computations is identity
+	@test S.prepare_for_computations(geom) === geom
+
+	# z_interval: ray through center of stationary unit sphere
+	ray_center = S.RayZ(; x0=S.FourPosition(0.0, 0.0, 0.0, 0.0), k=1.0, nz=64)
+	zi = S.z_interval(geom, ray_center)
+	@test leftendpoint(zi) ≈ -1.0
+	@test rightendpoint(zi) ≈ 1.0
+
+	# z_interval: non-spherical sizes — z semi-axis = 2
+	geom_elong = S.Geometries.Ellipsoid(wl, SVector(1.0, 1.0, 2.0))
+	zi_elong = S.z_interval(geom_elong, ray_center)
+	@test leftendpoint(zi_elong) ≈ -2.0
+	@test rightendpoint(zi_elong) ≈ 2.0
+
+	# z_interval: ray that misses
+	ray_miss = S.RayZ(; x0=S.FourPosition(0.0, 5.0, 0.0, 0.0), k=1.0, nz=64)
+	zi_miss = S.z_interval(geom, ray_miss)
+	@test isempty(zi_miss)
+
+	# z_interval: moving ellipsoid — shifted center
+	wl_shifted = S.Geometries.InertialWorldline(S.FourPosition(0.0, 0.0, 0.0, 3.0), u0)
+	geom_shifted = S.Geometries.Ellipsoid(wl_shifted, sizes)
+	ray_at_shifted = S.RayZ(; x0=S.FourPosition(0.0, 0.0, 0.0, 0.0), k=1.0, nz=64)
+	zi_shifted = S.z_interval(geom_shifted, ray_at_shifted)
+	@test leftendpoint(zi_shifted) ≈ 2.0
+	@test rightendpoint(zi_shifted) ≈ 4.0
+
+	# z_interval: moving ellipsoid with nonzero velocity
+	β = SVector(0.0, 0.0, 0.5)
+	u_moving = S.FourVelocity(β)
+	wl_moving = S.Geometries.InertialWorldline(S.FourPosition(0.0, 0.0, 0.0, 0.0), u_moving)
+	geom_moving = S.Geometries.Ellipsoid(wl_moving, sizes)
+	zi_moving = S.z_interval(geom_moving, ray_center)
+	@test !isempty(zi_moving)
+	@test S.four_velocity(geom_moving, S.FourPosition(0,0,0,0)) === u_moving
+end

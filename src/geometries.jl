@@ -77,12 +77,85 @@ struct Conical{TR, Tφ, Tz} <: AbstractGeometry
 end
 Conical(; axis::AbstractVector, φj, z) = Conical(axis, φj, z)
 
+
+
+"""
+    InertialWorldline{TX, TU}
+
+Inertial (constant-velocity) worldline: `x(τ) = x0 + u * τ`.
+
+# Fields
+- `x0::TX`: Reference spacetime event (`FourPosition`)
+- `u::TU`: Constant 4-velocity (`FourVelocity`)
+"""
+struct InertialWorldline{TX, TU}
+	x0::TX
+	u::TU
+end
+
+"""
+    WorldtubeEllipsoid{TW, TS} <: AbstractGeometry
+
+Ellipsoidal body moving along a worldline. The shape is defined in the rest frame.
+
+# Fields
+- `center::TW`: Worldline of the center of the ellipsoid (e.g., `InertialWorldline`)
+- `sizes::TS`: Rest-frame semi-axes `SVector{3}` (x, y, z in rest frame)
+"""
+struct Ellipsoid{TW, TS} <: AbstractGeometry
+	center::TW
+	sizes::TS
+end
+
 end # module Geometries
 
 
 """Prepare for computations by caching trig values"""
 prepare_for_computations(g::Geometries.Conical) = @modify(Geometries.AngleTrigCached_fromangle, g.φj)
 ustrip(g::Geometries.Conical) = @modify(z -> _u_to_code(z, UCTX.L0), g.z)
+
+prepare_for_computations(g::Geometries.Ellipsoid) = g
+
+@inline four_velocity(g::Geometries.Ellipsoid, x4) = four_velocity(g.center)
+@inline four_velocity(wl::Geometries.InertialWorldline) = wl.u
+
+function z_interval(g::Geometries.Ellipsoid, ray::RayZ)
+	# Worldtube of a rigid axis-aligned ellipsoid moving with constant 4-velocity u.
+	# In the comoving frame, define Δ⊥ as the displacement orthogonal to u, and require
+	# (Δx/sx)^2 + (Δy/sy)^2 + (Δz/sz)^2 ≤ 1.
+	# `sizes == SVector(R,R,R)` recovers the moving sphere.
+	# For RayZ: x(z) = ray.x0 + z*(1,0,0,1) (since k/kz = (1,0,0,1)).
+	@assert g.center isa Geometries.InertialWorldline
+	u = g.center.u
+	Δ0 = ray.x0 - g.center.x0
+	onez = one(Δ0.t)
+	zeroz = zero(Δ0.t)
+	kdir = FourPosition(onez, zeroz, zeroz, onez)
+
+	a = minkowski_dot(u, kdir)
+	b = minkowski_dot(u, Δ0)
+	P0 = Δ0 + u * b
+	P1 = kdir + u * a
+
+	p0 = _spatial_in_rest(u, P0)
+	p1 = _spatial_in_rest(u, P1)
+
+	s² = g.sizes .^ 2
+	A = sum(p1 .^ 2 ./ s²)
+	B = 2 * sum(p0 .* p1 ./ s²)
+	C = sum(p0 .^ 2 ./ s²) - one(A)
+	D = B^2 - 4 * A * C
+
+	if !(D > 0) || iszero(A)
+		z0 = oftype(A, g.center.x0.z)
+		return z0 .. (z0 - eps(z0))
+	end
+
+	sD = √(D)
+	z1 = (-B - sD) / (2 * A)
+	z2 = (-B + sD) / (2 * A)
+	return min(z1, z2) .. max(z1, z2)
+end
 
 """Extract the axis vector (third column of rotation matrix) from a Conical geometry"""
 @inline geometry_axis(g::Geometries.Conical) = g.R_local_to_lab[:,3]
