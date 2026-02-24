@@ -1,43 +1,44 @@
 """
-    EmissionRegion{G, Tne, TB, Tu, Tmodel} <: AbstractSynchrotronMedium
+    EmissionRegion{G, Tu, Temission} <: AbstractMedium
 
-Generic emission region with pluggable geometry and field profiles.
+Generic emission region combining geometry, velocity field, and emission model.
 
 # Fields
-- `geometry::G`: Geometry defining shape and coordinates
-- `ne::Tne`: Electron density profile, callable as `ne(geom, x4) -> scalar`
-- `B::TB`: Magnetic field specification (`BFieldSpec`)
-- `velocity::Tu`: Velocity field specification (`VelocitySpec`)
-- `model::Tmodel`: Synchrotron electron model
+- `geometry::G`: Geometry defining shape and coordinates (e.g. `Conical`, `WorldtubeEllipsoid`)
+- `velocity::Tu`: Velocity specification (`VelocitySpec`, `CombinedVelocity`, or `nothing` for worldline-based geometries)
+- `emission::Temission`: Emission model (e.g. `SynchrotronEmission`)
 
-# Example
+# Examples
 ```julia
-region = EmissionRegion(
-    geometry = Geometries.Conical(
-        axis = SVector(0, 0, 1),
-        φj = 0.1,
-        z = 1.0 .. 10.0
+# Jet with explicit velocity field:
+EmissionRegion(
+    geometry = Geometries.Conical(axis = SVector(0, 0, 1), φj = 0.1, z = 1.0 .. 10.0),
+    velocity = VelocitySpec(Directions.Axial(), Profiles.Constant(10.0)),
+    emission = SynchrotronEmission(
+        ne = Profiles.Axial(PowerLaw(-2; val0=1e4, s0=1.0)),
+        B = BFieldSpec(Profiles.Axial(PowerLaw(-1; val0=1e-3, s0=1.0)), Directions.Scalar(), b -> FullyTangled(b)),
+        electrons = IsotropicPowerLawElectrons(; p=2.5, Cj=1.0, Ca=0.1)
+    )
+)
+
+# Moving blob (velocity derived from worldline):
+EmissionRegion(
+    geometry = Geometries.WorldtubeEllipsoid(
+        worldline = Geometries.InertialWorldline(FourPosition(0,0,0,5), construct(FourVelocity, gamma => 10, direction => SA[0,0,1])),
+        sizes = SA[0.5, 0.5, 0.5]
     ),
-    ne = Profiles.Axial(PowerLaw(-2; val0=1e4, s0=1.0)),
-    B = BFieldSpec(
-        Profiles.Axial(PowerLaw(-1; val0=1e-3, s0=1.0)),
-        Directions.Scalar(),
-        b -> FullyTangled(b)
-    ),
-    velocity = VelocitySpec(
-        Directions.Axial(),
-        Profiles.Constant(10.0)
-    ),
-    model = IsotropicPowerLawElectrons(; p=2.5, Cj=1.0, Ca=0.1)
+    emission = SynchrotronEmission(
+        ne = Profiles.Constant(1e4),
+        B = BFieldSpec(Profiles.Constant(1e-3), Directions.Scalar(), b -> FullyTangled(b)),
+        electrons = IsotropicPowerLawElectrons(; p=2.5)
+    )
 )
 ```
 """
-@kwdef struct EmissionRegion{G, Tne, TB, Tu, Tmodel} <: AbstractSynchrotronMedium
+@kwdef struct EmissionRegion{G, Tu, Temission} <: AbstractMedium
     geometry::G
-    ne::Tne
-    B::TB
-    velocity::Tu
-    model::Tmodel
+    velocity::Tu = nothing
+    emission::Temission
 end
 
 # Delegate geometry methods
@@ -45,18 +46,11 @@ end
 @inline is_inside(region::EmissionRegion, x4) = is_inside(region.geometry, x4)
 @unstable @accessor geometry_axis(region::EmissionRegion) = geometry_axis(region.geometry)
 
-# Implement medium interface
-@inline electron_density(region::EmissionRegion, x4) = region.ne(region.geometry, x4)
-
-@inline function magnetic_field(region::EmissionRegion, x4)
-    g = region.geometry
-    b_mag = region.B.scale(g, x4)
-    b_dir = field_direction(region.B.dir, g, x4)
-    return region.B.wrap(b_mag * b_dir)
-end
-
-# Generic dispatch to velocity-specific implementation
-@inline four_velocity(region::EmissionRegion, x4) = four_velocity(region.velocity, region.geometry, x4)
+# Velocity dispatch: explicit field or derived from worldline
+@inline four_velocity(region::EmissionRegion, x4) = _four_velocity(region.velocity, region.geometry, x4)
+@inline _four_velocity(vel::VelocitySpec, geom, x4) = four_velocity(vel, geom, x4)
+@inline _four_velocity(vel::CombinedVelocity, geom, x4) = four_velocity(vel, geom, x4)
+@inline _four_velocity(::Nothing, geom, x4) = worldline_four_velocity(geom, x4)
 
 # For VelocitySpec: direction + magnitude from profile
 @inline function four_velocity(vel::VelocitySpec, geom, x4)
@@ -67,29 +61,28 @@ end
 
 # For CombinedVelocity: add β vectors in lab frame
 @inline function four_velocity(vel::CombinedVelocity, geom, x4)
-    # Compute individual 4-velocities
     u1 = four_velocity(vel.v1, geom, x4)
     u2 = four_velocity(vel.v2, geom, x4)
-
-    # Extract β vectors: β = (γβ) / γ = spatial / temporal
-    βv1 = @swiz(u1.xyz) / u1.t
-    βv2 = @swiz(u2.xyz) / u2.t
-
-    # Add β vectors (lab-frame vector addition)
+    βv1 = beta(u1)
+    βv2 = beta(u2)
     βv_total = βv1 + βv2
-
     return FourVelocity(βv_total)
 end
 
-@inline synchrotron_model(region::EmissionRegion) = region.model
+# Delegate to emission model
+@inline emissivity_absorption(region::EmissionRegion, x4, k′) = emissivity_absorption(region.emission, region.geometry, x4, k′)
+@inline emissivity_absorption_polarized(region::EmissionRegion, x4, k′) = emissivity_absorption_polarized(region.emission, region.geometry, x4, k′)
 
-# prepare_for_computations propagation
-@unstable prepare_for_computations(region::EmissionRegion) = modify(prepare_for_computations, region, @o _.geometry _.ne _.B _.velocity _.model)
-@unstable ustrip(region::EmissionRegion) = @p let
-    region
-    modify(ustrip, __, @o _.geometry _.B _.velocity _.model)
-    @modify(ustrip(_; valu=UCTX.ne0), __.ne)
-end
+# Convenience accessors (delegate through emission)
+@inline electron_density(region::EmissionRegion, x4) = electron_density(region.emission, region.geometry, x4)
+@inline magnetic_field(region::EmissionRegion, x4) = magnetic_field(region.emission, region.geometry, x4)
+
+# prepare_for_computations and ustrip propagation
+@unstable prepare_for_computations(region::EmissionRegion) =
+    modify(prepare_for_computations, region, @o _.geometry _.velocity _.emission)
+
+@unstable ustrip(region::EmissionRegion) =
+    modify(ustrip, region, @o _.geometry _.velocity _.emission)
 
 # Visualization helpers forward to geometry
 rotation_local_to_lab(region::EmissionRegion) = rotation_local_to_lab(region.geometry)

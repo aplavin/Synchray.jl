@@ -129,18 +129,20 @@ jet = @lift let
 
     region = S.EmissionRegion(;
         geometry = S.Geometries.Conical(; axis, φj=$params.geom.opening_ang, z=$params.geom.z),
-        ne,
-        B = S.BFieldSpec(
-            S.Profiles.Axial(S.PowerLaw(-1; val0=$params.B.B0, s0=1.0)),
-            $params.B.ordered > 0 ? S.Directions.HelicalAT($params.B.helixψ) : S.Directions.Scalar(),
-            $params.B.ordered == 1 ? identity :
-            $params.B.ordered == 0 ? b->S.FullyTangled(b) :
-            b->S.TangledOrderedMixture(b; kappa=$params.B.ordered / (1 - $params.B.ordered)),
-        ),
         velocity = $params.geom.β_φ == 0 ? velocity_along : velocity_along + S.VelocitySpec(S.Directions.Toroidal(), S.beta, S.Profiles.RigidRotation(β_ref=$params.geom.β_φ, ρ_ref=1.0)),
-        model = $params.electrons.anis ?
-            S.AnisotropicPowerLawElectrons(;$params.electrons.p, η=$params.electrons.anis_η, Cj=1.0, Ca=1.0) :
-            S.IsotropicPowerLawElectrons(;$params.electrons.p, Cj=1.0, Ca=1.0),
+        emission = S.SynchrotronEmission(
+            ne,
+            B = S.BFieldSpec(
+                S.Profiles.Axial(S.PowerLaw(-1; val0=$params.B.B0, s0=1.0)),
+                $params.B.ordered > 0 ? S.Directions.HelicalAT($params.B.helixψ) : S.Directions.Scalar(),
+                $params.B.ordered == 1 ? identity :
+                $params.B.ordered == 0 ? b->S.FullyTangled(b) :
+                b->S.TangledOrderedMixture(b; kappa=$params.B.ordered / (1 - $params.B.ordered)),
+            ),
+            electrons = $params.electrons.anis ?
+                S.AnisotropicPowerLawElectrons(;$params.electrons.p, η=$params.electrons.anis_η, Cj=1.0, Ca=1.0) :
+                S.IsotropicPowerLawElectrons(;$params.electrons.p, Cj=1.0, Ca=1.0),
+        ),
     )
 
     S.prepare_for_computations(region)

@@ -126,15 +126,6 @@ end
 	return (j, a)
 end
 
-@inline emissivity_absorption_polarized(obj::AbstractSynchrotronMedium, x4, k′) = begin
-	# Return *comoving-frame* polarized emissivity/absorption in the intrinsic field basis:
-	# (j_⊥, j_∥), (α_⊥, α_∥). For the currently implemented models we split the existing
-	# scalar Stokes-I coefficients using the RL thin-limit polarization fractions Π_j, Π_α.
-	(jI, αI) = emissivity_absorption(obj, x4, k′)
-	field = magnetic_field(obj, x4)
-	model = synchrotron_model(obj)
-	return _emissivity_absorption_polarized_field(model, jI, αI, field, k′)
-end
 
 
 # Project v into the plane orthogonal to n (i.e. remove the component along n).

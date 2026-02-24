@@ -6,10 +6,12 @@
 	# Base emission region (equivalent to the ConicalJet from patterns_knots.jl)
 	region = S.EmissionRegion(
 		geometry = S.Geometries.Conical(; axis = SVector(0, 0, 1), φj = 0.05, z = 1e-3..10),
-		ne = S.Profiles.Axial(S.PowerLaw(-2; val0=2., s0=1.)),
-		B = S.BFieldSpec(S.Profiles.Axial(S.PowerLaw(-1; val0=3., s0=1.)), S.Directions.Scalar(), b -> S.FullyTangled(b)),
 		velocity = S.VelocitySpec(S.Directions.Axial(), S.Profiles.Constant(1.0)),
-		model = S.IsotropicPowerLawElectrons(; p=2.5, Cj=1, Ca=1),
+		emission = S.SynchrotronEmission(
+			ne = S.Profiles.Axial(S.PowerLaw(-2; val0=2., s0=1.)),
+			B = S.BFieldSpec(S.Profiles.Axial(S.PowerLaw(-1; val0=3., s0=1.)), S.Directions.Scalar(), b -> S.FullyTangled(b)),
+			electrons = S.IsotropicPowerLawElectrons(; p=2.5, Cj=1, Ca=1),
+		),
 	)
 
 	# A moving knot centered on-axis at z=2
@@ -21,8 +23,8 @@
 	)
 
 	# Create region with knot patterns
-	region_with_knot = @set region.ne = S.Profiles.Modified(region.ne, knot)
-	region_with_knot = @set region_with_knot.B.scale = S.Profiles.Modified(region_with_knot.B.scale, knot)
+	region_with_knot = @set region.emission.ne = S.Profiles.Modified(region.emission.ne, knot)
+	region_with_knot = @set region_with_knot.emission.B.scale = S.Profiles.Modified(region_with_knot.emission.B.scale, knot)
 
 	x4c = knot.x_c0
 	@test knot(region.geometry, x4c, 1.0) ≈ 2.0
@@ -106,7 +108,7 @@
 			profile = S.Patterns.GaussianBump(2.5),
 		)
 
-		region_cs = @set region.ne = S.Profiles.Modified(region.ne, knot_cs)
+		region_cs = @set region.emission.ne = S.Profiles.Modified(region.emission.ne, knot_cs)
 		
 		# At the center, should see the peak factor
 		x4c = knot_cs.x_c0

@@ -5,10 +5,12 @@
 	s0 = 1
 	region = S.EmissionRegion(
 		geometry = S.Geometries.Conical(; axis=SVector(0, 0, 1), φj=0.05, z=1e-3..5),
-		ne = S.Profiles.Axial(S.PowerLaw(-2; val0=2, s0)),
-		B = S.BFieldSpec(S.Profiles.Axial(S.PowerLaw(-1; val0=3, s0)), S.Directions.Scalar(), b -> S.FullyTangled(b)),
 		velocity = S.VelocitySpec(S.Directions.Axial(), S.beta, S.Profiles.Constant(0)),
-		model = S.IsotropicPowerLawElectrons(; p=2.5, Cj=1, Ca=1),
+		emission = S.SynchrotronEmission(
+			ne = S.Profiles.Axial(S.PowerLaw(-2; val0=2, s0)),
+			B = S.BFieldSpec(S.Profiles.Axial(S.PowerLaw(-1; val0=3, s0)), S.Directions.Scalar(), b -> S.FullyTangled(b)),
+			electrons = S.IsotropicPowerLawElectrons(; p=2.5, Cj=1, Ca=1),
+		),
 	)
 
 	@testset "jet axis along ray" begin
@@ -99,10 +101,12 @@ end
 			φj=2u"°",
 			z=1e-3u"pc"..50u"pc",
 		),
-		ne=S.Profiles.Axial(S.PowerLaw(-2; val0=2u"cm^-3", s0=1u"pc")),
-		B=S.BFieldSpec(S.Profiles.Axial(S.PowerLaw(-1; val0=3u"Gauss", s0=1u"pc")), S.Directions.Scalar(), b -> S.FullyTangled(b)),
 		velocity=S.VelocitySpec(S.Directions.Axial(), S.beta, S.Profiles.Constant(0.0)),
-		model=S.IsotropicPowerLawElectrons(; p=2.5),
+		emission=S.SynchrotronEmission(
+			ne=S.Profiles.Axial(S.PowerLaw(-2; val0=2u"cm^-3", s0=1u"pc")),
+			B=S.BFieldSpec(S.Profiles.Axial(S.PowerLaw(-1; val0=3u"Gauss", s0=1u"pc")), S.Directions.Scalar(), b -> S.FullyTangled(b)),
+			electrons=S.IsotropicPowerLawElectrons(; p=2.5),
+		),
 	) |> ustrip
 	knot = S.Patterns.EllipsoidalKnot(
 		x_c0=S.FourPosition(0.0u"pc", 0.0u"pc", 0u"pc", 0u"pc"),
@@ -112,8 +116,8 @@ end
 		profile=S.Patterns.GaussianBump(100),
 	) |> ustrip
 
-	@test region.model.Cj_ordered * region.model.sinavg_j ≈ 1.565e-18 rtol=1e-3
-	@test region.model.Ca_ordered * region.model.sinavg_a ≈ 6.78e12 rtol=1e-3
+	@test region.emission.electrons.Cj_ordered * region.emission.electrons.sinavg_j ≈ 1.565e-18 rtol=1e-3
+	@test region.emission.electrons.Ca_ordered * region.emission.electrons.sinavg_a ≈ 6.78e12 rtol=1e-3
 
 	cam = ustrip(S.CameraZ(;
 		xys=grid(SVector, range(0.01u"pc"..0.1u"pc", 2), range(-0.001u"pc"..0.001u"pc", 2)),
@@ -148,10 +152,12 @@ end
 
 	region = S.EmissionRegion(
 		geometry = S.Geometries.Conical(; axis=S.SVector(sin(θ), 0.0, cos(θ)), φj, z=1e-3..50),
-		ne = S.Profiles.Axial(S.PowerLaw(-2; val0=1., s0)),
-		B = S.BFieldSpec(S.Profiles.Axial(S.PowerLaw(-1; val0=3., s0)), S.Directions.Scalar(), b -> S.FullyTangled(b)),
 		velocity = S.VelocitySpec(S.Directions.Axial(), S.beta, S.Profiles.Constant(0f0)),
-		model = S.IsotropicPowerLawElectrons(; p=2.5, Cj=1.0, Ca=1.0),
+		emission = S.SynchrotronEmission(
+			ne = S.Profiles.Axial(S.PowerLaw(-2; val0=1., s0)),
+			B = S.BFieldSpec(S.Profiles.Axial(S.PowerLaw(-1; val0=3., s0)), S.Directions.Scalar(), b -> S.FullyTangled(b)),
+			electrons = S.IsotropicPowerLawElectrons(; p=2.5, Cj=1.0, Ca=1.0),
+		),
 	)
 
 	@testset "core shift (intensity peak along axis) scales ~ ν^-1" begin
@@ -200,11 +206,11 @@ end
 		@test τthin < 0.2
 
 		I0 = S.render(ray, region)
-		I_ne = S.render(ray, @set region.ne.f.val0 *= 2)
+		I_ne = S.render(ray, @set region.emission.ne.f.val0 *= 2)
 		@test I_ne ≈ 2I0 rtol=0.05
 
-		p = region.model.p
-		I_B = S.render(ray, @set region.B.scale.f.val0 *= 2)
+		p = region.emission.electrons.p
+		I_B = S.render(ray, @set region.emission.B.scale.f.val0 *= 2)
 		@test I_B ≈ I0 * (2^((p + 1) / 2)) rtol=0.07
 	end
 end
@@ -219,10 +225,12 @@ end
 
 	region = S.EmissionRegion(
 		geometry = S.Geometries.Conical(; axis=S.SVector(sin(θ), 0.0, cos(θ)), φj, z=1e-3..50),
-		ne = S.Profiles.Axial(S.PowerLaw(-2; val0=1., s0=1.)),
-		B = S.BFieldSpec(S.Profiles.Axial(S.PowerLaw(-1; val0=3., s0=1.)), S.Directions.Scalar(), b -> S.FullyTangled(b)),
 		velocity = S.VelocitySpec(S.Directions.Axial(), S.beta, S.Profiles.Constant(0f0)),
-		model = S.IsotropicPowerLawElectrons(; p=2.5, Cj=1.0, Ca=1.0),
+		emission = S.SynchrotronEmission(
+			ne = S.Profiles.Axial(S.PowerLaw(-2; val0=1., s0=1.)),
+			B = S.BFieldSpec(S.Profiles.Axial(S.PowerLaw(-1; val0=3., s0=1.)), S.Directions.Scalar(), b -> S.FullyTangled(b)),
+			electrons = S.IsotropicPowerLawElectrons(; p=2.5, Cj=1.0, Ca=1.0),
+		),
 	)
 
 	cam64 = S.CameraZ(; xys=grid(S.SVector, range(0.01..0.1, 2), range(-0.001..0.001, 2)), nz=20, ν=2., t=0.)

@@ -20,8 +20,8 @@ end
 
 @inline emissivity_absorption_polarized_invariant(obj::AbstractMedium, x4, k′) = begin
 	ν′ = frequency(k′)
-	(j, α) = emissivity_absorption_polarized(obj, x4, k′)
-	return (j / (ν′^2), α * ν′)
+	(j, α, B′) = emissivity_absorption_polarized(obj, x4, k′)
+	return (j / (ν′^2), α * ν′, B′)
 end
 
 # if a medium defines only `emissivity_absorption`, the generic `emissivity`/`absorption` wrappers below will work
@@ -32,8 +32,6 @@ end
 @inline absorption(obj::AbstractMedium, x4, k′) = emissivity_absorption(obj, x4, k′)[2]
 
 
-
-abstract type AbstractSynchrotronMedium <: AbstractMedium end
 
 abstract type AbstractMagneticField end
 
@@ -82,7 +80,3 @@ Base.:≈(a::TangledOrderedMixture, b::TangledOrderedMixture; kwargs...) =
 Base.:*(a::Number, f::TangledOrderedMixture) = TangledOrderedMixture(a * f.b, f.kappa)
 Base.:*(f::TangledOrderedMixture, a::Number) = TangledOrderedMixture(f.b * a, f.kappa)
 
-@inline emissivity_absorption(obj::AbstractSynchrotronMedium, x4, k′) =
-	_synchrotron_coeffs(
-		synchrotron_model(obj),
-		electron_density(obj, x4), magnetic_field(obj, x4), k′)

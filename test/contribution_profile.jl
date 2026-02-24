@@ -42,8 +42,8 @@ end
 	p = 2.5
 	electrons = S.IsotropicPowerLawElectrons(; p=p, γmin=10.0, γmax=1e4, Cj=1e-3, Ca=1e-5)
 
-	make_medium(; z=0..L, u0=S.FourVelocity(SVector(0,0,0)), B0=B_ordered, model=electrons) =
-		S.UniformSynchrotronSlab(; z, u0, ne0=1.0, B0, model)
+	make_medium(; z=0..L, u0=S.FourVelocity(SVector(0,0,0)), B0=B_ordered, electrons=electrons) =
+		S.UniformSynchrotronSlab(; z, u0, ne0=1.0, B0, electrons)
 
 	medium = make_medium()
 	ray = S.RayZ(; x0=S.FourPosition(0,0,0,0), k=2.0, nz=1_000)
@@ -105,14 +105,16 @@ end
 	θ = 0.1
 	region = S.EmissionRegion(
 		geometry = S.Geometries.Conical(; axis=SVector(sin(θ), 0, cos(θ)), φj=0.1, z=0.5..20.0),
-		ne = S.Profiles.Constant(1.0),
-		B = S.BFieldSpec(
-			S.Profiles.Constant(0.5),
-			S.Directions.HelicalAT(π/6),
-			identity
-		),
 		velocity = S.VelocitySpec(S.Directions.Axial(), S.gamma, S.Profiles.Constant(10)),
-		model = S.IsotropicPowerLawElectrons(; p=2.5, Cj=2e-3, Ca=5e-5),
+		emission = S.SynchrotronEmission(
+			ne = S.Profiles.Constant(1.0),
+			B = S.BFieldSpec(
+				S.Profiles.Constant(0.5),
+				S.Directions.HelicalAT(π/6),
+				identity
+			),
+			electrons = S.IsotropicPowerLawElectrons(; p=2.5, Cj=2e-3, Ca=5e-5),
+		),
 	)
 
 	ray = S.RayZ(; x0=S.FourPosition(0, 1, 0, 0), k=2.0, nz=500)

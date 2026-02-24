@@ -82,13 +82,13 @@ four_velocity(obj::MovingUniformEllipsoid, x4) = obj.u0
 emissivity_absorption(obj::MovingUniformEllipsoid, x4, k′) = (obj.jν, obj.αν)
 
 
-@kwdef struct UniformSynchrotronSphere{TC,TR,TU,Tne,TB,TM} <: AbstractSynchrotronMedium
+@kwdef struct UniformSynchrotronSphere{TC,TR,TU,Tne,TB,TM} <: AbstractMedium
 	center::TC
 	radius::TR
 	u0::TU
 	ne0::Tne
 	B0::TB
-	model::TM
+	electrons::TM
 end
 
 z_interval(obj::UniformSynchrotronSphere, ray::RayZ) = begin
@@ -104,4 +104,10 @@ four_velocity(obj::UniformSynchrotronSphere, x4) = obj.u0
 
 electron_density(obj::UniformSynchrotronSphere, x4) = obj.ne0
 magnetic_field(obj::UniformSynchrotronSphere, x4) = FullyTangled(obj.B0)
-synchrotron_model(obj::UniformSynchrotronSphere) = obj.model
+emissivity_absorption(obj::UniformSynchrotronSphere, x4, k′) =
+	_synchrotron_coeffs(obj.electrons, obj.ne0, FullyTangled(obj.B0), k′)
+emissivity_absorption_polarized(obj::UniformSynchrotronSphere, x4, k′) = begin
+	(jI, αI) = emissivity_absorption(obj, x4, k′)
+	(j, α) = _emissivity_absorption_polarized_field(obj.electrons, jI, αI, FullyTangled(obj.B0), k′)
+	return (j, α, FullyTangled(obj.B0))
+end

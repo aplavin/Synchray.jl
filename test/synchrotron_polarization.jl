@@ -15,8 +15,8 @@
 		S.AnisotropicPowerLawElectrons(; p=2.5, η=0.5, Cj=0.7, Ca=0.3),
 	)
 
-	@testset for model in cases
-		slab = S.UniformSynchrotronSlab(; z, u0, ne0, B0=SVector(B0, 0.0, 0.0), model)
+	@testset for electrons in cases
+		slab = S.UniformSynchrotronSlab(; z, u0, ne0, B0=SVector(B0, 0.0, 0.0), electrons)
 		(j, a) = S.emissivity_absorption_polarized(slab, x4, k′)
 		(jI, αI) = S.emissivity_absorption(slab, x4, k′)
 
@@ -42,8 +42,8 @@ end
 	B0 = 0.9
 	z = 0.0..1.0
 
-	model = S.IsotropicPowerLawElectrons(; p=3.2, Cj=0.7, Ca=0.3)
-	slab = S.UniformSynchrotronSlab(; z, u0, ne0, B0=S.FullyTangled(B0), model)
+	electrons = S.IsotropicPowerLawElectrons(; p=3.2, Cj=0.7, Ca=0.3)
+	slab = S.UniformSynchrotronSlab(; z, u0, ne0, B0=S.FullyTangled(B0), electrons)
 	(j, a) = S.emissivity_absorption_polarized(slab, x4, k′)
 	@test j.perp ≈ j.par
 	@test a.perp ≈ a.par
@@ -64,12 +64,12 @@ end
 	ne0 = 1.3
 	B0 = 0.9
 	z = 0.0..1.0
-	model = S.IsotropicPowerLawElectrons(; p=3.2, Cj=0.7, Ca=0.3)
+	electrons = S.IsotropicPowerLawElectrons(; p=3.2, Cj=0.7, Ca=0.3)
 	b = SVector(B0, 0.0, 0.0)
 
 	@testset "κ=0 depolarized" begin
 		field = S.TangledOrderedMixture(b, 0.0)
-		slab = S.UniformSynchrotronSlab(; z, u0, ne0, B0=field, model)
+		slab = S.UniformSynchrotronSlab(; z, u0, ne0, B0=field, electrons)
 		(j, a) = S.emissivity_absorption_polarized(slab, x4, k′)
 		(jI, αI) = S.emissivity_absorption(slab, x4, k′)
 
@@ -81,10 +81,10 @@ end
 
 	@testset "κ→∞ ordered" begin
 		field_mixed = S.TangledOrderedMixture(b, Inf)
-		slab_mixed = S.UniformSynchrotronSlab(; z, u0, ne0, B0=field_mixed, model)
+		slab_mixed = S.UniformSynchrotronSlab(; z, u0, ne0, B0=field_mixed, electrons)
 		(j_mixed, a_mixed) = S.emissivity_absorption_polarized(slab_mixed, x4, k′)
 
-		slab_ordered = S.UniformSynchrotronSlab(; z, u0, ne0, B0=b, model)
+		slab_ordered = S.UniformSynchrotronSlab(; z, u0, ne0, B0=b, electrons)
 		(j_ordered, a_ordered) = S.emissivity_absorption_polarized(slab_ordered, x4, k′)
 
 		@test j_mixed.perp ≈ j_ordered.perp rtol=1e-14
@@ -95,7 +95,7 @@ end
 
 	@testset "κ=2 intermediate" begin
 		field = S.TangledOrderedMixture(b, 2.0)
-		slab = S.UniformSynchrotronSlab(; z, u0, ne0, B0=field, model)
+		slab = S.UniformSynchrotronSlab(; z, u0, ne0, B0=field, electrons)
 		(j, a) = S.emissivity_absorption_polarized(slab, x4, k′)
 		(jI, αI) = S.emissivity_absorption(slab, x4, k′)
 
@@ -104,7 +104,7 @@ end
 		@test (j.perp + j.par) ≈ jI rtol=5e-15 atol=0
 		@test (a.perp + a.par)/2 ≈ αI rtol=5e-15 atol=0
 
-		slab_ordered = S.UniformSynchrotronSlab(; z, u0, ne0, B0=b, model)
+		slab_ordered = S.UniformSynchrotronSlab(; z, u0, ne0, B0=b, electrons)
 		(j_ord, _) = S.emissivity_absorption_polarized(slab_ordered, x4, k′)
 		pol_frac = (j.perp - j.par) / (j.perp + j.par)
 		pol_frac_ord = (j_ord.perp - j_ord.par) / (j_ord.perp + j_ord.par)
@@ -114,7 +114,7 @@ end
 
 	@testset "Viewing angle dependence" begin
 		field = S.TangledOrderedMixture(b, 2.0)
-		slab = S.UniformSynchrotronSlab(; z, u0, ne0, B0=field, model)
+		slab = S.UniformSynchrotronSlab(; z, u0, ne0, B0=field, electrons)
 
 		k_perp = S.photon_k(ν, SVector(0.0, 0.0, 1.0))
 		(j_perp, _) = S.emissivity_absorption_polarized(slab, x4, k_perp)
@@ -134,14 +134,14 @@ end
 		χ = 0.42
 		b_oblique = SVector(B0 * cos(χ), B0 * sin(χ), 0.0)
 
-		slab_ordered = S.UniformSynchrotronSlab(; z, u0, ne0, B0=b_oblique, model)
+		slab_ordered = S.UniformSynchrotronSlab(; z, u0, ne0, B0=b_oblique, electrons)
 		ray = S.RayZ(; x0=x4, k=k′, nz=40)
 		S_ordered = S.render(ray, slab_ordered, S.IntensityIQU())
 		evpa_ordered = S.evpa(S_ordered)
 
 		@testset for κ_test in [0.5, 2.0, 10.0]
 			field_mixed = S.TangledOrderedMixture(b_oblique, κ_test)
-			slab_mixed = S.UniformSynchrotronSlab(; z, u0, ne0, B0=field_mixed, model)
+			slab_mixed = S.UniformSynchrotronSlab(; z, u0, ne0, B0=field_mixed, electrons)
 			S_mixed = S.render(ray, slab_mixed, S.IntensityIQU())
 			evpa_mixed = S.evpa(S_mixed)
 
@@ -153,7 +153,7 @@ end
 		end
 
 		field_depol = S.TangledOrderedMixture(b_oblique, 0.0)
-		slab_depol = S.UniformSynchrotronSlab(; z, u0, ne0, B0=field_depol, model)
+		slab_depol = S.UniformSynchrotronSlab(; z, u0, ne0, B0=field_depol, electrons)
 		S_depol = S.render(ray, slab_depol, S.IntensityIQU())
 		pol_deg_depol = √(S_depol.Q^2 + S_depol.U^2) / S_depol.I
 		@test pol_deg_depol < 1e-10
@@ -176,15 +176,15 @@ end
 	@testset "η=1 matches IsotropicPowerLawElectrons" begin
 		p = 3.2
 		# Create both models with same parameters
-		model_iso = S.IsotropicPowerLawElectrons(; p, Cj=0.7, Ca=0.3)
-		model_aniso = S.AnisotropicPowerLawElectrons(; p, η=1.0, Cj=0.7, Ca=0.3)
+		electrons_iso = S.IsotropicPowerLawElectrons(; p, Cj=0.7, Ca=0.3)
+		electrons_aniso = S.AnisotropicPowerLawElectrons(; p, η=1.0, Cj=0.7, Ca=0.3)
 
 		for κ in [0.0, 2.0, Inf]
 			field = S.TangledOrderedMixture(b, κ)
 
 			# Test Stokes-I coefficients
-			slab_iso = S.UniformSynchrotronSlab(; z, u0, ne0, B0=field, model=model_iso)
-			slab_aniso = S.UniformSynchrotronSlab(; z, u0, ne0, B0=field, model=model_aniso)
+			slab_iso = S.UniformSynchrotronSlab(; z, u0, ne0, B0=field, electrons=electrons_iso)
+			slab_aniso = S.UniformSynchrotronSlab(; z, u0, ne0, B0=field, electrons=electrons_aniso)
 
 			(jI_iso, αI_iso) = S.emissivity_absorption(slab_iso, x4, k′)
 			(jI_aniso, αI_aniso) = S.emissivity_absorption(slab_aniso, x4, k′)
@@ -204,9 +204,9 @@ end
 	end
 
 	@testset "κ=0 depolarized for anisotropic electrons" begin
-		model = S.AnisotropicPowerLawElectrons(; p=2.5, η=0.5, Cj=0.7, Ca=0.3)
+		electrons = S.AnisotropicPowerLawElectrons(; p=2.5, η=0.5, Cj=0.7, Ca=0.3)
 		field = S.TangledOrderedMixture(b, 0.0)
-		slab = S.UniformSynchrotronSlab(; z, u0, ne0, B0=field, model)
+		slab = S.UniformSynchrotronSlab(; z, u0, ne0, B0=field, electrons)
 
 		(j, a) = S.emissivity_absorption_polarized(slab, x4, k′)
 		(jI, αI) = S.emissivity_absorption(slab, x4, k′)
@@ -219,13 +219,13 @@ end
 	end
 
 	@testset "κ→∞ matches ordered anisotropic field" begin
-		model = S.AnisotropicPowerLawElectrons(; p=2.5, η=0.5, Cj=0.7, Ca=0.3)
+		electrons = S.AnisotropicPowerLawElectrons(; p=2.5, η=0.5, Cj=0.7, Ca=0.3)
 
 		field_mixed = S.TangledOrderedMixture(b, Inf)
-		slab_mixed = S.UniformSynchrotronSlab(; z, u0, ne0, B0=field_mixed, model)
+		slab_mixed = S.UniformSynchrotronSlab(; z, u0, ne0, B0=field_mixed, electrons)
 		(j_mixed, a_mixed) = S.emissivity_absorption_polarized(slab_mixed, x4, k′)
 
-		slab_ordered = S.UniformSynchrotronSlab(; z, u0, ne0, B0=b, model)
+		slab_ordered = S.UniformSynchrotronSlab(; z, u0, ne0, B0=b, electrons)
 		(j_ordered, a_ordered) = S.emissivity_absorption_polarized(slab_ordered, x4, k′)
 
 		@test j_mixed.perp ≈ j_ordered.perp rtol=1e-14
@@ -235,9 +235,9 @@ end
 	end
 
 	@testset "κ=2 intermediate polarization" begin
-		model = S.AnisotropicPowerLawElectrons(; p=2.5, η=0.5, Cj=0.7, Ca=0.3)
+		electrons = S.AnisotropicPowerLawElectrons(; p=2.5, η=0.5, Cj=0.7, Ca=0.3)
 		field = S.TangledOrderedMixture(b, 2.0)
-		slab = S.UniformSynchrotronSlab(; z, u0, ne0, B0=field, model)
+		slab = S.UniformSynchrotronSlab(; z, u0, ne0, B0=field, electrons)
 
 		(j, a) = S.emissivity_absorption_polarized(slab, x4, k′)
 		(jI, αI) = S.emissivity_absorption(slab, x4, k′)
@@ -249,7 +249,7 @@ end
 		@test (a.perp + a.par)/2 ≈ αI rtol=5e-15 atol=0
 
 		# Polarization should be less than fully ordered case
-		slab_ordered = S.UniformSynchrotronSlab(; z, u0, ne0, B0=b, model)
+		slab_ordered = S.UniformSynchrotronSlab(; z, u0, ne0, B0=b, electrons)
 		(j_ord, _) = S.emissivity_absorption_polarized(slab_ordered, x4, k′)
 		pol_frac = (j.perp - j.par) / (j.perp + j.par)
 		pol_frac_ord = (j_ord.perp - j_ord.par) / (j_ord.perp + j_ord.par)
@@ -258,18 +258,18 @@ end
 	end
 
 	@testset "EVPA matches ordered field" begin
-		model = S.AnisotropicPowerLawElectrons(; p=2.5, η=0.5, Cj=0.7, Ca=0.3)
+		electrons = S.AnisotropicPowerLawElectrons(; p=2.5, η=0.5, Cj=0.7, Ca=0.3)
 		χ = 0.42
 		b_oblique = SVector(B0 * cos(χ), B0 * sin(χ), 0.0)
 
-		slab_ordered = S.UniformSynchrotronSlab(; z, u0, ne0, B0=b_oblique, model)
+		slab_ordered = S.UniformSynchrotronSlab(; z, u0, ne0, B0=b_oblique, electrons)
 		ray = S.RayZ(; x0=x4, k=k′, nz=40)
 		S_ordered = S.render(ray, slab_ordered, S.IntensityIQU())
 		evpa_ordered = S.evpa(S_ordered)
 
 		@testset for κ_test in [0.5, 2.0, 10.0]
 			field_mixed = S.TangledOrderedMixture(b_oblique, κ_test)
-			slab_mixed = S.UniformSynchrotronSlab(; z, u0, ne0, B0=field_mixed, model)
+			slab_mixed = S.UniformSynchrotronSlab(; z, u0, ne0, B0=field_mixed, electrons)
 			S_mixed = S.render(ray, slab_mixed, S.IntensityIQU())
 			evpa_mixed = S.evpa(S_mixed)
 
@@ -282,7 +282,7 @@ end
 
 		# κ=0 should be fully depolarized
 		field_depol = S.TangledOrderedMixture(b_oblique, 0.0)
-		slab_depol = S.UniformSynchrotronSlab(; z, u0, ne0, B0=field_depol, model)
+		slab_depol = S.UniformSynchrotronSlab(; z, u0, ne0, B0=field_depol, electrons)
 		S_depol = S.render(ray, slab_depol, S.IntensityIQU())
 		pol_deg_depol = √(S_depol.Q^2 + S_depol.U^2) / S_depol.I
 		@test pol_deg_depol < 1e-10
@@ -295,13 +295,13 @@ end
 		field = S.TangledOrderedMixture(b, κ)
 
 		# η < 1: electrons along field
-		model_along = S.AnisotropicPowerLawElectrons(; p, η=0.3, Cj=0.7, Ca=0.3)
-		slab_along = S.UniformSynchrotronSlab(; z, u0, ne0, B0=field, model=model_along)
+		electrons_along = S.AnisotropicPowerLawElectrons(; p, η=0.3, Cj=0.7, Ca=0.3)
+		slab_along = S.UniformSynchrotronSlab(; z, u0, ne0, B0=field, electrons=electrons_along)
 		(j_along, _) = S.emissivity_absorption_polarized(slab_along, x4, k′)
 
 		# η > 1: electrons perpendicular to field
-		model_perp = S.AnisotropicPowerLawElectrons(; p, η=3.0, Cj=0.7, Ca=0.3)
-		slab_perp = S.UniformSynchrotronSlab(; z, u0, ne0, B0=field, model=model_perp)
+		electrons_perp = S.AnisotropicPowerLawElectrons(; p, η=3.0, Cj=0.7, Ca=0.3)
+		slab_perp = S.UniformSynchrotronSlab(; z, u0, ne0, B0=field, electrons=electrons_perp)
 		(j_perp, _) = S.emissivity_absorption_polarized(slab_perp, x4, k′)
 
 		# Both should be polarized but with different degrees
@@ -340,8 +340,8 @@ end
 		B0 = 0.9
 		z = 0.0..1.0
 
-		model = S.IsotropicPowerLawElectrons(; p=3.2, Cj=0.7, Ca=0.3)
-		slab = S.UniformSynchrotronSlab(; z, u0, ne0, B0=SVector(B0, 0.0, 0.0), model)
+		electrons = S.IsotropicPowerLawElectrons(; p=3.2, Cj=0.7, Ca=0.3)
+		slab = S.UniformSynchrotronSlab(; z, u0, ne0, B0=SVector(B0, 0.0, 0.0), electrons)
 		(j, a) = S.emissivity_absorption_polarized(slab, x4, k′)
 		(Jinv, Ainv) = S.emissivity_absorption_polarized_invariant(slab, x4, k′)
 		@test Jinv ≈ j / (ν^2)
@@ -354,7 +354,7 @@ end
 	import Synchray as S
 	using Test
 
-	struct ConstPolarizedSlab{TZ,TU,TB,TJ,TA} <: S.AbstractSynchrotronMedium
+	struct ConstPolarizedSlab{TZ,TU,TB,TJ,TA} <: S.AbstractMedium
 		z::TZ
 		u0::TU
 		B0::TB
@@ -364,8 +364,7 @@ end
 
 	S.z_interval(obj::ConstPolarizedSlab, ray::S.RayZ) = obj.z
 	S.four_velocity(obj::ConstPolarizedSlab, x4) = obj.u0
-	S.magnetic_field(obj::ConstPolarizedSlab, x4) = obj.B0
-	S.emissivity_absorption_polarized(obj::ConstPolarizedSlab, x4, k′) = (obj.j_mode, obj.a_mode)
+	S.emissivity_absorption_polarized(obj::ConstPolarizedSlab, x4, k′) = (obj.j_mode, obj.a_mode, obj.B0)
 	S.emissivity_absorption(obj::ConstPolarizedSlab, x4, k′) = (obj.j_mode.perp + obj.j_mode.par, (obj.a_mode.perp + obj.a_mode.par) / 2)
 
 	ν = 2.0
@@ -429,7 +428,7 @@ end
 	using Test
 
 	p = 3.2
-	model = S.IsotropicPowerLawElectrons(; p, Cj=0.7, Ca=0.3)
+	electrons = S.IsotropicPowerLawElectrons(; p, Cj=0.7, Ca=0.3)
 	ν = 2.0
 	z = 0.0 .. 1.0
 	ray = S.RayZ(; x0=S.FourPosition(0.0, 0.0, 0.0, 0.0), k=S.photon_k(ν, SVector(0.0, 0.0, 1.0)), nz=80)
@@ -463,11 +462,11 @@ end
 
 	# Helper: scale ne0 so that the actual ray optical depth hits a target τ.
 	with_tau(u0, B0, τ_target) = begin
-		slab1 = S.UniformSynchrotronSlab(; z, u0, ne0=1.0, B0, model)
+		slab1 = S.UniformSynchrotronSlab(; z, u0, ne0=1.0, B0, electrons)
 		τ1 = S.render(ray, slab1, S.OpticalDepth())
 		@test τ1 > 0
 		ne0 = τ_target / τ1
-		S.UniformSynchrotronSlab(; z, u0, ne0, B0, model)
+		S.UniformSynchrotronSlab(; z, u0, ne0, B0, electrons)
 	end
 
 	targets = (
@@ -626,10 +625,12 @@ end
 	# line integral of j_I and j_I = j_⊥ + j_∥ by construction.
 	region = S.EmissionRegion(;
 		geometry=S.Geometries.Conical(axis=SVector(0, 0, 1), φj=2u"°", z=1e-3u"pc"..50u"pc"),
-		ne=S.Profiles.Axial(S.PowerLaw(-2; val0=2u"cm^-3", s0=1u"pc")),
-		B=S.BFieldSpec(S.Profiles.Axial(S.PowerLaw(-1; val0=3u"Gauss", s0=1u"pc")), S.Directions.Axial(), b -> b),
 		velocity=S.VelocitySpec(S.Directions.Axial(), S.beta, S.Profiles.Constant(0.0)),
-		model=S.IsotropicPowerLawElectrons(; p=2.5, Cj=1.0, Ca=0.0),
+		emission=S.SynchrotronEmission(
+			ne=S.Profiles.Axial(S.PowerLaw(-2; val0=2u"cm^-3", s0=1u"pc")),
+			B=S.BFieldSpec(S.Profiles.Axial(S.PowerLaw(-1; val0=3u"Gauss", s0=1u"pc")), S.Directions.Axial(), b -> b),
+			electrons=S.IsotropicPowerLawElectrons(; p=2.5, Cj=1.0, Ca=0.0),
+		),
 	) |> ustrip
 
 	cam = ustrip(S.CameraZ(

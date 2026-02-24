@@ -131,7 +131,7 @@ function synchrotron_sphere_image(; render_field=render_field_cpu, suffix="")
         u0=S.FourVelocity(SVector(0.0, 0.0, 0.0)),
         ne0=1.0,
         B0=1.0,
-        model=S.IsotropicPowerLawElectrons(; p=2.5, Cj=1.0, Ca),
+        electrons=S.IsotropicPowerLawElectrons(; p=2.5, Cj=1.0, Ca),
     )
 
     fields = (
@@ -163,10 +163,12 @@ function bk_jet_image(; render_field=render_field_cpu, suffix="")
 
     jet0 = S.EmissionRegion(
         geometry = Geometries.Conical(; axis=SVector(1, 0, 0), φj, z=1e-3 .. 50),
-        ne = Profiles.Axial(S.PowerLaw(-2; val0=1.0, s0=1.0)),
-        B = S.BFieldSpec(Profiles.Axial(S.PowerLaw(-1; val0=1.0, s0=1.0)), Directions.Scalar(), b->S.FullyTangled(b)),
         velocity = S.VelocitySpec(Directions.Radial(), S.gamma, Profiles.Transverse(Profiles.LinearInterp(((0.3, 10.0), (0.8, 8.0))))),
-        model = S.IsotropicPowerLawElectrons(; p=2.3, Cj=1.0, Ca=0.1),
+        emission = S.SynchrotronEmission(
+            ne = Profiles.Axial(S.PowerLaw(-2; val0=1.0, s0=1.0)),
+            B = S.BFieldSpec(Profiles.Axial(S.PowerLaw(-1; val0=1.0, s0=1.0)), Directions.Scalar(), b->S.FullyTangled(b)),
+            electrons = S.IsotropicPowerLawElectrons(; p=2.3, Cj=1.0, Ca=0.1),
+        ),
     ) |> S.prepare_for_computations
 
     views = (
@@ -199,7 +201,7 @@ function bk_jet_image(; render_field=render_field_cpu, suffix="")
     if render_field === render_field_cpu
         for adaptive_supersampling in (false, 4)
             fig = Figure()
-            jet0 = @set jet0.model.Ca_ordered = 9/jet0.model.sinavg_a
+            jet0 = @set jet0.emission.electrons.Ca_ordered = 9/jet0.emission.electrons.sinavg_a
             for (I, (v, what)) in pairs(collect(Iterators.product(views, whats)))
                 pos = fig[Tuple(I)...]
                 Axis(pos[1,1]; title="$(v.name), $(what.what|>typeof|>nameof) (θ=$(v.θ))", aspect=DataAspect(), width=300, height=300)
@@ -233,10 +235,12 @@ function bk_jet_1_knot_snapshots_image(; render_field=render_field_cpu, suffix="
 
     jet = S.EmissionRegion(
         geometry = S.Geometries.Conical(; axis, φj, z = 1e-3 .. 50.0),
-        ne = S.Profiles.Modified(S.Profiles.Axial(S.PowerLaw(-2; val0=1.0, s0=1.0)), knot),
-        B = S.BFieldSpec(S.Profiles.Axial(S.PowerLaw(-1; val0=1.0, s0=1.0)), S.Directions.Scalar(), b -> S.FullyTangled(b)),
         velocity = S.VelocitySpec(S.Directions.Radial(), S.beta, S.Profiles.Constant(0.995)),
-        model = S.IsotropicPowerLawElectrons(; p=2.3, Cj=1, Ca=1),
+        emission = S.SynchrotronEmission(
+            ne = S.Profiles.Modified(S.Profiles.Axial(S.PowerLaw(-2; val0=1.0, s0=1.0)), knot),
+            B = S.BFieldSpec(S.Profiles.Axial(S.PowerLaw(-1; val0=1.0, s0=1.0)), S.Directions.Scalar(), b -> S.FullyTangled(b)),
+            electrons = S.IsotropicPowerLawElectrons(; p=2.3, Cj=1, Ca=1),
+        ),
     ) |> S.prepare_for_computations
 
     ts = [0, 0.1, 0.25]
@@ -280,9 +284,9 @@ function bk_jet_thick_options_image(; render_field=render_field_cpu, suffix="")
     )
 
     models = (
-        (name="isotropic", model=S.IsotropicPowerLawElectrons(; p=2.3, Cj=1, Ca=0.1)),
-        (name="aniso η=1/100", model=S.AnisotropicPowerLawElectrons(; p=2.3, η=0.01, Cj=1, Ca=0.1)),
-        (name="aniso η=100", model=S.AnisotropicPowerLawElectrons(; p=2.3, η=100, Cj=1, Ca=0.1)),
+        (name="isotropic", electrons=S.IsotropicPowerLawElectrons(; p=2.3, Cj=1, Ca=0.1)),
+        (name="aniso η=1/100", electrons=S.AnisotropicPowerLawElectrons(; p=2.3, η=0.01, Cj=1, Ca=0.1)),
+        (name="aniso η=100", electrons=S.AnisotropicPowerLawElectrons(; p=2.3, η=100, Cj=1, Ca=0.1)),
     )
 
     fig = Figure()
@@ -290,7 +294,7 @@ function bk_jet_thick_options_image(; render_field=render_field_cpu, suffix="")
         pos = fig[r, c]
         Axis(pos[1, 1]; title="$(m.name), $(bc.name)", aspect=DataAspect(), width=300, height=300)
 
-        unsupported = m.model isa S.AnisotropicPowerLawElectrons && bc.B.wrap !== identity
+        unsupported = m.electrons isa S.AnisotropicPowerLawElectrons && bc.B.wrap !== identity
         if unsupported
             hidespines!()
             hidedecorations!()
@@ -300,12 +304,14 @@ function bk_jet_thick_options_image(; render_field=render_field_cpu, suffix="")
 
         jet0 = S.EmissionRegion(;
             geometry = Geometries.Conical(; axis, φj, z=1e-3 .. 50),
-            ne = Profiles.Axial(S.PowerLaw(-2; val0=1, s0=1)),
-            bc.B,
             velocity = S.VelocitySpec(Directions.Radial(), S.beta, Profiles.Constant(0.995)),
-            m.model,
+            emission = S.SynchrotronEmission(;
+                ne = Profiles.Axial(S.PowerLaw(-2; val0=1, s0=1)),
+                bc.B,
+                m.electrons,
+            ),
         ) |> S.prepare_for_computations
-        jet0 = @set jet0.model.Ca_ordered = 9 / jet0.model.sinavg_a
+        jet0 = @set jet0.emission.electrons.Ca_ordered = 9 / jet0.emission.electrons.sinavg_a
 
         img = render_field(jet0; extent=3, ν=1, what=S.Intensity())
         plt = heatmap!(img; colormap=:magma, colorscale=SymLog(1e-4 * maximum(img)))
@@ -333,7 +339,7 @@ function conical_jet_polarization_evpa_image(; render_field=render_field_cpu, su
         (name="helical ψ=45°", B=S.BFieldSpec(Bscale, Directions.HelicalAT(45u"°"), identity)),
     )
 
-    model = S.IsotropicPowerLawElectrons(; p=2.3, Cj=1, Ca=0.1)
+    electrons = S.IsotropicPowerLawElectrons(; p=2.3, Cj=1, Ca=0.1)
 
     fig = Figure()
 
@@ -344,12 +350,14 @@ function conical_jet_polarization_evpa_image(; render_field=render_field_cpu, su
 
         jet0 = S.EmissionRegion(;
             geometry = Geometries.Conical(; axis, φj, z=1e-3 .. 50),
-            ne = Profiles.Axial(S.PowerLaw(-2; val0=1, s0=1)),
-            bc.B,
             velocity = S.VelocitySpec(Directions.Radial(), S.beta, Profiles.Constant(0.995)),
-            model,
+            emission = S.SynchrotronEmission(;
+                ne = Profiles.Axial(S.PowerLaw(-2; val0=1, s0=1)),
+                bc.B,
+                electrons,
+            ),
         ) |> S.prepare_for_computations
-        jet0 = @set jet0.model.Ca_ordered = 9 / jet0.model.sinavg_a
+        jet0 = @set jet0.emission.electrons.Ca_ordered = 9 / jet0.emission.electrons.sinavg_a
 
         img_IQU = render_field(jet0; extent=3, ν=1, what=S.IntensityIQU())
         img_I = getproperty.(img_IQU, :I)
@@ -372,12 +380,14 @@ function conical_jet_polarization_evpa_image(; render_field=render_field_cpu, su
 
         jet0 = S.EmissionRegion(;
             geometry = Geometries.Conical(; axis, φj, z=1e-3 .. 50),
-            ne = Profiles.Axial(S.PowerLaw(-2; val0=1, s0=1)),
-            B = B_mixed,
             velocity = S.VelocitySpec(Directions.Radial(), S.beta, Profiles.Constant(0.995)),
-            model,
+            emission = S.SynchrotronEmission(;
+                ne = Profiles.Axial(S.PowerLaw(-2; val0=1, s0=1)),
+                B = B_mixed,
+                electrons,
+            ),
         ) |> S.prepare_for_computations
-        jet0 = @set jet0.model.Ca_ordered = 9 / jet0.model.sinavg_a
+        jet0 = @set jet0.emission.electrons.Ca_ordered = 9 / jet0.emission.electrons.sinavg_a
 
         img_IQU = render_field(jet0; extent=3, ν=1, what=S.IntensityIQU())
         img_I = getproperty.(img_IQU, :I)
@@ -412,10 +422,12 @@ function precessing_nozzle_snapshots_image(; render_field=render_field_cpu, suff
 
     jet = S.EmissionRegion(
         geometry = S.Geometries.Conical(; axis, φj, z = 1e-3 .. 50.0),
-        ne = S.Profiles.Modified(S.Profiles.Axial(S.PowerLaw(-2; val0=1.0, s0=1.0)), nozzle),
-        B = S.BFieldSpec(S.Profiles.Axial(S.PowerLaw(-1; val0=1.0, s0=1.0)), S.Directions.Scalar(), b -> S.FullyTangled(b)),
         velocity = S.VelocitySpec(S.Directions.Radial(), S.beta, S.Profiles.Constant(0.995)),
-        model = S.IsotropicPowerLawElectrons(; p=2.3, Cj=1, Ca=1),
+        emission = S.SynchrotronEmission(;
+            ne = S.Profiles.Modified(S.Profiles.Axial(S.PowerLaw(-2; val0=1.0, s0=1.0)), nozzle),
+            B = S.BFieldSpec(S.Profiles.Axial(S.PowerLaw(-1; val0=1.0, s0=1.0)), S.Directions.Scalar(), b -> S.FullyTangled(b)),
+            electrons = S.IsotropicPowerLawElectrons(; p=2.3, Cj=1, Ca=1),
+        ),
     ) |> S.prepare_for_computations
 
     ts = [0, 12.5, 25.0]  # period=50, so 0, T/4, T/2
@@ -463,7 +475,7 @@ function jet_combined_velocity_helicalrt_image(; render_field=render_field_cpu, 
                   S.VelocitySpec(Directions.Toroidal(), S.beta, Profiles.RigidRotation(; β_ref=0.02, ρ_ref=1.0))),
     )
 
-    model = S.IsotropicPowerLawElectrons(; p=2.3, Cj=1, Ca=0.1)
+    electrons = S.IsotropicPowerLawElectrons(; p=2.3, Cj=1, Ca=0.1)
 
     fig = Figure()
     for (r, vc) in enumerate(velocity_configs), (c, bc) in enumerate(Bconfigs)
@@ -472,10 +484,12 @@ function jet_combined_velocity_helicalrt_image(; render_field=render_field_cpu, 
 
         jet = S.EmissionRegion(;
             geometry = Geometries.Conical(; axis, φj, z=1e-3 .. 50),
-            ne = Profiles.AxialTransverse(S.PowerLaw(-2; val0=1, s0=1), η -> exp(-4 * η^2)),
-            bc.B,
             vc.velocity,
-            model,
+            emission = S.SynchrotronEmission(;
+                ne = Profiles.AxialTransverse(S.PowerLaw(-2; val0=1, s0=1), η -> exp(-4 * η^2)),
+                bc.B,
+                electrons,
+            ),
         ) |> S.prepare_for_computations
 
         img_IQU = render_field(jet; extent=3, ν=1, what=S.IntensityIQU())

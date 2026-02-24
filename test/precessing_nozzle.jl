@@ -163,26 +163,28 @@ end
             φj = 0.05,
             z = 1.0 .. 50.0
         ),
-        ne = S.Profiles.Modified(
-            S.Profiles.Axial(S.PowerLaw(-2; val0=1e3, s0=1.0)),
-            S.Patterns.PrecessingNozzle(
-                θ_precession = 0.02,
-                θ_nozzle = 0.005,
-                period = 50.0,
-                β_flow = 0.99,
-                profile = S.Patterns.TophatBump(10.0)
-            )
-        ),
-        B = S.BFieldSpec(
-            S.Profiles.Axial(S.PowerLaw(-1; val0=1e-3, s0=1.0)),
-            S.Directions.Scalar(),
-            b -> S.FullyTangled(b)
-        ),
         velocity = S.VelocitySpec(
             S.Directions.Axial(),
             S.Profiles.Constant(10.0)
         ),
-        model = S.IsotropicPowerLawElectrons(; p=2.5, Cj=1.0, Ca=0.1)
+        emission = S.SynchrotronEmission(
+            ne = S.Profiles.Modified(
+                S.Profiles.Axial(S.PowerLaw(-2; val0=1e3, s0=1.0)),
+                S.Patterns.PrecessingNozzle(
+                    θ_precession = 0.02,
+                    θ_nozzle = 0.005,
+                    period = 50.0,
+                    β_flow = 0.99,
+                    profile = S.Patterns.TophatBump(10.0)
+                )
+            ),
+            B = S.BFieldSpec(
+                S.Profiles.Axial(S.PowerLaw(-1; val0=1e-3, s0=1.0)),
+                S.Directions.Scalar(),
+                b -> S.FullyTangled(b)
+            ),
+            electrons = S.IsotropicPowerLawElectrons(; p=2.5, Cj=1.0, Ca=0.1),
+        ),
     )
     
     region_prepared = S.prepare_for_computations(region)

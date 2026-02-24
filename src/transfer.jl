@@ -86,14 +86,13 @@ end
 	return y * E + (Jinv / Ainv) * (1 - E)
 end
 
-@inline _integrate_ray_step(acc::AccValue{IntensityIQU}, obj::AbstractSynchrotronMedium, x4, k, Δλ) = begin
+@inline _integrate_ray_step(acc::AccValue{IntensityIQU}, obj::AbstractMedium, x4, k, Δλ) = begin
 	u = four_velocity(obj, x4)
 	k′ = lorentz_unboost(u, k)
-	(Jinv_m, Ainv_m) = emissivity_absorption_polarized_invariant(obj, x4, k′)
+	(Jinv_m, Ainv_m, B′) = emissivity_absorption_polarized_invariant(obj, x4, k′)
 
 	# Build the comoving camera screen basis and the field-aligned +Q axis.
 	(n′, e1′, e2′) = comoving_screen_basis(u, k)
-	B′ = magnetic_field(obj, x4)
 	(_, e_perp) = linear_polarization_basis_from_B(n′, B′)
 	R_cf = stokes_QU_rotation(e1′, e2′, e_perp)  # (Q,U)_field = R_cf * (Q,U)_cam
 	R_fc = R_cf'  # (Q,U)_cam = R_fc * (Q,U)_field
@@ -313,7 +312,7 @@ ray_contribution_profile_IQU(obj::AbstractMedium, ray::RayZ) = begin
 		ν′ = frequency(k′)
 
 		# Get polarized coefficients
-		(j_modes, α_modes) = emissivity_absorption_polarized(obj, x4, k′)
+		(j_modes, α_modes, B′) = emissivity_absorption_polarized(obj, x4, k′)
 		Jinv_modes = j_modes / (ν′^2)
 		Ainv_modes = α_modes * ν′
 
@@ -322,7 +321,6 @@ ray_contribution_profile_IQU(obj::AbstractMedium, ray::RayZ) = begin
 
 		# Get basis rotation: camera → field
 		(n′, e1′, e2′) = comoving_screen_basis(u, k)
-		B′ = magnetic_field(obj, x4)
 		(e_par, e_perp) = linear_polarization_basis_from_B(n′, B′)
 		R_camera_to_field = stokes_QU_rotation(e1′, e2′, e_perp)
 
