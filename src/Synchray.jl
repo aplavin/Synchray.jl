@@ -45,6 +45,7 @@ include("profiles.jl")
 include("field_specs.jl")
 include("patterns.jl")
 include("synchrotron/emission.jl")
+include("emission_models.jl")
 include("emission_region.jl")
 
 
