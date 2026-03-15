@@ -49,10 +49,10 @@ end
 
 z_interval(obj::MovingUniformEllipsoid, ray::Ray) = begin
 	# Worldtube of a rigid axis-aligned ellipsoid moving with constant 4-velocity u.
-	# Ray: x(s) = ray.x0 + s·k1, where k1 = k/ν = (1, n̂).
+	# Ray: x(s) = ray.x0 + s·d, where d = direction4(ray).
 	u = obj.u0
 	Δ0 = ray.x0 - obj.center
-	kdir = direction4(ray.k)
+	kdir = direction4(ray)
 
 	a = minkowski_dot(u, kdir)
 	b = minkowski_dot(u, Δ0)

@@ -337,3 +337,76 @@ end
 		end
 	end
 end
+
+
+@testitem "SlowLight vs FastLight rendering" begin
+	import Synchray as S
+	using Accessors
+
+	# 1. Static sphere: both modes give identical results
+	@testset "static sphere identical" begin
+		sphere = S.UniformSphere(
+			center=S.FourPosition(0, 0, 0, 0), radius=1.3,
+			u0=S.FourVelocity(SVector(0, 0, 0)), jν=0.7, αν=1.3
+		)
+
+		@testset for b in (0.0, 0.5, 0.9)
+			ray_slow = S.RayZ(; x0=S.FourPosition(0, b, 0, 0), k=2.0, nz=512)
+			ray_fast = S.RayZ(; x0=S.FourPosition(0, b, 0, 0), k=2.0, nz=512, light=S.FastLight())
+			@test S.render(ray_slow, sphere) ≈ S.render(ray_fast, sphere)
+			@test S.render(ray_slow, sphere, S.OpticalDepth()) ≈ S.render(ray_fast, sphere, S.OpticalDepth())
+		end
+	end
+
+	# 2. Moving sphere: verify apparent position and Doppler scaling in each mode
+	@testset "moving sphere positions and scaling" begin
+		R = 1.0
+		z0 = 3.0
+		β = SVector(0.5, 0.0, 0.0)
+		t_obs = 1.0
+
+		ell = S.MovingUniformEllipsoid(
+			center=S.FourPosition(0, 0, 0, z0),
+			sizes=SVector(R, R, R),
+			u0=S.FourVelocity(β),
+			jν=1.0, αν=0.0,
+		)
+		ref = S.MovingUniformEllipsoid(
+			center=S.FourPosition(0, 0, 0, z0),
+			sizes=SVector(R, R, R),
+			u0=S.FourVelocity(SVector(0.0, 0.0, 0.0)),
+			jν=1.0, αν=0.0,
+		)
+
+		δ = S.doppler_factor(ell.u0, SVector(0, 0, 1))
+		γ = S.gamma(ell.u0)
+
+		# SlowLight: Terrell-shifted apparent center
+		s_terrell = (t_obs - ell.center.t + ell.center.z) / (1 - β[3])
+		xy_slow = SVector(β[1], β[2]) * s_terrell
+
+		# FastLight: coordinate-position apparent center
+		xy_fast = SVector(β[1], β[2]) * (t_obs - ell.center.t)
+
+		# Y-only offsets: chord through object is unchanged by transverse Lorentz contraction
+		xys_y = SVector{2,Float64}[(0, 0), (0, 0.3R), (0, 0.7R)]
+		I_ref = map(xy -> S.render(S.RayZ(; x0=S.FourPosition(t_obs, xy[1], xy[2], 0), k=2.0, nz=2048), ref), xys_y)
+
+		# SlowLight: rays through Terrell center → δ³ scaling
+		I_slow = map(xy -> S.render(S.RayZ(; x0=S.FourPosition(t_obs, xy[1]+xy_slow[1], xy[2]+xy_slow[2], 0), k=2.0, nz=2048), ell), xys_y)
+		@test I_slow ≈ δ^3 * I_ref rtol=1e-5
+
+		# FastLight: rays through coordinate center → δ² scaling
+		I_fast = map(xy -> S.render(S.RayZ(; x0=S.FourPosition(t_obs, xy[1]+xy_fast[1], xy[2]+xy_fast[2], 0), k=2.0, nz=2048, light=S.FastLight()), ell), xys_y)
+		@test I_fast ≈ δ^2 * I_ref rtol=1e-5
+
+		# FastLight x-offset: Lorentz contraction visible
+		# At x-offset Δx from apparent center, chord shrinks by √(1 - γ²Δx²/R²) / √(1 - Δx²/R²)
+		@testset for Δx in (0.3, 0.5)
+			I_ref_x = S.render(S.RayZ(; x0=S.FourPosition(t_obs, Δx, 0, 0), k=2.0, nz=2048), ref)
+			I_fast_x = S.render(S.RayZ(; x0=S.FourPosition(t_obs, xy_fast[1]+Δx, 0, 0), k=2.0, nz=2048, light=S.FastLight()), ell)
+			chord_ratio = √(1 - (γ*Δx/R)^2) / √(1 - (Δx/R)^2)
+			@test I_fast_x ≈ δ^2 * chord_ratio * I_ref_x rtol=1e-5
+		end
+	end
+end

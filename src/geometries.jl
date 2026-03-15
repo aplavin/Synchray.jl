@@ -124,11 +124,12 @@ function z_interval(g::Geometries.Ellipsoid, ray::Ray)
 	# In the comoving frame, define Δ⊥ as the displacement orthogonal to u, and require
 	# (Δx/sx)^2 + (Δy/sy)^2 + (Δz/sz)^2 ≤ 1.
 	# `sizes == SVector(R,R,R)` recovers the moving sphere.
-	# Ray: x(s) = ray.x0 + s·k1, where k1 = k/ν = (1, n̂).
+	# Ray: x(s) = ray.x0 + s·d, where d = direction4(ray).
+	# For SlowLight d = (1, n̂) (null); for FastLight d = (0, n̂) (spatial).
 	@assert g.center isa Geometries.InertialWorldline
 	u = g.center.u
 	Δ0 = ray.x0 - g.center.x0
-	kdir = direction4(ray.k)
+	kdir = direction4(ray)
 
 	a = minkowski_dot(u, kdir)
 	b = minkowski_dot(u, Δ0)

@@ -1,5 +1,20 @@
+"""Light propagation mode: controls the ray advancement direction through spacetime."""
+abstract type AbstractLightMode end
+
+"""Slow light: finite light speed (c = 1). Ray advances along the null direction `(1, n̂)`.
+The time coordinate at depth s is `t = t_obs + s`. This is the default, physically correct mode."""
+struct SlowLight <: AbstractLightMode end
+
+"""Fast light: infinite light speed. Ray advances along the spatial direction `(0, n̂)`.
+All events along the ray are at observer time `t = t_obs`."""
+struct FastLight <: AbstractLightMode end
+
+@inline _direction4(::SlowLight, n̂::SVector{3}) = FourPosition(one(eltype(n̂)), n̂)
+@inline _direction4(::FastLight, n̂::SVector{3}) = FourPosition(zero(eltype(n̂)), n̂)
+
+
 """
-	CameraOrtho(; look_direction, xys, nz, ν, t, origin=zeros(3), up=SVector(0,1,0), mapfunc=map)
+	CameraOrtho(; look_direction, xys, nz, ν, t, origin=zeros(3), up=SVector(0,1,0), light=SlowLight(), mapfunc=map)
 
 Parallel-ray camera in flat spacetime.
 
@@ -19,9 +34,10 @@ that passes through `origin`. Each pixel `(u, v)` in `xys` corresponds to a ray 
 - `nz`: number of integration steps per ray.
 - `ν`: observing frequency.
 - `t`: observer time — the time coordinate assigned to light arriving at the screen plane.
+- `light`: light propagation mode (`SlowLight()` or `FastLight()`).
 - `mapfunc`: mapping function applied over `xys` (default `map`; pass a GPU kernel for GPU rendering).
 """
-struct CameraOrtho{Tν, Tt, To<:SVector{3}, Tn<:SVector{3}, Txys, Tf}
+struct CameraOrtho{Tν, Tt, To<:SVector{3}, Tn<:SVector{3}, Txys, Tf, TL<:AbstractLightMode}
 	origin::To
 	n::Tn
 	e1::Tn
@@ -30,21 +46,22 @@ struct CameraOrtho{Tν, Tt, To<:SVector{3}, Tn<:SVector{3}, Txys, Tf}
     nz::Int
     ν::Tν
     t::Tt
+    light::TL
     mapfunc::Tf
 end
 
-CameraOrtho(origin::To, n::Tn, e1::Tn, e2::Tn, xys::Txys, nz::Integer, ν::Tν, t::Tt, mapfunc::Tf=map) where {Tν, Tt, To<:SVector{3}, Tn<:SVector{3}, Txys, Tf} =
-	CameraOrtho{Tν, Tt, To, Tn, Txys, Tf}(origin, n, e1, e2, xys, Int(nz), ν, t, mapfunc)
+CameraOrtho(origin::To, n::Tn, e1::Tn, e2::Tn, xys::Txys, nz::Integer, ν::Tν, t::Tt, light::TL=SlowLight(), mapfunc::Tf=map) where {Tν, Tt, To<:SVector{3}, Tn<:SVector{3}, Txys, Tf, TL<:AbstractLightMode} =
+	CameraOrtho{Tν, Tt, To, Tn, Txys, Tf, TL}(origin, n, e1, e2, xys, Int(nz), ν, t, light, mapfunc)
 
-function CameraOrtho(; look_direction::SVector{3}, up=SVector(0, 1, 0), origin=zero(look_direction), xys, nz, ν, t, mapfunc=map)
+function CameraOrtho(; look_direction::SVector{3}, up=SVector(0, 1, 0), origin=zero(look_direction), xys, nz, ν, t, light=SlowLight(), mapfunc=map)
 	n = normalize(look_direction)
 	e1 = normalize(cross(up, n))
 	e2 = cross(n, e1)
-	CameraOrtho(origin, n, e1, e2, xys, nz, ν, t, mapfunc)
+	CameraOrtho(origin, n, e1, e2, xys, nz, ν, t, light, mapfunc)
 end
 
 """Convenience constructor for the common Z-direction camera (screen at z=0, rays along +z)."""
-function CameraZ(; xys, nz, ν, t, mapfunc=map)
+function CameraZ(; xys, nz, ν, t, light=SlowLight(), mapfunc=map)
 	sample = first(xys)
 	OT = float(eltype(sample))          # coordinate type (may have units)
 	FT = typeof(float(one(OT)))         # dimensionless float type
@@ -53,30 +70,45 @@ function CameraZ(; xys, nz, ν, t, mapfunc=map)
 		SVector{3,FT}(0, 0, 1),
 		SVector{3,FT}(1, 0, 0),
 		SVector{3,FT}(0, 1, 0),
-		xys, nz, ν, t, mapfunc
+		xys, nz, ν, t, light, mapfunc
 	)
 end
 
 
-struct Ray{TX<:FourPosition, TK<:FourFrequency, TE<:SVector{3}}
+struct Ray{TX<:FourPosition, TK<:FourFrequency, TE<:SVector{3}, TL<:AbstractLightMode}
     x0::TX       # anchor 4-position on the ray
     k::TK        # 4-frequency: k = ν·(1, n̂)
     e1::TE       # polarization frame vector 1 (lab-frame spatial, ⊥ n̂)
     e2::TE       # polarization frame vector 2 (lab-frame spatial, ⊥ n̂, ⊥ e1)
     nz::Int
+    light::TL
 end
+
+"""Construct a `Ray` defaulting to `SlowLight()`."""
+Ray(x0::FourPosition, k::FourFrequency, e1::SVector{3}, e2::SVector{3}, nz::Int) =
+    Ray(x0, k, e1, e2, nz, SlowLight())
 
 """Unit spatial direction of ray propagation."""
 direction3(ray::Ray) = direction3(ray.k)
 
+"""
+    direction4(ray::Ray) -> FourPosition
+
+Ray path 4-direction: the spacetime advancement direction `d` such that `x(s) = x₀ + s·d`.
+
+For `SlowLight`: `d = (1, n̂)` — null geodesic, same as `direction4(ray.k)`.
+For `FastLight`: `d = (0, n̂)` — purely spatial, all events at observer time.
+"""
+@inline direction4(ray::Ray) = _direction4(ray.light, direction3(ray))
+
 """Convenience constructor for Z-direction rays (n̂ = ẑ, screen basis x̂/ŷ)."""
-function RayZ(x0::FourPosition, k::FourFrequency, nz::Int)
+function RayZ(x0::FourPosition, k::FourFrequency, nz::Int; light=SlowLight())
 	T = float(eltype(k))
-	Ray(x0, k, SVector{3,T}(1, 0, 0), SVector{3,T}(0, 1, 0), nz)
+	Ray(x0, k, SVector{3,T}(1, 0, 0), SVector{3,T}(0, 1, 0), nz, light)
 end
-RayZ(; x0, k, nz::Int) = _ray_z(x0, k, nz)
-_ray_z(x0::FourPosition, k::FourFrequency, nz::Int) = RayZ(x0, k, nz)
-_ray_z(x0::FourPosition, k::Number, nz::Int) = RayZ(x0, photon_k(k, SVector(0, 0, 1)), nz)
+RayZ(; x0, k, nz::Int, light=SlowLight()) = _ray_z(x0, k, nz, light)
+_ray_z(x0::FourPosition, k::FourFrequency, nz::Int, light=SlowLight()) = RayZ(x0, k, nz; light)
+_ray_z(x0::FourPosition, k::Number, nz::Int, light=SlowLight()) = RayZ(x0, photon_k(k, SVector(0, 0, 1)), nz; light)
 
 
 @unstable ustrip(cam::CameraOrtho) = @p let
@@ -118,7 +150,7 @@ _mean_samples(samples::AbstractArray{<:Tuple}) = ntuple(i -> mean(s -> s[i], sam
 @unstable render(cam::CameraOrtho, obj::AbstractMedium, what=Intensity(); adaptive_supersampling=false) = let
     (; e1, e2) = cam
     k = photon_k(cam.ν, cam.n)
-    ray_base = Ray(FourPosition(cam.t, cam.origin), k, e1, e2, cam.nz)
+    ray_base = Ray(FourPosition(cam.t, cam.origin), k, e1, e2, cam.nz, cam.light)
 	img = cam.mapfunc(cam.xys) do uv
         offset = uv[1] * e1 + uv[2] * e2
         ray = @set ray_base.x0 += FourPosition(0, offset)
@@ -153,15 +185,20 @@ end
 """
     event_on_camera_ray(cam::CameraOrtho, r; t_obs=cam.t) -> FourPosition
 
-Return the spacetime event on the camera's null ray that passes through spatial point
+Return the spacetime event on the camera ray that passes through spatial point
 `r = (x, y, z)`, at observer time `t_obs`.
 
-The ray path is `x4(s) = x0 + s·(1, n̂)`, so `t = t_obs + s` where `s = dot(r - origin, n̂)`.
+For `SlowLight`: `t = t_obs + s` where `s = dot(r - origin, n̂)` (null ray).
+For `FastLight`: `t = t_obs` (all events simultaneous).
 """
-@inline event_on_camera_ray(cam::CameraOrtho, r::SVector{3}; t_obs=cam.t) = let
+@inline event_on_camera_ray(cam::CameraOrtho, r::SVector{3}; t_obs=cam.t) =
+    _event_on_camera_ray(cam.light, cam, r, t_obs)
+
+@inline _event_on_camera_ray(::SlowLight, cam, r, t_obs) = let
     s = dot(r - cam.origin, cam.n)
     FourPosition(t_obs + s, r)
 end
+@inline _event_on_camera_ray(::FastLight, cam, r, t_obs) = FourPosition(t_obs, r)
 
 """
     camera_ray_anchor(cam::CameraOrtho, x4) -> FourPosition
@@ -170,11 +207,20 @@ Convert a lab-frame event `x4` to the camera-ray anchor on the screen plane.
 
 Returns the event with:
 - spatial position projected onto the screen plane (perpendicular to n̂)
-- camera time `t_cam = t - s` where `s = dot(r - origin, n̂)`
+- camera time: `t_cam = t - s` for `SlowLight`, `t_cam = t` for `FastLight`
 """
-@inline camera_ray_anchor(cam::CameraOrtho, x4::FourPosition) = let
+@inline camera_ray_anchor(cam::CameraOrtho, x4::FourPosition) =
+    _camera_ray_anchor(cam.light, cam, x4)
+
+@inline _camera_ray_anchor(::SlowLight, cam, x4) = let
     r = @swiz x4.xyz
     s = dot(r - cam.origin, cam.n)
     r_screen = r - s * cam.n
     FourPosition(x4.t - s, r_screen)
+end
+@inline _camera_ray_anchor(::FastLight, cam, x4) = let
+    r = @swiz x4.xyz
+    s = dot(r - cam.origin, cam.n)
+    r_screen = r - s * cam.n
+    FourPosition(x4.t, r_screen)
 end

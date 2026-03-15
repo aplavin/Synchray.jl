@@ -236,4 +236,76 @@ end
 			@test ret.x.t - ret.x.z ≈ t_obs atol=1e-12
 		end
 	end
+
+	@testset "FastLight mode" begin
+		cam_fast_z = S.CameraZ(; xys=grid(SVector, x=[0.0], y=[0.0]), nz=1, ν=1.0, t=0.0, light=S.FastLight())
+
+		# FastLight worldline: simultaneity condition t = t_obs
+		@testset "worldline simultaneity" begin
+			x0 = S.FourPosition(0.0, 1.0, 0.5, 3.0)
+			u = S.FourVelocity(SVector(0.1, 0.05, 0.9))
+			wl = S.Geometries.InertialWorldline(x0, u)
+			for t_obs in (0.0, 1.0, -1.0)
+				cam = @set cam_fast_z.t = t_obs
+				ret = S.retarded_event(wl, cam)
+				# FastLight: event is at t = t_obs (simultaneity, not null hyperplane)
+				@test ret.x.t ≈ t_obs atol=1e-12
+				# Verify on worldline
+				@test ret.x ≈ x0 + u * ret.tau atol=1e-12
+			end
+		end
+
+		# FastLight knot method matches worldline method
+		@testset "knot matches worldline" for knot in (knot_axial, knot_diag)
+			wl = S.Geometries.InertialWorldline(knot.x_c0, knot.u)
+			for t_obs in (0.0, 2.0)
+				cam = @set cam_fast_z.t = t_obs
+				ret_knot = S.retarded_event(knot, cam)
+				ret_wl = S.retarded_event(wl, cam)
+				@test ret_knot.x ≈ ret_wl.x atol=1e-12
+				@test ret_knot.tau ≈ ret_wl.tau atol=1e-12
+			end
+		end
+
+		# FastLight: _knot_chi = 0 at retarded event center
+		@testset "knot_chi consistency" for knot in (knot_axial, knot_diag)
+			for t_obs in (0.0, 1.0, 5.0, -2.0)
+				cam = @set cam_fast_z.t = t_obs
+				ret = S.retarded_event(knot, cam)
+				@test S._knot_chi(knot, geom, ret.x) ≈ 0 atol=1e-10
+			end
+		end
+
+		# FastLight: round-trip with camera_ray_anchor
+		@testset "camera_ray_anchor roundtrip" for knot in (knot_axial, knot_diag)
+			for t_obs in (0.0, 1.0, 5.0)
+				cam = @set cam_fast_z.t = t_obs
+				ret = S.retarded_event(knot, cam)
+				anchor = S.camera_ray_anchor(cam, ret.x)
+				@test anchor.x ≈ ret.x.x atol=1e-12
+				@test anchor.y ≈ ret.x.y atol=1e-12
+				@test anchor.t ≈ t_obs atol=1e-12
+			end
+		end
+
+		# FastLight with arbitrary camera direction: simultaneity still holds
+		@testset "arbitrary camera direction" begin
+			n̂ = normalize(SVector(1.0, 0.0, 1.0))
+			cam_arb = S.CameraOrtho(;
+				look_direction=n̂, xys=SVector{2}[(0.0, 0.0)], nz=1, ν=1.0, t=3.0,
+				light=S.FastLight(),
+			)
+			x0 = S.FourPosition(0.0, 1.0, 0.5, 3.0)
+			u = S.FourVelocity(SVector(0.1, 0.05, 0.9))
+			wl = S.Geometries.InertialWorldline(x0, u)
+			ret = S.retarded_event(wl, cam_arb)
+			# FastLight simultaneity: t = t_obs regardless of camera direction
+			@test ret.x.t ≈ cam_arb.t atol=1e-12
+			# On worldline
+			@test ret.x ≈ x0 + u * ret.tau atol=1e-12
+			# Roundtrip
+			anchor = S.camera_ray_anchor(cam_arb, ret.x)
+			@test anchor.t ≈ cam_arb.t atol=1e-12
+		end
+	end
 end

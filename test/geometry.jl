@@ -223,3 +223,104 @@ end
 	@test !isempty(zi_moving)
 	@test S.four_velocity(geom_moving, S.FourPosition(0,0,0,0)) === u_moving
 end
+
+@testitem "SlowLight/FastLight basics" begin
+	import Synchray as S
+	using Accessors
+	using RectiGrids
+
+	x0 = S.FourPosition(0.0, 0.0, 0.0, 0.0)
+
+	# isbits (GPU-safe)
+	@test isbits(S.SlowLight())
+	@test isbits(S.FastLight())
+	ray_slow = S.RayZ(; x0, k=2.0, nz=64)
+	ray_fast = S.RayZ(; x0, k=2.0, nz=64, light=S.FastLight())
+	@test isbits(ray_slow)
+	@test isbits(ray_fast)
+
+	# Constructors default to SlowLight
+	@test ray_slow.light === S.SlowLight()
+	@test S.CameraZ(; xys=grid(SVector, x=[0.0], y=[0.0]), nz=1, ν=1.0, t=0.0).light === S.SlowLight()
+	@test S.CameraOrtho(; look_direction=SVector(1.0, 0.0, 1.0), xys=SVector{2}[(0.0, 0.0)], nz=1, ν=1.0, t=0.0).light === S.SlowLight()
+	k = S.photon_k(2.0, SVector(0.0, 0.0, 1.0))
+	@test S.Ray(x0, k, SVector(1.0, 0.0, 0.0), SVector(0.0, 1.0, 0.0), 64).light === S.SlowLight()
+
+	# direction4(ray): Z-ray
+	d_slow = S.direction4(ray_slow)
+	d_fast = S.direction4(ray_fast)
+	@test d_slow.t == 1.0
+	@test d_fast.t == 0.0
+	@test SVector(d_slow.x, d_slow.y, d_slow.z) ≈ S.direction3(ray_slow)
+	@test SVector(d_fast.x, d_fast.y, d_fast.z) ≈ S.direction3(ray_fast)
+
+	# direction4(ray): arbitrary directions
+	@testset for n̂ in [normalize(SVector(1.0, 0.0, 0.0)),
+	                    normalize(SVector(1.0, 1.0, 1.0)),
+	                    normalize(SVector(-0.3, 0.7, 0.5))]
+		k_arb = S.photon_k(2.0, n̂)
+		up = abs(dot(SVector(0.0, 1.0, 0.0), n̂)) < 0.9 ? SVector(0.0, 1.0, 0.0) : SVector(1.0, 0.0, 0.0)
+		e1 = normalize(cross(up, n̂))
+		e2 = cross(n̂, e1)
+		r_slow = S.Ray(x0, k_arb, e1, e2, 64, S.SlowLight())
+		r_fast = S.Ray(x0, k_arb, e1, e2, 64, S.FastLight())
+		@test S.direction4(r_slow).t == 1.0
+		@test S.direction4(r_fast).t == 0.0
+		@test SVector(S.direction4(r_slow).x, S.direction4(r_slow).y, S.direction4(r_slow).z) ≈ n̂
+		@test SVector(S.direction4(r_fast).x, S.direction4(r_fast).y, S.direction4(r_fast).z) ≈ n̂
+	end
+
+	# event_on_camera_ray: exact formulas for both modes
+	t_obs = 2.5
+	r = SVector(3.0, 0.5, -0.25)
+	@testset for n̂ in [SVector(0.0, 0.0, 1.0),
+	                    SVector(1.0, 0.0, 0.0),
+	                    normalize(SVector(1.0, 1.0, 1.0)),
+	                    normalize(SVector(-0.3, 0.7, 0.5))]
+		up = abs(dot(SVector(0.0, 1.0, 0.0), n̂)) < 0.9 ? SVector(0.0, 1.0, 0.0) : SVector(1.0, 0.0, 0.0)
+		cam_slow = S.CameraOrtho(; look_direction=n̂, up, xys=SVector{2}[(0.0, 0.0)], nz=1, ν=1.0, t=t_obs)
+		cam_fast = S.CameraOrtho(; look_direction=n̂, up, xys=SVector{2}[(0.0, 0.0)], nz=1, ν=1.0, t=t_obs, light=S.FastLight())
+
+		s = dot(r - cam_slow.origin, cam_slow.n)
+
+		x4_slow = S.event_on_camera_ray(cam_slow, r)
+		x4_fast = S.event_on_camera_ray(cam_fast, r)
+
+		# SlowLight: t = t_obs + depth
+		@test x4_slow.t ≈ t_obs + s
+		# FastLight: t = t_obs
+		@test x4_fast.t ≈ t_obs
+		# Both: same spatial coordinates
+		@test SVector(x4_slow.x, x4_slow.y, x4_slow.z) ≈ r
+		@test SVector(x4_fast.x, x4_fast.y, x4_fast.z) ≈ r
+	end
+
+	# camera_ray_anchor: exact formulas for both modes
+	x4 = S.FourPosition(7.5, -0.2, 1.1, 3.0)
+	@testset for n̂ in [SVector(0.0, 0.0, 1.0),
+	                    SVector(1.0, 0.0, 0.0),
+	                    normalize(SVector(1.0, 1.0, 1.0))]
+		up = abs(dot(SVector(0.0, 1.0, 0.0), n̂)) < 0.9 ? SVector(0.0, 1.0, 0.0) : SVector(1.0, 0.0, 0.0)
+		cam_slow = S.CameraOrtho(; look_direction=n̂, up, xys=SVector{2}[(0.0, 0.0)], nz=1, ν=1.0, t=t_obs)
+		cam_fast = S.CameraOrtho(; look_direction=n̂, up, xys=SVector{2}[(0.0, 0.0)], nz=1, ν=1.0, t=t_obs, light=S.FastLight())
+
+		r_lab = SVector(x4.x, x4.y, x4.z)
+		s = dot(r_lab - cam_slow.origin, cam_slow.n)
+		r_screen = r_lab - s * cam_slow.n
+
+		anchor_slow = S.camera_ray_anchor(cam_slow, x4)
+		anchor_fast = S.camera_ray_anchor(cam_fast, x4)
+
+		# SlowLight: t_cam = t - depth
+		@test anchor_slow.t ≈ x4.t - s
+		# FastLight: t_cam = t
+		@test anchor_fast.t ≈ x4.t
+		# Both: same screen projection
+		@test SVector(anchor_slow.x, anchor_slow.y, anchor_slow.z) ≈ r_screen
+		@test SVector(anchor_fast.x, anchor_fast.y, anchor_fast.z) ≈ r_screen
+
+		# Roundtrip: camera_ray_anchor(event_on_camera_ray(r)).t ≈ t_obs
+		@test S.camera_ray_anchor(cam_slow, S.event_on_camera_ray(cam_slow, r_lab)).t ≈ t_obs
+		@test S.camera_ray_anchor(cam_fast, S.event_on_camera_ray(cam_fast, r_lab)).t ≈ t_obs
+	end
+end

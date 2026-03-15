@@ -179,9 +179,8 @@ end
 integrate_ray(obj::AbstractMedium, ray::Ray, what=Intensity()) = begin
 	seg = z_interval(obj, ray)
 
-	k = ray.k
 	ν = frequency(ray)
-	k1 = direction4(k)
+	k1 = direction4(ray)
 
 	acc = if isempty(seg)
 		s = leftendpoint(seg)
@@ -207,9 +206,8 @@ end
 # --- CombinedMedium integration ---
 @inline _integrate_segment(acc, obj, ray, seg) = begin
 	isempty(seg) && return acc
-	k = ray.k
 	ν = frequency(ray)
-	k1 = direction4(k)
+	k1 = direction4(ray)
 	@boundscheck @assert ray.nz ≥ 0
 	ss = StepRangeLen(leftendpoint(seg), width(seg) / (ray.nz - 1), ray.nz)
 	Δs = step(ss)
@@ -226,9 +224,8 @@ integrate_ray(cm::CombinedMedium{<:Tuple{Any}}, ray::Ray, what=Intensity()) = in
 
 # General: integrate objects in tuple order (must be back-to-front)
 integrate_ray(cm::CombinedMedium, ray::Ray, what=Intensity()) = begin
-	k = ray.k
 	ν = frequency(ray)
-	k1 = direction4(k)
+	k1 = direction4(ray)
 
 	# Type-promoting zero-step (same pattern as existing integrate_ray)
 	obj1 = first(cm.objects)
@@ -272,7 +269,7 @@ ray_contribution_profile(obj::AbstractMedium, ray::Ray) = begin
 	seg = z_interval(obj, ray)
 	k = ray.k
 	ν = frequency(ray)
-	k1 = direction4(k)
+	k1 = direction4(ray)
 
 	νobs = frequency(ray)
 
@@ -327,7 +324,7 @@ ray_contribution_profile_IQU(obj::AbstractMedium, ray::Ray) = begin
 	seg = z_interval(obj, ray)
 	k = ray.k
 	ν = frequency(ray)
-	k1 = direction4(k)
+	k1 = direction4(ray)
 
 	νobs = frequency(ray)
 

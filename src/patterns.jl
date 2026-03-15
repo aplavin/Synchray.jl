@@ -451,19 +451,22 @@ validate_pattern(knot::Patterns.EllipsoidalKnot, geom) = nothing
     retarded_event(wl::InertialWorldline, cam::CameraOrtho)
     retarded_event(knot::EllipsoidalKnot, cam::CameraOrtho)
 
-Compute the retarded event on an inertial worldline `x(τ) = wl.x0 + wl.u·τ`
+Compute the observed event on an inertial worldline `x(τ) = wl.x0 + wl.u·τ`
 as seen by the camera `cam`.
 
-Finds the event whose light reaches the camera's screen plane at observer time `cam.t`.
-The camera defines a null hyperplane `t - n̂·r = cam.t - n̂·cam.origin`, and this function
-solves for the unique intersection of that hyperplane with the worldline.
+For `SlowLight`: finds the event whose light reaches the screen plane at `cam.t`.
+The camera defines a null hyperplane `t - n̂·r = cam.t - n̂·cam.origin`.
+For `FastLight`: finds the event at `t = cam.t` (simultaneity hyperplane).
 
 # Returns
 `(; x::FourPosition, tau)` where:
-- `x`: The retarded spacetime event on the worldline.
-- `tau`: The retarded proper time on the worldline.
+- `x`: The observed spacetime event on the worldline.
+- `tau`: The proper time on the worldline at that event.
 """
-@inline function retarded_event(wl::Geometries.InertialWorldline, cam::CameraOrtho)
+@inline retarded_event(wl::Geometries.InertialWorldline, cam::CameraOrtho) =
+    _retarded_event(cam.light, wl, cam)
+
+@inline function _retarded_event(::SlowLight, wl, cam)
     # Inertial worldline: x(τ) = x0 + u·τ
     # Null hyperplane: t - n̂·r = t_obs - n̂·origin
     #
@@ -475,6 +478,14 @@ solves for the unique intersection of that hyperplane with the worldline.
     x0_xyz = @swiz x0.xyz
     u_xyz = @swiz u.xyz
     tau = (cam.t - dot(n̂, cam.origin) - (x0.t - dot(n̂, x0_xyz))) / (u.t - dot(n̂, u_xyz))
+    x = x0 + u * tau
+    return (; x, tau)
+end
+
+@inline function _retarded_event(::FastLight, wl, cam)
+    # Simultaneity hyperplane: t = t_obs
+    (; x0, u) = wl
+    tau = (cam.t - x0.t) / u.t
     x = x0 + u * tau
     return (; x, tau)
 end
