@@ -168,7 +168,7 @@ end
 	end
 
 	@testset "event_on_camera_ray with arbitrary Camera" begin
-		cam = S.Camera(;
+		cam = S.CameraOrtho(;
 			look_direction=SVector(1.0, 0.0, 0.0),
 			origin=SVector(0.0, 0.0, 0.0),
 			xys=SVector{2}[(0.0, 0.0)], nz=8, ν=1.0, t=2.0,

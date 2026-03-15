@@ -327,7 +327,7 @@ end
 
 		@testset for n̂ in cam_dirs[2:end]
 			up = abs(dot(SVector(0.0, 1.0, 0.0), n̂)) < 0.9 ? SVector(0.0, 1.0, 0.0) : SVector(1.0, 0.0, 0.0)
-			cam = S.Camera(;
+			cam = S.CameraOrtho(;
 				look_direction=n̂, up,
 				xys=grid(SVector, xs, xs),
 				nz, ν, t=0.0,

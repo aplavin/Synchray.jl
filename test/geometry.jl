@@ -161,7 +161,7 @@ end
 	@test S.frequency(ray_arb) ≈ 2.0
 
 	# Camera with arbitrary look_direction: orthonormal screen basis
-	cam = S.Camera(;
+	cam = S.CameraOrtho(;
 		look_direction=SVector(1.0, 0.0, 1.0),
 		xys=SVector{2}[(0.0, 0.0)],
 		nz=64, ν=2.0, t=0.0,

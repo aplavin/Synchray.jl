@@ -1,8 +1,31 @@
-struct Camera{Tν, Tt, To<:SVector{3}, Tn<:SVector{3}, Txys, Tf}
-	origin::To        # spatial origin (may have units)
-	n::Tn             # ray propagation direction (unit, dimensionless)
-	e1::Tn            # screen/polarization basis vector 1 (unit, ⊥ n)
-	e2::Tn            # screen/polarization basis vector 2 (unit, ⊥ n, ⊥ e1)
+"""
+	CameraOrtho(; look_direction, xys, nz, ν, t, origin=zeros(3), up=SVector(0,1,0), mapfunc=map)
+
+Parallel-ray camera in flat spacetime.
+
+All rays share the same propagation direction `n̂ = normalize(look_direction)` and the same
+frequency `ν`. The camera defines a screen plane: an infinite 2D plane perpendicular to `n̂`
+that passes through `origin`. Each pixel `(u, v)` in `xys` corresponds to a ray anchored at
+`origin + u·e1 + v·e2`, propagating in the `n̂` direction.
+
+# Fields
+- `origin`: center of the screen plane — the spatial point where `(u, v) = (0, 0)` maps to.
+  Only matters when the scene is not centered at the coordinate origin, or for `event_on_camera_ray`.
+- `n`:  unit ray propagation direction (derived from `look_direction`).
+- `e1`, `e2`: orthonormal screen-plane basis vectors (⊥ `n`, ⊥ each other). These also serve
+  as the lab-frame polarization reference frame: Stokes Q is measured along `e1`. Derived from
+  `up × n` (and then `n × e1`).
+- `xys`: pixel coordinates — each element `(u, v)` is a 2D offset in the `(e1, e2)` basis.
+- `nz`: number of integration steps per ray.
+- `ν`: observing frequency.
+- `t`: observer time — the time coordinate assigned to light arriving at the screen plane.
+- `mapfunc`: mapping function applied over `xys` (default `map`; pass a GPU kernel for GPU rendering).
+"""
+struct CameraOrtho{Tν, Tt, To<:SVector{3}, Tn<:SVector{3}, Txys, Tf}
+	origin::To
+	n::Tn
+	e1::Tn
+	e2::Tn
 	xys::Txys
     nz::Int
     ν::Tν
@@ -10,15 +33,14 @@ struct Camera{Tν, Tt, To<:SVector{3}, Tn<:SVector{3}, Txys, Tf}
     mapfunc::Tf
 end
 
-Camera(origin::To, n::Tn, e1::Tn, e2::Tn, xys::Txys, nz::Integer, ν::Tν, t::Tt, mapfunc::Tf=map) where {Tν, Tt, To<:SVector{3}, Tn<:SVector{3}, Txys, Tf} =
-	Camera{Tν, Tt, To, Tn, Txys, Tf}(origin, n, e1, e2, xys, Int(nz), ν, t, mapfunc)
+CameraOrtho(origin::To, n::Tn, e1::Tn, e2::Tn, xys::Txys, nz::Integer, ν::Tν, t::Tt, mapfunc::Tf=map) where {Tν, Tt, To<:SVector{3}, Tn<:SVector{3}, Txys, Tf} =
+	CameraOrtho{Tν, Tt, To, Tn, Txys, Tf}(origin, n, e1, e2, xys, Int(nz), ν, t, mapfunc)
 
-"""Convenience constructor: derive screen basis from `look_direction` and `up` vector."""
-function Camera(; look_direction::SVector{3}, up=SVector(0, 1, 0), origin=zero(look_direction), xys, nz, ν, t, mapfunc=map)
+function CameraOrtho(; look_direction::SVector{3}, up=SVector(0, 1, 0), origin=zero(look_direction), xys, nz, ν, t, mapfunc=map)
 	n = normalize(look_direction)
 	e1 = normalize(cross(up, n))
 	e2 = cross(n, e1)
-	Camera(origin, n, e1, e2, xys, nz, ν, t, mapfunc)
+	CameraOrtho(origin, n, e1, e2, xys, nz, ν, t, mapfunc)
 end
 
 """Convenience constructor for the common Z-direction camera (screen at z=0, rays along +z)."""
@@ -26,7 +48,7 @@ function CameraZ(; xys, nz, ν, t, mapfunc=map)
 	sample = first(xys)
 	OT = float(eltype(sample))          # coordinate type (may have units)
 	FT = typeof(float(one(OT)))         # dimensionless float type
-	Camera(
+	CameraOrtho(
 		zero(SVector{3,OT}),
 		SVector{3,FT}(0, 0, 1),
 		SVector{3,FT}(1, 0, 0),
@@ -57,7 +79,7 @@ _ray_z(x0::FourPosition, k::FourFrequency, nz::Int) = RayZ(x0, k, nz)
 _ray_z(x0::FourPosition, k::Number, nz::Int) = RayZ(x0, photon_k(k, SVector(0, 0, 1)), nz)
 
 
-@unstable ustrip(cam::Camera) = @p let
+@unstable ustrip(cam::CameraOrtho) = @p let
     cam
 	@modify(_u_to_code(_, UCTX.L0), __.origin)
     @modify(_u_to_code(_, UCTX.L0), __.xys)
@@ -89,7 +111,7 @@ end
 _mean_samples(samples) = mean(skip(isnan, samples))
 _mean_samples(samples::AbstractArray{<:Tuple}) = ntuple(i -> mean(s -> s[i], samples), length(first(samples)))
 
-@unstable render(cam::Camera, obj::AbstractMedium, what=Intensity(); adaptive_supersampling=false) = let
+@unstable render(cam::CameraOrtho, obj::AbstractMedium, what=Intensity(); adaptive_supersampling=false) = let
     k = photon_k(cam.ν, cam.n)
     ray_base = Ray(FourPosition(cam.t, cam.origin), k, cam.e1, cam.e2, cam.nz)
 	img = cam.mapfunc(cam.xys) do uv
@@ -124,20 +146,20 @@ _mean_samples(samples::AbstractArray{<:Tuple}) = ntuple(i -> mean(s -> s[i], sam
 end
 
 """
-    event_on_camera_ray(cam::Camera, r; t_obs=cam.t) -> FourPosition
+    event_on_camera_ray(cam::CameraOrtho, r; t_obs=cam.t) -> FourPosition
 
 Return the spacetime event on the camera's null ray that passes through spatial point
 `r = (x, y, z)`, at observer time `t_obs`.
 
 The ray path is `x4(s) = x0 + s·(1, n̂)`, so `t = t_obs + s` where `s = dot(r - origin, n̂)`.
 """
-@inline event_on_camera_ray(cam::Camera, r::SVector{3}; t_obs=cam.t) = let
+@inline event_on_camera_ray(cam::CameraOrtho, r::SVector{3}; t_obs=cam.t) = let
     s = dot(r - cam.origin, cam.n)
     FourPosition(t_obs + s, r)
 end
 
 """
-    camera_ray_anchor(cam::Camera, x4) -> FourPosition
+    camera_ray_anchor(cam::CameraOrtho, x4) -> FourPosition
 
 Convert a lab-frame event `x4` to the camera-ray anchor on the screen plane.
 
@@ -145,7 +167,7 @@ Returns the event with:
 - spatial position projected onto the screen plane (perpendicular to n̂)
 - camera time `t_cam = t - s` where `s = dot(r - origin, n̂)`
 """
-@inline camera_ray_anchor(cam::Camera, x4::FourPosition) = let
+@inline camera_ray_anchor(cam::CameraOrtho, x4::FourPosition) = let
     r = @swiz x4.xyz
     s = dot(r - cam.origin, cam.n)
     r_screen = cam.origin + (r - cam.origin) - s * cam.n
