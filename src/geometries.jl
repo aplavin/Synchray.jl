@@ -107,12 +107,49 @@ Ellipsoidal body moving along a worldline. The shape is defined in the rest fram
 	sizes::TS
 end
 
+"""
+    Cylindrical{TR, TRadius, Tz}
+
+Cylindrical geometry with rotation matrix, fixed radius, and axial extent.
+
+# Fields
+- `R_local_to_lab::TR`: 3×3 rotation matrix (local jet frame → lab frame)
+- `radius::TRadius`: Cylinder radius (constant)
+- `z::Tz`: Axial extent interval
+
+# Constructor
+Use `Cylindrical(; axis, radius, z)` where `axis` is a unit vector.
+"""
+struct Cylindrical{TR, TRadius, Tz} <: AbstractGeometry
+	R_local_to_lab::TR
+	radius::TRadius
+	z::Tz
+
+	function Cylindrical(R_local_to_lab::SMatrix{3,3}, radius, z)
+		return new{typeof(R_local_to_lab), typeof(radius), typeof(z)}(R_local_to_lab, radius, z)
+	end
+
+	function Cylindrical(axis::SVector{3}, radius, z)
+		@assert isapprox(norm(axis), 1; atol=√eps(float(eltype(axis))))
+		R = S._axis_to_rotation(axis)
+		return new{typeof(R), typeof(radius), typeof(z)}(R, radius, z)
+	end
+end
+Cylindrical(; axis::AbstractVector, radius, z) = Cylindrical(SVector{3}(axis), radius, z)
+
 end # module Geometries
 
 
 """Prepare for computations by caching trig values"""
 prepare_for_computations(g::Geometries.Conical) = @modify(Geometries.AngleTrigCached_fromangle, g.φj)
 ustrip(g::Geometries.Conical) = @modify(z -> _u_to_code(z, UCTX.L0), g.z)
+
+prepare_for_computations(g::Geometries.Cylindrical) = g
+ustrip(g::Geometries.Cylindrical) = @p let
+	g
+	@modify(_u_to_code(_, UCTX.L0), __.z)
+	@modify(_u_to_code(_, UCTX.L0), __.radius)
+end
 
 prepare_for_computations(g::Geometries.Ellipsoid) = g
 
@@ -159,6 +196,9 @@ end
 """Extract the axis vector (third column of rotation matrix) from a Conical geometry"""
 @inline geometry_axis(g::Geometries.Conical) = g.R_local_to_lab[:,3]
 Accessors.set(g::Geometries.Conical, ::typeof(geometry_axis), v::SVector{3}) = Geometries.Conical(v, g.φj, g.z)
+
+@inline geometry_axis(g::Geometries.Cylindrical) = g.R_local_to_lab[:,3]
+Accessors.set(g::Geometries.Cylindrical, ::typeof(geometry_axis), v::SVector{3}) = Geometries.Cylindrical(v, g.radius, g.z)
 
 """
 Compute cylindrical coordinates from rotation matrix.
@@ -305,6 +345,88 @@ function z_interval(g::Geometries.Conical, ray::Ray)
 
 	return ss_trunc ∩ s_cone
 end
+
+
+# ============================================================================
+# Cylindrical geometry methods
+# ============================================================================
+
+@inline function natural_coords(g::Geometries.Cylindrical, x4)
+	(; z, ρ) = _cylindrical_coords(g.R_local_to_lab, x4)
+	η = ρ / g.radius
+	return (; z, ρ, η)
+end
+
+@inline natural_coords(g::Geometries.Cylindrical, x4, ::Val{:z}) =
+	dot(geometry_axis(g), @swiz x4.xyz)
+
+@inline function is_inside(g::Geometries.Cylindrical, x4)
+	(; z, ρ) = _cylindrical_coords(g.R_local_to_lab, x4)
+	return (z ∈ g.z) && ρ ≤ g.radius
+end
+
+"""
+    z_interval(g::Cylindrical, ray) -> Interval
+
+Compute ray-cylinder intersection interval in the ray parameter `s`.
+
+The ray is parameterized as `r(s) = r0 + s·n̂`.
+Returns the interval of `s` values for which the ray is inside the truncated cylinder.
+"""
+function z_interval(g::Geometries.Cylindrical, ray::Ray)
+	@boundscheck @assert 0 ≤ leftendpoint(g.z) ≤ rightendpoint(g.z)
+	r0 = @swiz ray.x0.xyz
+	n̂ = direction3(ray)
+	axis = geometry_axis(g)
+	a_n = dot(axis, n̂)
+
+	FT = eltype(ray.x0) |> float
+	emptyseg = let
+		sref = FT(0)
+		sref .. (sref - eps(oneunit(sref)))
+	end
+	infseg = FT(-Inf) .. FT(Inf)
+
+	# 1) Axial truncation: axis⋅r(s) ∈ g.z
+	α0 = dot(axis, r0)
+	ss_trunc = if iszero(a_n)
+		(α0 ∈ g.z) ? infseg : emptyseg
+	else
+		zmin, zmax = endpoints(g.z)
+		s1 = (zmin - α0) / a_n
+		s2 = (zmax - α0) / a_n
+		(min(s1, s2) .. max(s1, s2))
+	end
+
+	isempty(ss_trunc) && return ss_trunc
+
+	# 2) Cylinder: |r_perp(s)|² ≤ R²
+	#    r_perp(s) = r0_perp + s·n̂_perp  (strip axial component)
+	r0_perp = r0 - α0 * axis
+	n̂_perp = n̂ - a_n * axis
+	A = dot(n̂_perp, n̂_perp)
+	B = 2 * dot(r0_perp, n̂_perp)
+	C = dot(r0_perp, r0_perp) - g.radius^2
+
+	ss_cyl = if iszero(A)
+		# Ray parallel to axis: either always inside or always outside
+		(C ≤ 0) ? infseg : emptyseg
+	else
+		D = B^2 - 4 * A * C
+		if !(D > 0)
+			emptyseg
+		else
+			sD = √(D)
+			s1 = (-B - sD) / (2 * A)
+			s2 = (-B + sD) / (2 * A)
+			min(s1, s2) .. max(s1, s2)
+		end
+	end
+
+	return ss_trunc ∩ ss_cyl
+end
+
+rotation_local_to_lab(geom::Geometries.Cylindrical) = geom.R_local_to_lab
 
 # ============================================================================
 # Coordinate transformation helpers
