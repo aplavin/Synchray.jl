@@ -111,25 +111,68 @@ end
 	φj = 0.1
 	axis = SVector(sin(0.2), 0.0, cos(0.2))
 	geom = Geometries.Conical(axis, φj, 1.0 .. 10.0)
-	z_range = 0.0 .. 20.0
-	
+	s_range = 0.0 .. 20.0
+
 	# Test ray_in_local_coords
 	ray = S.RayZ(; x0=S.FourPosition(0.0, 1.0, 0.0, 0.0), k=1.0, nz=16)
-	pts = S.ray_in_local_coords(ray, geom; z_range)
-	
+	pts = S.ray_in_local_coords(ray, geom; s_range)
+
 	@test length(pts) == 2
 	@test all(p -> p isa SVector{3}, pts)
 	# Line should have different s values at endpoints (s is z-component in local frame)
 	@test pts[1][3] != pts[2][3]
-	
+
 	# Test camera_fov_in_local_coords
 	cam = S.CameraZ(; xys=grid(SVector, x=range(-1.0, 1.0, 8), y=range(-1.0, 1.0, 8)), nz=16, ν=1.0, t=0.0)
-	corners = S.camera_fov_in_local_coords(cam, geom; z_range)
+	corners = S.camera_fov_in_local_coords(cam, geom; s_range)
 	
 	@test length(corners) == 4
 	@test all(c -> c isa SVector{3}, corners)
 	# Corners should form a quadrilateral (not all same point)
 	@test !allequal(corners)
+end
+
+@testitem "Arbitrary-angle Ray and Camera basics" begin
+	import Synchray as S
+
+	x0 = S.FourPosition(0.0, 0.0, 0.0, 0.0)
+	k = S.photon_k(2.0, SVector(0.0, 0.0, 1.0))
+
+	# GPU compatibility: Ray must be isbits
+	ray = S.Ray(x0, k, SVector(1.0, 0.0, 0.0), SVector(0.0, 1.0, 0.0), 64)
+	@test isbits(ray)
+
+	# RayZ produces a Ray
+	rayz = S.RayZ(x0, k, 64)
+	@test rayz isa S.Ray
+	@test isbits(rayz)
+
+	# ray_direction extracts the unit spatial direction
+	@test S.ray_direction(ray) ≈ SVector(0.0, 0.0, 1.0)
+
+	# Arbitrary direction
+	n̂ = normalize(SVector(1.0, 0.0, 1.0))
+	k_arb = S.photon_k(2.0, n̂)
+	e1 = normalize(cross(SVector(0.0, 1.0, 0.0), n̂))
+	e2 = cross(n̂, e1)
+	ray_arb = S.Ray(x0, k_arb, e1, e2, 64)
+	@test isbits(ray_arb)
+	@test S.ray_direction(ray_arb) ≈ n̂
+	@test S.frequency(ray_arb) ≈ 2.0
+
+	# Camera with arbitrary look_direction: orthonormal screen basis
+	cam = S.Camera(;
+		look_direction=SVector(1.0, 0.0, 1.0),
+		xys=SVector{2}[(0.0, 0.0)],
+		nz=64, ν=2.0, t=0.0,
+	)
+	@test cam.n ≈ n̂
+	@test norm(cam.e1) ≈ 1
+	@test norm(cam.e2) ≈ 1
+	@test dot(cam.e1, cam.n) ≈ 0 atol=√eps(1.0)
+	@test dot(cam.e2, cam.n) ≈ 0 atol=√eps(1.0)
+	@test dot(cam.e1, cam.e2) ≈ 0 atol=√eps(1.0)
+	@test cross(cam.n, cam.e1) ≈ cam.e2
 end
 
 @testitem "Ellipsoid geometry" begin

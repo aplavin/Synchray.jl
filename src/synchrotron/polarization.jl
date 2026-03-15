@@ -141,10 +141,10 @@ end
 end
 
 """
-	comoving_screen_basis(u, k)
+	comoving_screen_basis(u, k, e1_cam, e2_cam)
 
 Build an orthonormal spatial basis `(e1′, e2′)` spanning the plane orthogonal to the
-comoving photon direction `n′`, derived from the fixed camera basis vectors.
+comoving photon direction `n′`, derived from the camera's polarization frame vectors.
 
 Algorithm:
 
@@ -154,12 +154,14 @@ Algorithm:
 
 Returns `(n′, e1′, e2′)` where all are unit 3-vectors in the comoving frame.
 """
-@inline comoving_screen_basis(u::FourVelocity, k::FourFrequency) = begin
+# 2-arg convenience: uses default Z-camera screen basis (e1=x̂, e2=ŷ)
+@inline comoving_screen_basis(u::FourVelocity, k::FourFrequency) =
+	comoving_screen_basis(u, k, SVector(1, 0, 0), SVector(0, 1, 0))
+
+@inline comoving_screen_basis(u::FourVelocity, k::FourFrequency, e1_cam::SVector{3}, e2_cam::SVector{3}) = begin
 	k′ = lorentz_unboost(u, k)
 	# Comoving photon direction (unit 3-vector): n′ = k′⃗ / k′ᵗ.
 	n′ = direction(k′)
-	e1_cam = SVector(1, 0, 0)
-	e2_cam = SVector(0, 1, 0)
 
 	# Unboost camera basis vectors (treated as spatial four-vectors),
 	# then project them into the screen plane ⟂ n′.

@@ -362,7 +362,7 @@ end
 		a_mode::TA
 	end
 
-	S.z_interval(obj::ConstPolarizedSlab, ray::S.RayZ) = obj.z
+	S.z_interval(obj::ConstPolarizedSlab, ray::S.Ray) = S._slab_z_interval(obj.z, ray)
 	S.four_velocity(obj::ConstPolarizedSlab, x4) = obj.u0
 	S.emissivity_absorption_polarized(obj::ConstPolarizedSlab, x4, k′) = (obj.j_mode, obj.a_mode, obj.B0)
 	S.emissivity_absorption(obj::ConstPolarizedSlab, x4, k′) = (obj.j_mode.perp + obj.j_mode.par, (obj.a_mode.perp + obj.a_mode.par) / 2)
@@ -609,6 +609,86 @@ end
 		@testset "Arbitrary basis for zero direction" begin
 			(e1, e2) = S._arbitrary_screen_basis(SVector(0, 0, 0))
 			@test any(!isfinite, e1) || any(!isfinite, e2)
+		end
+	end
+end
+
+@testitem "Polarized rendering: rotated screen basis and arbitrary-angle rays" begin
+	import Synchray as S
+	using Test
+
+	ν = 2.0
+	ne0 = 1.3
+	Bmag = 0.9
+	z = 0.0 .. 1.0
+	u0 = S.FourVelocity(SVector(0.0, 0.0, 0.0))
+	electrons = S.IsotropicPowerLawElectrons(; p=3.2, Cj=0.7, Ca=0.3)
+
+	@testset "Rotated screen basis: Stokes QU rotation" begin
+		# Slab with B along Y → in standard basis: Q > 0, U ≈ 0
+		B = SVector(0.0, Bmag, 0.0)
+		slab = S.UniformSynchrotronSlab(; z, u0, ne0, B0=B, electrons)
+
+		# Reference: standard Z-ray with default screen basis (e1=x̂, e2=ŷ)
+		ray_std = S.RayZ(; x0=S.FourPosition(0.0, 0.0, 0.0, 0.0), k=S.photon_k(ν, SVector(0.0, 0.0, 1.0)), nz=80)
+		S_std = S.render(ray_std, slab, S.IntensityIQU())
+		@test S_std.Q > 0
+		@test abs(S_std.U) < 1e-12
+
+		# Z-ray with rotated screen basis: e1 rotated by χ in the xy-plane
+		@testset "χ=$χ" for χ in [0.3, π/4, 1.1]
+			e1_rot = SVector(cos(χ), sin(χ), 0.0)
+			e2_rot = SVector(-sin(χ), cos(χ), 0.0)
+			k = S.photon_k(ν, SVector(0.0, 0.0, 1.0))
+			ray_rot = S.Ray(S.FourPosition(0.0, 0.0, 0.0, 0.0), k, e1_rot, e2_rot, 80)
+			S_rot = S.render(ray_rot, slab, S.IntensityIQU())
+
+			# I should be unchanged
+			@test S_rot.I ≈ S_std.I rtol=1e-12
+
+			# (Q, U) should rotate by the stokes_QU_rotation matrix
+			R = S.stokes_QU_rotation(χ)
+			QU_expected = R * SVector(S_std.Q, S_std.U)
+			@test S_rot.Q ≈ QU_expected[1] rtol=1e-12
+			@test S_rot.U ≈ QU_expected[2] rtol=1e-12
+		end
+	end
+
+	@testset "FullyTangled sphere: depolarized from any angle" begin
+		R = 1.0
+		center = S.FourPosition(0, 0, 0, 0)
+		sphere = S.UniformSynchrotronSphere(;
+			center, radius=R,
+			u0=S.FourVelocity(SVector(0, 0, 0)),
+			ne0=1.3, B0=0.9,
+			electrons=S.IsotropicPowerLawElectrons(; p=3.2, Cj=0.7, Ca=0.3),
+		)
+
+		# Reference: Z-direction
+		ray_z = S.RayZ(; x0=S.FourPosition(0.0, 0.0, 0.0, 0.0), k=S.photon_k(ν, SVector(0.0, 0.0, 1.0)), nz=256)
+		S_z = S.render(ray_z, sphere, S.IntensityIQU())
+
+		# Arbitrary directions: I should match, Q and U should be ≈ 0
+		dirs = [
+			SVector(1.0, 0.0, 0.0),
+			normalize(SVector(1.0, 0.0, 1.0)),
+			normalize(SVector(-0.3, 0.7, 0.5)),
+		]
+
+		@testset for n̂ in dirs
+			up = abs(dot(SVector(0.0, 1.0, 0.0), n̂)) < 0.9 ? SVector(0.0, 1.0, 0.0) : SVector(1.0, 0.0, 0.0)
+			e1 = normalize(cross(up, n̂))
+			e2 = cross(n̂, e1)
+			k = S.photon_k(ν, n̂)
+			origin = -10.0 * n̂
+			ray = S.Ray(S.FourPosition(0.0, origin), k, e1, e2, 256)
+			S_arb = S.render(ray, sphere, S.IntensityIQU())
+
+			# I should match Z-direction (sphere is symmetric)
+			@test S_arb.I ≈ S_z.I rtol=1e-6
+			# FullyTangled → Q≈0, U≈0
+			@test S_arb.Q ≈ 0 atol=1e-12
+			@test S_arb.U ≈ 0 atol=1e-12
 		end
 	end
 end

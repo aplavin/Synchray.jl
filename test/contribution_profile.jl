@@ -24,7 +24,7 @@
 		miss_ray = S.RayZ(; x0=S.FourPosition(0.0, 2R, 0.0, 0.0), k=2.0, nz=256)
 
 		prof_miss = S.ray_contribution_profile(sphere, miss_ray)
-		@test isempty(prof_miss.z)
+		@test isempty(prof_miss.s)
 		@test isempty(prof_miss.Δτ)
 		@test isempty(prof_miss.dIν_to_obs)
 

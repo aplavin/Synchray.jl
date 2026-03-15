@@ -119,18 +119,17 @@ prepare_for_computations(g::Geometries.Ellipsoid) = g
 @inline four_velocity(g::Geometries.Ellipsoid, x4) = four_velocity(g.center)
 @inline four_velocity(wl::Geometries.InertialWorldline) = wl.u
 
-function z_interval(g::Geometries.Ellipsoid, ray::RayZ)
+function z_interval(g::Geometries.Ellipsoid, ray::Ray)
 	# Worldtube of a rigid axis-aligned ellipsoid moving with constant 4-velocity u.
 	# In the comoving frame, define Δ⊥ as the displacement orthogonal to u, and require
 	# (Δx/sx)^2 + (Δy/sy)^2 + (Δz/sz)^2 ≤ 1.
 	# `sizes == SVector(R,R,R)` recovers the moving sphere.
-	# For RayZ: x(z) = ray.x0 + z*(1,0,0,1) (since k/kz = (1,0,0,1)).
+	# Ray: x(s) = ray.x0 + s·k1, where k1 = k/ν = (1, n̂).
 	@assert g.center isa Geometries.InertialWorldline
 	u = g.center.u
 	Δ0 = ray.x0 - g.center.x0
-	onez = one(Δ0.t)
-	zeroz = zero(Δ0.t)
-	kdir = FourPosition(onez, zeroz, zeroz, onez)
+	ν = frequency(ray)
+	kdir = ray.k / ν  # = (1, n̂)
 
 	a = minkowski_dot(u, kdir)
 	b = minkowski_dot(u, Δ0)
@@ -147,14 +146,14 @@ function z_interval(g::Geometries.Ellipsoid, ray::RayZ)
 	D = B^2 - 4 * A * C
 
 	if !(D > 0) || iszero(A)
-		z0 = oftype(A, g.center.x0.z)
-		return z0 .. (z0 - eps(z0))
+		s0 = zero(A)
+		return s0 .. (s0 - eps(oneunit(s0)))
 	end
 
 	sD = √(D)
-	z1 = (-B - sD) / (2 * A)
-	z2 = (-B + sD) / (2 * A)
-	return min(z1, z2) .. max(z1, z2)
+	s1 = (-B - sD) / (2 * A)
+	s2 = (-B + sD) / (2 * A)
+	return min(s1, s2) .. max(s1, s2)
 end
 
 """Extract the axis vector (third column of rotation matrix) from a Conical geometry"""
@@ -224,53 +223,56 @@ end
 """
     z_interval(g::Conical, ray) -> Interval
 
-Compute ray-cone intersection interval in lab `z` coordinate.
-"""
-function z_interval(g::Geometries.Conical, ray)
-	# RayZ is a line of sight parameterized by z: r(z) = r0 + z*e_z.
-	# Assumes standard camera convention: ray.x0.z == 0 and cone apex at origin.
-	@boundscheck @assert iszero(ray.x0.z)
-	@boundscheck @assert 0 ≤ leftendpoint(g.z) ≤ rightendpoint(g.z)
-	
-	c2 = cos(g.φj)^2
-	r0 = SVector(ray.x0.x, ray.x0.y, ray.x0.z)
-	axis = geometry_axis(g)
-	az = axis.z
+Compute ray-cone intersection interval in the ray parameter `s`.
 
-	# Cone inequality: (a⋅r)^2 ≥ c^2 * (r⋅r).
-	# With r(z)=r0+z*e_z and r0⋅e_z=0:
-	# (α0 + az*z)^2 - c^2*(|r0|^2 + z^2) >= 0
+The ray is parameterized as `r(s) = r0 + s·n̂` where `n̂ = ray_direction(ray)`.
+Returns the interval of `s` values for which the ray is inside the truncated cone.
+"""
+function z_interval(g::Geometries.Conical, ray::Ray)
+	c2 = cos(g.φj)^2
+	r0 = @swiz ray.x0.xyz
+	n̂ = ray_direction(ray)
+	axis = geometry_axis(g)
+	a_n = dot(axis, n̂)    # projection of ray direction onto cone axis
+
+	# Cone inequality: (axis⋅r)² ≥ cos²(φj)·|r|².
+	# With r(s) = r0 + s·n̂:
+	#   axis⋅r(s) = α0 + a_n·s
+	#   |r(s)|² = |r0|² + 2·d0·s + s²
+	# where d0 = r0⋅n̂.
 	α0 = dot(axis, r0)
+	d0 = dot(r0, n̂)
 	r02 = dot(r0, r0)
-	A = az^2 - c2
-	B = 2 * α0 * az
+	A = a_n^2 - c2
+	B = 2 * (α0 * a_n - c2 * d0)
 	C = α0^2 - c2 * r02
 
 	FT = eltype(ray.x0) |> float
 	emptyseg = let
-		zref = FT(ray.x0.z)
-		zref .. (zref - eps(zref))
+		sref = FT(0)
+		sref .. (sref - eps(oneunit(sref)))
 	end
 	infseg = FT(-Inf) .. FT(Inf)
 
-	# 1) Restrict to truncation interval in along-axis coordinate: z_axis(z_lab) ∈ g.z.
-	zs = if iszero(az)
+	# 1) Restrict to truncation interval in along-axis coordinate: axis⋅r(s) ∈ g.z.
+	#    axis⋅r(s) = α0 + a_n·s, so s = (z_boundary - α0) / a_n.
+	ss_trunc = if iszero(a_n)
 		(α0 ∈ g.z) ? infseg : emptyseg
 	else
 		zmin, zmax = endpoints(g.z)
-		z1 = (zmin - α0) / az
-		z2 = (zmax - α0) / az
-		(min(z1, z2) .. max(z1, z2))
+		s1 = (zmin - α0) / a_n
+		s2 = (zmax - α0) / a_n
+		(min(s1, s2) .. max(s1, s2))
 	end
 
-	isempty(zs) && return zs
+	isempty(ss_trunc) && return ss_trunc
 
-	# 2) Intersect with the infinite cone (already symmetric); half-cone handled above.
-	# Solve A z^2 + B z + C ≥ 0 and clip to `zs`.
-	z_cone = let
+	# 2) Intersect with the infinite cone.
+	# Solve A·s² + B·s + C ≥ 0 and clip to `ss_trunc`.
+	s_cone = let
 		D = B^2 - 4 * A * C
 		if iszero(A)
-			# Linear case: B z + C ≥ 0.
+			# Linear case: B·s + C ≥ 0.
 			if iszero(B)
 				(C >= 0) ? infseg : emptyseg
 			elseif B > 0
@@ -282,26 +284,24 @@ function z_interval(g::Geometries.Conical, ray)
 			# No real roots: sign is constant (A and C have same sign when D<0).
 			(C >= 0) ? infseg : emptyseg
 		else
-			z1 = (-B - √D) / (2 * A)
-			z2 = (-B + √D) / (2 * A)
-			zlo, zhi = minmax(z1, z2)
+			s1 = (-B - √D) / (2 * A)
+			s2 = (-B + √D) / (2 * A)
+			slo, shi = minmax(s1, s2)
 			if A < 0
-				zlo .. zhi
+				slo .. shi
 			else
 				# cone interior outside the roots
-				@boundscheck @assert zlo ≤ 0 ≤ zhi
-				left = infseg.left .. zlo
-				right = zhi .. infseg.right
-				# Prefer the side that overlaps `zs`
-				L = zs ∩ left
-				R = zs ∩ right
-				@boundscheck @assert isempty(L) || isempty(R)
+				left = infseg.left .. slo
+				right = shi .. infseg.right
+				# Prefer the side that overlaps `ss_trunc`
+				L = ss_trunc ∩ left
+				R = ss_trunc ∩ right
 				!isempty(L) ? L : R
 			end
 		end
 	end
 
-	return zs ∩ z_cone
+	return ss_trunc ∩ s_cone
 end
 
 # ============================================================================
@@ -377,38 +377,37 @@ Convert a local-frame spatial 3-position back to lab coordinates.
 @inline rotate_local_to_lab(geom::Geometries.AbstractGeometry, r_local::SVector{3}) = rotation_local_to_lab(geom) * r_local
 
 """
-    ray_in_local_coords(ray, geom; z_range) -> StructArray{SVector{3}}
+    ray_in_local_coords(ray, geom; s_range) -> StructArray{SVector{3}}
 
 Project a ray into local coordinates.
 
-Returns 3-vectors in local frame defining the line segment for the given `z_range` interval.
-Use `@swiz` at call sites to extract desired components, e.g., `@swiz r.zx` for (s, h) coordinates.
+Returns 3-vectors in local frame defining the line segment for the given `s_range` interval
+(ray parameter). Use `@swiz` at call sites to extract desired components.
 """
-function ray_in_local_coords(ray, geom; z_range)
-	map(endpoints(z_range)) do z
-		r_lab = SVector(ray.x0.x, ray.x0.y, z)
+function ray_in_local_coords(ray, geom; s_range)
+	n̂ = ray_direction(ray)
+	r0 = @swiz ray.x0.xyz
+	map(endpoints(s_range)) do s
+		r_lab = r0 + s * n̂
 		rotate_lab_to_local(geom, r_lab)
 	end |> collect |> StructArray
 end
 
 """
-    camera_fov_in_local_coords(cam, geom; y=0, z_range) -> StructArray{SVector{3}}
+    camera_fov_in_local_coords(cam, geom; v=0, s_range) -> StructArray{SVector{3}}
 
 Project the camera's field of view into local coordinates.
 
-Returns four corners of the band (polygon) swept by camera rays in the y=y plane.
+Returns four corners of the band (polygon) swept by camera rays in the `v=v` plane.
 Use `@swiz` at call sites to extract desired components.
 """
-@unstable function camera_fov_in_local_coords(cam, geom; y=0, z_range)
-	xmin, xmax = extrema(xy -> xy.x, cam.xys)
-	z1, z2 = endpoints(z_range)
+@unstable function camera_fov_in_local_coords(cam, geom; v=0, s_range)
+	umin, umax = extrema(uv -> uv[1], cam.xys)
+	s1, s2 = endpoints(s_range)
 
-	corners_lab = [
-		SVector(xmin, y, z1),
-		SVector(xmax, y, z1),
-		SVector(xmax, y, z2),
-		SVector(xmin, y, z2),
-	] |> StructArray
+	corners_lab = map([(umin, s1), (umax, s1), (umax, s2), (umin, s2)]) do (u, s)
+		cam.origin + u * cam.e1 + v * cam.e2 + s * cam.n
+	end |> StructArray
 
 	map(corners_lab) do r_lab
 		rotate_lab_to_local(geom, r_lab)

@@ -158,6 +158,7 @@ end
 @testitem "retarded_event" begin
 	import Synchray as S
 	using Accessors
+	using RectiGrids
 
 	# Geometry needed for _knot_chi
 	geom = S.Geometries.Conical(; axis=SVector(0, 0, 1), φj=0.05, z=1e-3..10)
@@ -208,10 +209,11 @@ end
 	end
 
 	@testset "round-trip with camera_ray_anchor" for knot in (knot_axial, knot_diag)
+		cam = S.CameraZ(; xys=grid(SVector, x=[0.0], y=[0.0]), nz=1, ν=1.0, t=0.0)
 		for t_obs in (0.0, 1.0, 5.0)
 			ret = S.retarded_event(knot; t_obs)
 			# camera_ray_anchor should recover (x, y) and t_obs
-			anchor = S.camera_ray_anchor(ret.x)
+			anchor = S.camera_ray_anchor(cam, ret.x)
 			@test anchor.x ≈ ret.x.x atol=1e-12
 			@test anchor.y ≈ ret.x.y atol=1e-12
 			@test anchor.t ≈ t_obs atol=1e-12

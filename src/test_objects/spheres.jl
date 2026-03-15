@@ -1,3 +1,15 @@
+"""General ray-sphere intersection: returns interval in ray parameter `s`."""
+_sphere_z_interval(center_xyz, radius, ray::Ray) = begin
+	n̂ = ray_direction(ray)
+	r0 = @swiz ray.x0.xyz
+	Δ = center_xyz - r0
+	s_c = dot(Δ, n̂)
+	b2 = dot(Δ, Δ) - s_c^2
+	r2 = radius^2
+	ds = b2 > r2 ? -eps(float(s_c)) : √(r2 - b2)
+	return (s_c - ds) .. (s_c + ds)
+end
+
 @kwdef struct UniformSphere{TC,TR,TU,FJ,FA} <: AbstractMedium
 	center::TC
 	radius::TR
@@ -6,14 +18,8 @@
 	αν::FA   # comoving absorption α_ν (constant)
 end
 
-z_interval(obj::UniformSphere, ray::RayZ) = begin
-	z0 = obj.center.z
-	r2 = obj.radius^2
-	dxy = (@swiz ray.x0.xy) - (@swiz obj.center.xy)
-	b2 = dot(dxy, dxy)
-	dz = b2 > r2 ? -eps(float(z0)) : √(r2 - b2)
-	return (z0 - dz) .. (z0 + dz)
-end
+z_interval(obj::UniformSphere, ray::Ray) =
+	_sphere_z_interval(@swiz(obj.center.xyz), obj.radius, ray)
 
 four_velocity(obj::UniformSphere, x4) = obj.u0
 
@@ -41,17 +47,13 @@ _spatial_in_rest(u, v) = begin
 	return xyz + f * β
 end
 
-z_interval(obj::MovingUniformEllipsoid, ray::RayZ) = begin
+z_interval(obj::MovingUniformEllipsoid, ray::Ray) = begin
 	# Worldtube of a rigid axis-aligned ellipsoid moving with constant 4-velocity u.
-	# In the comoving frame, define Δ⊥ as the displacement orthogonal to u, and require
-	# (Δx/sx)^2 + (Δy/sy)^2 + (Δz/sz)^2 ≤ 1.
-	# `sizes == SVector(R,R,R)` recovers the moving sphere.
-	# For RayZ: x(z) = ray.x0 + z*(1,0,0,1) (since k/kz = (1,0,0,1)).
+	# Ray: x(s) = ray.x0 + s·k1, where k1 = k/ν = (1, n̂).
 	u = obj.u0
 	Δ0 = ray.x0 - obj.center
-	onez = one(Δ0.t)
-	zeroz = zero(Δ0.t)
-	kdir = FourPosition(onez, zeroz, zeroz, onez)
+	ν = frequency(ray)
+	kdir = ray.k / ν  # = (1, n̂)
 
 	a = minkowski_dot(u, kdir)
 	b = minkowski_dot(u, Δ0)
@@ -68,14 +70,14 @@ z_interval(obj::MovingUniformEllipsoid, ray::RayZ) = begin
 	D = B^2 - 4 * A * C
 
 	if !(D > 0) || iszero(A)
-		z0 = oftype(A, obj.center.z)
-		return z0 .. (z0 - eps(z0))
+		s0 = zero(A)
+		return s0 .. (s0 - eps(oneunit(s0)))
 	end
 
 	sD = √(D)
-	z1 = (-B - sD) / (2 * A)
-	z2 = (-B + sD) / (2 * A)
-	return min(z1, z2) .. max(z1, z2)
+	s1 = (-B - sD) / (2 * A)
+	s2 = (-B + sD) / (2 * A)
+	return min(s1, s2) .. max(s1, s2)
 end
 
 four_velocity(obj::MovingUniformEllipsoid, x4) = obj.u0
@@ -91,14 +93,8 @@ emissivity_absorption(obj::MovingUniformEllipsoid, x4, k′) = (obj.jν, obj.α�
 	electrons::TM
 end
 
-z_interval(obj::UniformSynchrotronSphere, ray::RayZ) = begin
-	z0 = obj.center.z
-	r2 = obj.radius^2
-	dxy = (@swiz ray.x0.xy) - (@swiz obj.center.xy)
-	b2 = dot(dxy, dxy)
-	dz = b2 > r2 ? -eps(b2) : √(r2 - b2)
-	return (z0 - dz) .. (z0 + dz)
-end
+z_interval(obj::UniformSynchrotronSphere, ray::Ray) =
+	_sphere_z_interval(@swiz(obj.center.xyz), obj.radius, ray)
 
 four_velocity(obj::UniformSynchrotronSphere, x4) = obj.u0
 

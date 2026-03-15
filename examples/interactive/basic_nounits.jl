@@ -195,8 +195,8 @@ let
         xy = $xy_sel
         ray = S.RayZ(; x0=S.FourPosition($camera.t, xy..., 0.0), k=$camera.ν, nz=$camera.nz)
         axis_z = S.geometry_axis($jet).z
-        z_range = 0±1e4
-        S.ray_in_local_coords(ray, $jet; z_range)
+        s_range = 0±1e4
+        S.ray_in_local_coords(ray, $jet; s_range)
     end
     lines!(ax, (@lift (@swiz $ray_path.zx)); color=:cyan, linewidth=1, linestyle=:dash, xautolimits=false, yautolimits=false)
 end

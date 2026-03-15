@@ -448,36 +448,36 @@ validate_pattern(knot::Patterns.EllipsoidalKnot, geom) = nothing
 #   retarded_time(worldline; t_obs) -> tau   # find retarded proper time
 # Current design bundles both for convenience with inertial worldlines.
 """
-    retarded_event(x0::FourPosition, u::FourVelocity; t_obs=0)
-    retarded_event(knot::EllipsoidalKnot; t_obs=0)
+    retarded_event(x0::FourPosition, u::FourVelocity; t_obs=0, n̂=SVector(0,0,1), origin=zero(SVector{3}))
+    retarded_event(knot::EllipsoidalKnot; t_obs=0, n̂=SVector(0,0,1), origin=zero(SVector{3}))
 
 Compute the retarded event on an inertial worldline `x(τ) = x0 + u·τ`.
 
-For the CameraZ convention (orthographic +z rays), this finds the event whose
-light reaches the camera screen (z=0) at observer time `t_obs`. Equivalently,
-it's the intersection of the worldline with the null hyperplane `t - z = t_obs`.
+Finds the event whose light reaches the camera at observer time `t_obs`.
+The camera has ray direction `n̂` and screen origin `origin`.
+
+The null hyperplane condition is `t - n̂·r = t_obs - n̂·origin`.
 
 # Returns
 `(; x::FourPosition, tau)` where:
-- `x`: The retarded event (t_lab, x, y, z). Image coordinates are `(x.x, x.y)`.
+- `x`: The retarded event.
 - `tau`: The retarded proper time on the worldline.
-
-See also: [`camera_ray_anchor`](@ref), [`event_on_camera_ray`](@ref)
 """
-@inline function retarded_event(x0::FourPosition, u::FourVelocity; t_obs=zero(x0.t))
+@inline function retarded_event(x0::FourPosition, u::FourVelocity; t_obs=zero(x0.t), n̂=SVector(0, 0, 1), origin=zero(typeof(n̂)))
     # Inertial worldline: x(τ) = x0 + u·τ
-    # Null hyperplane condition: t - z = t_obs
+    # Null hyperplane: t - n̂·r = t_obs - n̂·origin
     #
     # Solve for τ:
-    #   t_obs = x.t - x.z = (x0.t + u.t·τ) - (x0.z + u.z·τ)
-    #   t_obs = (x0.t - x0.z) + τ·(u.t - u.z)
-    #   τ = (t_obs - (x0.t - x0.z)) / (u.t - u.z)
-    tau = (t_obs - (x0.t - x0.z)) / (u.t - u.z)
+    #   (x0.t + u.t·τ) - n̂·(x0_xyz + u_xyz·τ) = t_obs - n̂·origin
+    #   τ·(u.t - n̂·u_xyz) = t_obs - n̂·origin - (x0.t - n̂·x0_xyz)
+    x0_xyz = @swiz x0.xyz
+    u_xyz = @swiz u.xyz
+    tau = (t_obs - dot(n̂, origin) - (x0.t - dot(n̂, x0_xyz))) / (u.t - dot(n̂, u_xyz))
     x = x0 + u * tau
     return (; x, tau)
 end
 
-@inline retarded_event(knot::Patterns.EllipsoidalKnot; t_obs=zero(knot.x_c0.t)) = retarded_event(knot.x_c0, knot.u; t_obs)
+@inline retarded_event(knot::Patterns.EllipsoidalKnot; kwargs...) = retarded_event(knot.x_c0, knot.u; kwargs...)
 
 ustrip(knot::Patterns.EllipsoidalKnot) = @modify(x -> _u_to_code(x, UCTX.L0), knot.x_c0)
 

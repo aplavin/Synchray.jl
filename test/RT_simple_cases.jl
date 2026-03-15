@@ -259,3 +259,81 @@ end
 		end
 	end
 end
+
+
+@testitem "Sphere rendering from arbitrary-angle rays" begin
+	import Synchray as S
+	using RectiGrids
+
+	R = 1.3
+	j0 = 0.7
+	center = S.FourPosition(0, 0, 0, 0)
+	u0 = S.FourVelocity(SVector(0, 0, 0))
+
+	ν = 2.0
+	nz = 512
+
+	# Helper: create a Ray through a centered sphere at impact parameter b
+	function make_ray(n̂, b)
+		n̂ = normalize(n̂)
+		up = abs(dot(SVector(0.0, 1.0, 0.0), n̂)) < 0.9 ? SVector(0.0, 1.0, 0.0) : SVector(1.0, 0.0, 0.0)
+		e1 = normalize(cross(up, n̂))
+		e2 = cross(n̂, e1)
+		k = S.photon_k(ν, n̂)
+		origin = -10.0 * n̂ + b * e1
+		S.Ray(S.FourPosition(0.0, origin), k, e1, e2, nz)
+	end
+
+	directions = [
+		SVector(0.0, 0.0, 1.0),
+		SVector(1.0, 0.0, 0.0),
+		SVector(0.0, 1.0, 0.0),
+		normalize(SVector(1.0, 0.0, 1.0)),
+		normalize(SVector(1.0, 1.0, 1.0)),
+		normalize(SVector(-0.3, 0.7, 0.5)),
+	]
+
+	@testset for α0 in (0.0, 1.2)
+		sphere = S.UniformSphere(; center, radius=R, u0, jν=j0, αν=α0)
+
+		# Same impact parameter → same intensity from any direction
+		@testset "b=$b" for b in [0.0, 0.4R, 0.8R]
+			I_ref = S.render(make_ray(directions[1], b), sphere)
+			@testset for n̂ in directions[2:end]
+				@test S.render(make_ray(n̂, b), sphere) ≈ I_ref rtol=1e-10
+			end
+		end
+
+		# Missed rays: zero from any direction
+		@testset for n̂ in directions
+			@test S.render(make_ray(n̂, 2R), sphere) == 0
+		end
+	end
+
+	# Camera-based total flux comparison across viewing angles
+	@testset "Total flux matches across camera angles" begin
+		sphere = S.UniformSphere(; center, radius=R, u0, jν=j0, αν=1.2)
+		xs = range(-R..R, 51)
+		cam_dirs = [
+			SVector(0.0, 0.0, 1.0),
+			SVector(1.0, 0.0, 0.0),
+			normalize(SVector(1.0, 1.0, 1.0)),
+		]
+
+		F_ref = let
+			cam = S.CameraZ(; xys=grid(SVector, xs, xs), nz, ν, t=0.0)
+			sum(S.render(cam, sphere)) * step(xs)^2
+		end
+
+		@testset for n̂ in cam_dirs[2:end]
+			up = abs(dot(SVector(0.0, 1.0, 0.0), n̂)) < 0.9 ? SVector(0.0, 1.0, 0.0) : SVector(1.0, 0.0, 0.0)
+			cam = S.Camera(;
+				look_direction=n̂, up,
+				xys=grid(SVector, xs, xs),
+				nz, ν, t=0.0,
+			)
+			F = sum(S.render(cam, sphere)) * step(xs)^2
+			@test F ≈ F_ref rtol=1e-8
+		end
+	end
+end
