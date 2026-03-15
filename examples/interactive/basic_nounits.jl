@@ -148,7 +148,7 @@ jet = @lift let
     S.prepare_for_computations(region)
 end::Any
 
-camera_gpu = @lift @p $camera S.to_float_type(Float32) @set(__.mapfunc = map) @modify(MtlArray, __.xys)
+camera_gpu = @lift @p $camera S.to_float_type(Float32) @set(__.mapfunc = map) @modify(MtlArray, AxisKeys.keyless_unname(__.xys))
 jet_gpu = @lift S.to_float_type(Float32, $jet)::Any
 
 xy_sel = Observable(SVector(0., 0.))
@@ -202,11 +202,11 @@ let
 end
 
 img_iqu = @lift let
-    (value, time) = @timed Array(S.render(camera_gpu[], $jet_gpu, S.IntensityIQU()))
+    (value, time) = @timed @modify(Array, AxisKeys.keyless_unname(S.render(camera_gpu[], $jet_gpu, S.IntensityIQU())))
     @info "" time
-    KeyedArray(value; named_axiskeys(camera[].xys)...) |> StructArray
+    value |> StructArray
 end
-img_si = @lift KeyedArray(Array(S.render(camera_gpu[], $jet_gpu, S.SpectralIndex())); named_axiskeys(camera[].xys)...)
+img_si = @lift @modify(Array, AxisKeys.keyless_unname(S.render(camera_gpu[], $jet_gpu, S.SpectralIndex())))
 
 pos = fig[1:2,2][1,1]
 ax, hm = image(pos[1,1],

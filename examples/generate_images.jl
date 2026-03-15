@@ -63,17 +63,17 @@ function render_field_metal(obj; extent, nz=512, npx=512, ν, t=0.0, what=S.Inte
     cam = S.CameraZ(; xys=grid(SVector, x=range(0±extent, npx), y=range(0±extent, npx)), nz, ν=Float32(ν), t)
 
     obj32 = S.to_float_type(Float32, obj)
-    cam_gpu = @p cam S.to_float_type(Float32) @modify(MtlArray, __.xys)
+    cam_gpu = @p cam S.to_float_type(Float32) @modify(MtlArray, AxisKeys.keyless_unname(__.xys))
 
     result = open(render_time_log_metal, "a") do io
         redirect_stdout(io) do
-            Array(S.render(cam_gpu, obj32, what))
+            @modify(Array, AxisKeys.keyless_unname(S.render(cam_gpu, obj32, what)))
             label = f"{nameof(typeof(obj)):27s}, {nameof(typeof(what)):15s}, {npx}px × {nz}"
-            @time label Array(S.render(cam_gpu, obj32, what))
+            @time label @modify(Array, AxisKeys.keyless_unname(S.render(cam_gpu, obj32, what)))
         end
     end
 
-    KeyedArray(result; AxisKeysExtra.named_axiskeys(cam.xys)...)
+    result
 end
 
 
