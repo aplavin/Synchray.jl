@@ -103,8 +103,12 @@ render(ray::Ray, obj::AbstractMedium, what=Intensity()) = integrate_ray(obj, ray
     inside = map(x -> iszero(x) || isnan(x), img) |> Matrix
     IXs = CartesianIndices(inside)
     map(IXs) do I
-        neighbors = filter(∈(IXs), I .+ CartesianIndices((-1:1, -1:1)))
-        !allequal(inside[neighbors])
+        @p let
+            CartesianIndices((-1:1, -1:1))
+            Iterators.map(I + _)
+            Iterators.filter(∈(IXs))
+            any(inside[_] != inside[I])
+        end
     end
 end
 
