@@ -94,7 +94,7 @@ end
 	(Jinv_m, Ainv_m, B′) = emissivity_absorption_polarized_invariant(obj, x4, k′)
 
 	# Build the comoving camera screen basis and the field-aligned +Q axis.
-	(n′, e1′, e2′) = comoving_screen_basis(u, k, ray.e1, ray.e2)
+	(n′, e1′, e2′) = comoving_screen_basis(u, ray)
 	(_, e_perp) = linear_polarization_basis_from_B(n′, B′)
 	R_cf = stokes_QU_rotation(e1′, e2′, e_perp)  # (Q,U)_field = R_cf * (Q,U)_cam
 	R_fc = R_cf'  # (Q,U)_cam = R_fc * (Q,U)_field
@@ -181,15 +181,13 @@ integrate_ray(obj::AbstractMedium, ray::Ray, what=Intensity()) = begin
 
 	k = ray.k
 	ν = frequency(ray)
-	# Ray parameterization: k = ν·(1, n̂), so k1 = k/ν = (1, n̂).
-	# Events along the ray: x(s) = x₀ + s·k1.
-	# Affine parameter step: Δλ = Δs / ν.
-    k1 = k / ν
+	k1 = direction4(k)
 
 	acc = if isempty(seg)
 		s = leftendpoint(seg)
 		_integrate_ray_step(_init_acc(typeof(what), frequency(ray)), obj, ray.x0 + s * k1, ray, zero(float(s)))
 	else
+		# zs = range(seg, ray.nz)  # using StepRangeLen constructor directly is faster
 		@boundscheck @assert ray.nz ≥ 0  # to convince compiler that StepRangeLen won't error, necessary for running in Metal
 		ss = StepRangeLen(leftendpoint(seg), width(seg) / (ray.nz - 1), ray.nz)
 		Δs = step(ss)
@@ -211,7 +209,7 @@ end
 	isempty(seg) && return acc
 	k = ray.k
 	ν = frequency(ray)
-	k1 = k / ν
+	k1 = direction4(k)
 	@boundscheck @assert ray.nz ≥ 0
 	ss = StepRangeLen(leftendpoint(seg), width(seg) / (ray.nz - 1), ray.nz)
 	Δs = step(ss)
@@ -230,7 +228,7 @@ integrate_ray(cm::CombinedMedium{<:Tuple{Any}}, ray::Ray, what=Intensity()) = in
 integrate_ray(cm::CombinedMedium, ray::Ray, what=Intensity()) = begin
 	k = ray.k
 	ν = frequency(ray)
-	k1 = k / ν
+	k1 = direction4(k)
 
 	# Type-promoting zero-step (same pattern as existing integrate_ray)
 	obj1 = first(cm.objects)
@@ -262,13 +260,19 @@ term for that step, attenuated by the optical depth *in front of it* (toward the
 
     dIinv_to_obs[i] = dIinv_source[i] * exp(-τ_front[i])
 
-Returns a StructArray with fields: `s`, `x4`, `Δτ`, `Δs`, `dIinv_source`, `τ_front`, `dIν_to_obs`.
+Returns a StructArray with columns:
+- `zs`: z-grid used for stepping
+- `Δτ`: per-step invariant optical-depth increments (same indexing as `zs`)
+- `τ_front`: cumulative optical depth in front of each step (τ from next step to exit)
+- `dIinv_source`: per-step invariant source contribution before front attenuation
+- `dIinv_to_obs`: per-step invariant contribution to the final pixel
+- `dIν_to_obs`: same as `dIinv_to_obs`, converted to ordinary intensity via ν³
 """
 ray_contribution_profile(obj::AbstractMedium, ray::Ray) = begin
 	seg = z_interval(obj, ray)
 	k = ray.k
 	ν = frequency(ray)
-	k1 = k / ν
+	k1 = direction4(k)
 
 	νobs = frequency(ray)
 
@@ -311,14 +315,19 @@ Compute the *per-ray* contribution of each ray step to the final observed Stokes
 (I, Q, U) at the camera, accounting for polarization-dependent emission, absorption, and
 basis rotations.
 
+This extends `ray_contribution_profile` to full Stokes polarization.
+
 Mathematical equivalence:
     sum(profile.dIν_to_obs) ≈ render(ray, obj, IntensityIQU())
+
+Returns a StructArray with the same structure as `ray_contribution_profile`, but with
+`dIν_to_obs` as a StokesIQU vector instead of scalar.
 """
 ray_contribution_profile_IQU(obj::AbstractMedium, ray::Ray) = begin
 	seg = z_interval(obj, ray)
 	k = ray.k
 	ν = frequency(ray)
-	k1 = k / ν
+	k1 = direction4(k)
 
 	νobs = frequency(ray)
 
@@ -343,7 +352,7 @@ ray_contribution_profile_IQU(obj::AbstractMedium, ray::Ray) = begin
 		Δτ_modes = Ainv_modes * Δλ
 
 		# Get basis rotation: camera → field
-		(n′, e1′, e2′) = comoving_screen_basis(u, k, ray.e1, ray.e2)
+		(n′, e1′, e2′) = comoving_screen_basis(u, ray)
 		(e_par, e_perp) = linear_polarization_basis_from_B(n′, B′)
 		R_camera_to_field = stokes_QU_rotation(e1′, e2′, e_perp)
 
@@ -408,5 +417,5 @@ ray_contribution_profile_IQU(obj::AbstractMedium, ray::Ray) = begin
 		StokesIQU(I_atten, QU_camera[1], QU_camera[2]) * νobs^3
 	end
 
-	return StructArray((; s=profile₁.s, x4=profile₁.x4, Δs=profile₁.Δs, dIν_to_obs))
+	return StructArray((; profile₁.s, profile₁.x4, profile₁.Δs, dIν_to_obs))
 end

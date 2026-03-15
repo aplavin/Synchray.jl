@@ -63,7 +63,7 @@ Errors if `u.t == 0`.
 end
 
 """
-    direction(u)
+    direction3(u)
 
 Return the unit spatial direction of motion associated with `u`:
 
@@ -75,12 +75,15 @@ where `β⃗ = beta(u)`.
 
 This is undefined for a rest 4-velocity (β⃗ = 0).
 """
-@inline direction(u::FourVector) = let
+@inline direction3(u::FourVector) = let
     β = beta(u)
     β / norm(β)
 end
 
-@inline direction(k::FourFrequency) = (@swiz k.xyz) / k.t
+@inline direction3(k::FourFrequency) = (@swiz k.xyz) / k.t
+
+"""Unit null 4-vector `(1, n̂) = k/ν`. Used to parameterize ray paths as `x(s) = x₀ + s·direction4(k)`."""
+@inline direction4(k::FourFrequency) = k / frequency(k)
 
 """
     gamma(x)
@@ -127,20 +130,20 @@ u = (γ, γβ⃗)
 end
 
 """
-    construct(FourVelocity, beta=>β, direction=>dir)
+    construct(FourVelocity, beta=>β, direction3=>dir)
 
 Build a `FourVelocity` from a scalar speed parameter and a spatial unit direction.
 
 - If passed `beta=>β` (a scalar), interprets `β⃗ = β v̂` and returns `FourVelocity(β*dir)`.
 - If passed `gamma=>γ` (a scalar), uses `β = √(1 - γ⁻²)` and returns `u = (γ, γβ v̂)`.
 """
-@inline construct(::Type{FourVelocity}, (_, β)::Pair{typeof(beta)}, (_, dir)::Pair{typeof(direction)}) = let
+@inline construct(::Type{FourVelocity}, (_, β)::Pair{typeof(beta)}, (_, dir)::Pair{typeof(direction3)}) = let
     @boundscheck @assert β isa Number
     @boundscheck @assert dir isa SVector{3}
     return FourVelocity(β * dir)
 end
 
-@inline construct(::Type{FourVelocity}, (_, γ)::Pair{typeof(gamma)}, (_, dir)::Pair{typeof(direction)}) = let
+@inline construct(::Type{FourVelocity}, (_, γ)::Pair{typeof(gamma)}, (_, dir)::Pair{typeof(direction3)}) = let
     @boundscheck @assert γ isa Number
     @boundscheck @assert dir isa SVector{3}
 	β = _beta_from_gamma(γ)

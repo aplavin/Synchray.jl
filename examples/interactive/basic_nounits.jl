@@ -106,7 +106,7 @@ jet = @lift let
 
     knot = S.Patterns.EllipsoidalKnot(
         x_c0=S.FourPosition(0.0, 0.0, 0.0, 0.0),
-        u=construct(S.FourVelocity, S.gamma=>$params.knot.γ, S.direction=>axis),
+        u=construct(S.FourVelocity, S.gamma=>$params.knot.γ, S.direction3=>axis),
         sizing=S.Patterns.CrossSectionSizing($params.knot.wfrac, $params.knot.elong),
         profile=S.Patterns.GaussianBump($params.knot.mul),
     )

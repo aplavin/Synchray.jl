@@ -537,7 +537,7 @@ end
 		ν = 2
 		k = S.photon_k(ν, SVector(0, 0, 1))
 		u = S.FourVelocity(SVector(0, 0, 0))
-		(n′, e1′, e2′) = S.comoving_screen_basis(u, k)
+		(n′, e1′, e2′) = S.comoving_screen_basis(u, k, SVector(1, 0, 0), SVector(0, 1, 0))
 
 		# Choose B′ so that e_perp aligns with e1′ up to a 180° flip.
 		(_, e_perp) = S.linear_polarization_basis_from_B(n′, SVector(0, 1, 0))
@@ -549,7 +549,7 @@ end
 		ν = 2
 		k = S.photon_k(ν, SVector(0, 0, 1))
 		u = S.FourVelocity(SVector(0, 0, 0))
-		(n′, e1′, e2′) = S.comoving_screen_basis(u, k)
+		(n′, e1′, e2′) = S.comoving_screen_basis(u, k, SVector(1, 0, 0), SVector(0, 1, 0))
 
 		# Choose B′ so that e_perp (the +Q axis) is at a known angle χ from e1′.
 		χ = 0.41
@@ -566,7 +566,7 @@ end
 		ν = 2
 		k = S.photon_k(ν, SVector(0, 0, 1))
 		u = S.FourVelocity(SVector(0.3, 0.2, 0.5))
-		(n′, e1′, e2′) = S.comoving_screen_basis(u, k)
+		(n′, e1′, e2′) = S.comoving_screen_basis(u, k, SVector(1, 0, 0), SVector(0, 1, 0))
 
 		# Basis should remain orthonormal and right-handed in the comoving frame.
 		@test norm(n′) ≈ 1
@@ -591,8 +591,9 @@ end
 		@testset "Ray parallel to camera axes" begin
 			kx = S.photon_k(ν, SVector(1, 0, 0))
 			ky = S.photon_k(ν, SVector(0, 1, 0))
-			@test_throws AssertionError S.comoving_screen_basis(u0, kx)
-			@test_throws AssertionError S.comoving_screen_basis(u0, ky)
+			# Z-camera basis (x̂, ŷ) degenerates when ray is along x̂ or ŷ
+			@test_throws AssertionError S.comoving_screen_basis(u0, kx, SVector(1, 0, 0), SVector(0, 1, 0))
+			@test_throws AssertionError S.comoving_screen_basis(u0, ky, SVector(1, 0, 0), SVector(0, 1, 0))
 		end
 
 		@testset "Magnetic field degeneracies" begin

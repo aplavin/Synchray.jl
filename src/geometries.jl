@@ -128,8 +128,7 @@ function z_interval(g::Geometries.Ellipsoid, ray::Ray)
 	@assert g.center isa Geometries.InertialWorldline
 	u = g.center.u
 	Δ0 = ray.x0 - g.center.x0
-	ν = frequency(ray)
-	kdir = ray.k / ν  # = (1, n̂)
+	kdir = direction4(ray.k)
 
 	a = minkowski_dot(u, kdir)
 	b = minkowski_dot(u, Δ0)
@@ -225,13 +224,14 @@ end
 
 Compute ray-cone intersection interval in the ray parameter `s`.
 
-The ray is parameterized as `r(s) = r0 + s·n̂` where `n̂ = ray_direction(ray)`.
+The ray is parameterized as `r(s) = r0 + s·n̂` where `n̂ = direction3(ray)`.
 Returns the interval of `s` values for which the ray is inside the truncated cone.
 """
 function z_interval(g::Geometries.Conical, ray::Ray)
+	@boundscheck @assert 0 ≤ leftendpoint(g.z) ≤ rightendpoint(g.z)
 	c2 = cos(g.φj)^2
 	r0 = @swiz ray.x0.xyz
-	n̂ = ray_direction(ray)
+	n̂ = direction3(ray)
 	axis = geometry_axis(g)
 	a_n = dot(axis, n̂)    # projection of ray direction onto cone axis
 
@@ -296,6 +296,7 @@ function z_interval(g::Geometries.Conical, ray::Ray)
 				# Prefer the side that overlaps `ss_trunc`
 				L = ss_trunc ∩ left
 				R = ss_trunc ∩ right
+				@boundscheck @assert isempty(L) || isempty(R)
 				!isempty(L) ? L : R
 			end
 		end
@@ -377,15 +378,21 @@ Convert a local-frame spatial 3-position back to lab coordinates.
 @inline rotate_local_to_lab(geom::Geometries.AbstractGeometry, r_local::SVector{3}) = rotation_local_to_lab(geom) * r_local
 
 """
-    ray_in_local_coords(ray, geom; s_range) -> StructArray{SVector{3}}
+	ray_in_local_coords(ray, geom; s_range) -> StructArray{SVector{3}}
 
-Project a ray into local coordinates.
+Compute the two endpoints of a ray segment in the geometry's local coordinate frame.
 
-Returns 3-vectors in local frame defining the line segment for the given `s_range` interval
-(ray parameter). Use `@swiz` at call sites to extract desired components.
+# Arguments
+- `ray`: a `Ray`.
+- `geom`: geometry (or `EmissionRegion`) whose local frame is used.
+- `s_range`: `Interval` of the ray parameter `s` (distance along the ray direction).
+
+# Returns
+A 2-element `StructArray` of `SVector{3}`: the local-frame positions at the two `s_range` endpoints.
+The local z-axis is aligned with `geometry_axis(geom)`.
 """
 function ray_in_local_coords(ray, geom; s_range)
-	n̂ = ray_direction(ray)
+	n̂ = direction3(ray)
 	r0 = @swiz ray.x0.xyz
 	map(endpoints(s_range)) do s
 		r_lab = r0 + s * n̂
@@ -394,12 +401,22 @@ function ray_in_local_coords(ray, geom; s_range)
 end
 
 """
-    camera_fov_in_local_coords(cam, geom; v=0, s_range) -> StructArray{SVector{3}}
+	camera_fov_in_local_coords(cam, geom; v=0, s_range) -> StructArray{SVector{3}}
 
-Project the camera's field of view into local coordinates.
+Compute the four corners of the camera's field-of-view rectangle in the geometry's local frame.
 
-Returns four corners of the band (polygon) swept by camera rays in the `v=v` plane.
-Use `@swiz` at call sites to extract desired components.
+The rectangle is the cross-section of the camera ray bundle at a fixed screen-plane offset `v`
+(along `cam.e2`), swept over the full `u`-range of `cam.xys` and the full `s_range` depth.
+
+# Arguments
+- `cam`: a `Camera`.
+- `geom`: geometry (or `EmissionRegion`) whose local frame is used.
+- `v`: fixed offset along `cam.e2` (default `0`).
+- `s_range`: `Interval` of the ray parameter `s` (distance along `cam.n`).
+
+# Returns
+A 4-element `StructArray` of `SVector{3}`: the local-frame positions of the four corners,
+ordered `(umin,s1), (umax,s1), (umax,s2), (umin,s2)`.
 """
 @unstable function camera_fov_in_local_coords(cam, geom; v=0, s_range)
 	umin, umax = extrema(uv -> uv[1], cam.xys)

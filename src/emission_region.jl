@@ -24,7 +24,7 @@ EmissionRegion(
 # Moving blob (velocity derived from worldline):
 EmissionRegion(
     geometry = Geometries.WorldtubeEllipsoid(
-        worldline = Geometries.InertialWorldline(FourPosition(0,0,0,5), construct(FourVelocity, gamma => 10, direction => SA[0,0,1])),
+        worldline = Geometries.InertialWorldline(FourPosition(0,0,0,5), construct(FourVelocity, gamma => 10, direction3 => SA[0,0,1])),
         sizes = SA[0.5, 0.5, 0.5]
     ),
     emission = SynchrotronEmission(
@@ -54,7 +54,7 @@ end
 @inline function four_velocity(vel::VelocitySpec, geom, x4)
     speed_val = vel.scale(geom, x4)
     v_dir = field_direction(vel.dir, geom, x4)
-    return construct(FourVelocity, vel.kind => speed_val, direction => v_dir)
+    return construct(FourVelocity, vel.kind => speed_val, direction3 => v_dir)
 end
 
 # For CombinedVelocity: add β vectors in lab frame

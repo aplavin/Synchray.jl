@@ -1,6 +1,6 @@
 """General ray-sphere intersection: returns interval in ray parameter `s`."""
 _sphere_z_interval(center_xyz, radius, ray::Ray) = begin
-	n̂ = ray_direction(ray)
+	n̂ = direction3(ray)
 	r0 = @swiz ray.x0.xyz
 	Δ = center_xyz - r0
 	s_c = dot(Δ, n̂)
@@ -52,8 +52,7 @@ z_interval(obj::MovingUniformEllipsoid, ray::Ray) = begin
 	# Ray: x(s) = ray.x0 + s·k1, where k1 = k/ν = (1, n̂).
 	u = obj.u0
 	Δ0 = ray.x0 - obj.center
-	ν = frequency(ray)
-	kdir = ray.k / ν  # = (1, n̂)
+	kdir = direction4(ray.k)
 
 	a = minkowski_dot(u, kdir)
 	b = minkowski_dot(u, Δ0)

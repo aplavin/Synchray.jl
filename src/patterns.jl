@@ -245,7 +245,7 @@ ne = Profiles.Modified(
     Profiles.Axial(base_density),
     Patterns.EllipsoidalKnot(
         x_c0 = FourPosition(t0, x0, y0, z0),
-        u = construct(FourVelocity, gamma => 10, direction => SA[0,0,1]),
+        u = construct(FourVelocity, gamma => 10, direction3 => SA[0,0,1]),
         sizing = Patterns.CrossSectionSizing(f_perp=0.3, q=2.0),
         profile = Patterns.GaussianBump(f_peak=3.0)
     )
@@ -448,36 +448,39 @@ validate_pattern(knot::Patterns.EllipsoidalKnot, geom) = nothing
 #   retarded_time(worldline; t_obs) -> tau   # find retarded proper time
 # Current design bundles both for convenience with inertial worldlines.
 """
-    retarded_event(x0::FourPosition, u::FourVelocity; t_obs=0, n̂=SVector(0,0,1), origin=zero(SVector{3}))
-    retarded_event(knot::EllipsoidalKnot; t_obs=0, n̂=SVector(0,0,1), origin=zero(SVector{3}))
+    retarded_event(wl::InertialWorldline, cam::CameraOrtho)
+    retarded_event(knot::EllipsoidalKnot, cam::CameraOrtho)
 
-Compute the retarded event on an inertial worldline `x(τ) = x0 + u·τ`.
+Compute the retarded event on an inertial worldline `x(τ) = wl.x0 + wl.u·τ`
+as seen by the camera `cam`.
 
-Finds the event whose light reaches the camera at observer time `t_obs`.
-The camera has ray direction `n̂` and screen origin `origin`.
-
-The null hyperplane condition is `t - n̂·r = t_obs - n̂·origin`.
+Finds the event whose light reaches the camera's screen plane at observer time `cam.t`.
+The camera defines a null hyperplane `t - n̂·r = cam.t - n̂·cam.origin`, and this function
+solves for the unique intersection of that hyperplane with the worldline.
 
 # Returns
 `(; x::FourPosition, tau)` where:
-- `x`: The retarded event.
+- `x`: The retarded spacetime event on the worldline.
 - `tau`: The retarded proper time on the worldline.
 """
-@inline function retarded_event(x0::FourPosition, u::FourVelocity; t_obs=zero(x0.t), n̂=SVector(0, 0, 1), origin=zero(typeof(n̂)))
+@inline function retarded_event(wl::Geometries.InertialWorldline, cam::CameraOrtho)
     # Inertial worldline: x(τ) = x0 + u·τ
     # Null hyperplane: t - n̂·r = t_obs - n̂·origin
     #
     # Solve for τ:
     #   (x0.t + u.t·τ) - n̂·(x0_xyz + u_xyz·τ) = t_obs - n̂·origin
     #   τ·(u.t - n̂·u_xyz) = t_obs - n̂·origin - (x0.t - n̂·x0_xyz)
+    (; x0, u) = wl
+    n̂ = cam.n
     x0_xyz = @swiz x0.xyz
     u_xyz = @swiz u.xyz
-    tau = (t_obs - dot(n̂, origin) - (x0.t - dot(n̂, x0_xyz))) / (u.t - dot(n̂, u_xyz))
+    tau = (cam.t - dot(n̂, cam.origin) - (x0.t - dot(n̂, x0_xyz))) / (u.t - dot(n̂, u_xyz))
     x = x0 + u * tau
     return (; x, tau)
 end
 
-@inline retarded_event(knot::Patterns.EllipsoidalKnot; kwargs...) = retarded_event(knot.x_c0, knot.u; kwargs...)
+@inline retarded_event(knot::Patterns.EllipsoidalKnot, cam::CameraOrtho) =
+    retarded_event(Geometries.InertialWorldline(knot.x_c0, knot.u), cam)
 
 ustrip(knot::Patterns.EllipsoidalKnot) = @modify(x -> _u_to_code(x, UCTX.L0), knot.x_c0)
 

@@ -154,14 +154,10 @@ Algorithm:
 
 Returns `(n′, e1′, e2′)` where all are unit 3-vectors in the comoving frame.
 """
-# 2-arg convenience: uses default Z-camera screen basis (e1=x̂, e2=ŷ)
-@inline comoving_screen_basis(u::FourVelocity, k::FourFrequency) =
-	comoving_screen_basis(u, k, SVector(1, 0, 0), SVector(0, 1, 0))
-
 @inline comoving_screen_basis(u::FourVelocity, k::FourFrequency, e1_cam::SVector{3}, e2_cam::SVector{3}) = begin
 	k′ = lorentz_unboost(u, k)
 	# Comoving photon direction (unit 3-vector): n′ = k′⃗ / k′ᵗ.
-	n′ = direction(k′)
+	n′ = direction3(k′)
 
 	# Unboost camera basis vectors (treated as spatial four-vectors),
 	# then project them into the screen plane ⟂ n′.
@@ -182,6 +178,10 @@ Returns `(n′, e1′, e2′)` where all are unit 3-vectors in the comoving fram
 
 	return (n′, e1′, e2′)
 end
+
+"""Convenience: extract `k`, `e1`, `e2` from a `Ray` to avoid mismatched basis vectors."""
+@inline comoving_screen_basis(u::FourVelocity, ray::Ray) =
+	comoving_screen_basis(u, ray.k, ray.e1, ray.e2)
 
 """
 	linear_polarization_basis_from_B(n′, B′)

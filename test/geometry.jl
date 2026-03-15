@@ -147,8 +147,8 @@ end
 	@test rayz isa S.Ray
 	@test isbits(rayz)
 
-	# ray_direction extracts the unit spatial direction
-	@test S.ray_direction(ray) ≈ SVector(0.0, 0.0, 1.0)
+	# direction3 extracts the unit spatial direction
+	@test S.direction3(ray) ≈ SVector(0.0, 0.0, 1.0)
 
 	# Arbitrary direction
 	n̂ = normalize(SVector(1.0, 0.0, 1.0))
@@ -157,7 +157,7 @@ end
 	e2 = cross(n̂, e1)
 	ray_arb = S.Ray(x0, k_arb, e1, e2, 64)
 	@test isbits(ray_arb)
-	@test S.ray_direction(ray_arb) ≈ n̂
+	@test S.direction3(ray_arb) ≈ n̂
 	@test S.frequency(ray_arb) ≈ 2.0
 
 	# Camera with arbitrary look_direction: orthonormal screen basis

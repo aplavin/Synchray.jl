@@ -67,7 +67,7 @@ struct Ray{TX<:FourPosition, TK<:FourFrequency, TE<:SVector{3}}
 end
 
 """Unit spatial direction of ray propagation."""
-ray_direction(ray::Ray) = direction(ray.k)
+direction3(ray::Ray) = direction3(ray.k)
 
 """Convenience constructor for Z-direction rays (n̂ = ẑ, screen basis x̂/ŷ)."""
 function RayZ(x0::FourPosition, k::FourFrequency, nz::Int)
@@ -170,6 +170,6 @@ Returns the event with:
 @inline camera_ray_anchor(cam::CameraOrtho, x4::FourPosition) = let
     r = @swiz x4.xyz
     s = dot(r - cam.origin, cam.n)
-    r_screen = cam.origin + (r - cam.origin) - s * cam.n
+    r_screen = r - s * cam.n
     FourPosition(x4.t - s, r_screen)
 end

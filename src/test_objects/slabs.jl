@@ -1,6 +1,6 @@
 """Compute ray-slab intersection: slab defined by lab-z ∈ `zint`, ray parameterized by `s`."""
 _slab_z_interval(zint, ray::Ray) = begin
-	n̂ = ray_direction(ray)
+	n̂ = direction3(ray)
 	nz = n̂[3]
 	s1 = (leftendpoint(zint) - ray.x0.z) / nz
 	s2 = (rightendpoint(zint) - ray.x0.z) / nz

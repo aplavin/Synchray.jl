@@ -111,7 +111,7 @@ end
 	knot = S.Patterns.EllipsoidalKnot(
 		x_c0=S.FourPosition(0.0u"pc", 0.0u"pc", 0u"pc", 0u"pc"),
 		# x_c0=S.FourPosition(0.0u"yr", 0.0u"pc", 0u"pc", 2u"pc"),
-		u=construct(S.FourVelocity, S.gamma=>10, S.direction=>S.geometry_axis(region)),
+		u=construct(S.FourVelocity, S.gamma=>10, S.direction3=>S.geometry_axis(region)),
 		sizing=S.Patterns.CrossSectionSizing(0.1, 0.5),
 		profile=S.Patterns.GaussianBump(100),
 	) |> ustrip
