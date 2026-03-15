@@ -112,10 +112,11 @@ _mean_samples(samples) = mean(skip(isnan, samples))
 _mean_samples(samples::AbstractArray{<:Tuple}) = ntuple(i -> mean(s -> s[i], samples), length(first(samples)))
 
 @unstable render(cam::CameraOrtho, obj::AbstractMedium, what=Intensity(); adaptive_supersampling=false) = let
+    (; e1, e2) = cam
     k = photon_k(cam.ν, cam.n)
-    ray_base = Ray(FourPosition(cam.t, cam.origin), k, cam.e1, cam.e2, cam.nz)
+    ray_base = Ray(FourPosition(cam.t, cam.origin), k, e1, e2, cam.nz)
 	img = cam.mapfunc(cam.xys) do uv
-        offset = uv[1] * cam.e1 + uv[2] * cam.e2
+        offset = uv[1] * e1 + uv[2] * e2
         ray = @set ray_base.x0 += FourPosition(0, offset)
 		render(ray, obj, what)
 	end
@@ -135,7 +136,7 @@ _mean_samples(samples::AbstractArray{<:Tuple}) = ntuple(i -> mean(s -> s[i], sam
         uv0 = cam.xys[I]
         samples = map(grid(SVector, oxs, oys)) do ouv
             uv = uv0 + ouv
-            offset = uv[1] * cam.e1 + uv[2] * cam.e2
+            offset = uv[1] * e1 + uv[2] * e2
             ray = @set ray_base.x0 += FourPosition(0, offset)
             render(ray, obj, what)
         end
