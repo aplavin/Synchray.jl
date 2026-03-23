@@ -75,32 +75,128 @@
 		end
 	end
 
-	@testset "GR render ≥ flat render" begin
-		region = S.EmissionRegion(;
-			geometry = S.Geometries.Conical(; axis=S.SVector(0.0, 0.0, 1.0), φj=deg2rad(15), z=20.0..100.0),
-			velocity = S.VelocitySpec(S.Directions.Axial(), S.gamma, S.Profiles.Constant(2.0)),
-			emission = S.SynchrotronEmission(
-				ne = S.Profiles.Axial(S.Profiles.PowerLaw(-1.5; val0=100.0, s0=1.0)),
-				B = S.BFieldSpec(
-					S.Profiles.Axial(S.Profiles.PowerLaw(-1.8; val0=500.0, s0=1.0)),
-					S.Directions.Scalar(),
-					b -> S.FullyTangled(b)
-				),
-				electrons = S.IsotropicPowerLawElectrons(; p=3.0, γmin=100.0, γmax=1e5),
-			),
-		) |> S.prepare_for_computations
+	# --- Single-ray tests with spheres ---
+	# Helper: get deflected ray for a single pixel at offset (x, y)
+	u_rest = S.FourVelocity(1.0, 0.0, 0.0, 0.0)
+	bh_pos = S.SVector(0.0, 0.0, 0.0)
+	ν = 1e11
+	nz = 200
+	jν = 1e-20
 
-		cam_small = S.CameraOrtho(;
-			look_direction = S.SVector(0.0, 0.0, -1.0),
-			xys = S.grid(S.SVector, x=range(-30.0, 30.0, length=8), y=range(-30.0, 30.0, length=8)),
-			nz = 100, ν = 1e11, t = 0.0,
+	function make_ray(x, y)
+		k = S.photon_k(ν, S.SVector(0.0, 0.0, -1.0))
+		T = Float64
+		S.Ray(S.FourPosition(0.0, x, y, 1000.0), k,
+			S.SVector{3,T}(-1, 0, 0), S.SVector{3,T}(0, 1, 0), nz, S.SlowLight())
+	end
+
+	function deflected_ray(x, y)
+		# Use 3x3 grid (Krang needs nonzero range), take center pixel
+		xf, yf = Float64(x), Float64(y)
+		cam_3px = S.CameraOrtho(;
+			look_direction=S.SVector(0.0, 0.0, -1.0),
+			origin=S.SVector(0.0, 0.0, 1000.0),
+			xys=S.grid(S.SVector, x=[xf-1, xf, xf+1], y=[yf-1, yf, yf+1]),
+			nz=nz, ν=ν, t=0.0,
 		)
-		defl_small = S.compute_deflection_map(spin, θ_obs, cam_small)
+		S.compute_deflection_map(spin, θ_obs, cam_3px)[2, 2]
+	end
 
-		img_flat = S.render(cam_small, region)
-		img_gr = S.render(S.CameraGR(; camera=cam_small, deflection=defl_small), region)
+	@testset "far ray: sphere in front of BH" begin
+		# Ray at x=50, far from BH (b=50 >> shadow). Sphere on the incoming ray path,
+		# entirely between camera and BH. GR incoming sees it fully, outgoing ray
+		# (in BL→Cartesian frame, ~60° away) misses it entirely.
+		ray_in = make_ray(50.0, 0.0)
+		ray_out = deflected_ray(50.0, 0.0)
+		@test ray_out !== nothing
 
-		@test sum(img_gr) ≥ sum(img_flat) - 1e-30
-		@test img_gr != img_flat
+		sphere = S.UniformSphere(;
+			center=S.FourPosition(0.0, 50.0, 0.0, 50.0), radius=30.0,
+			u0=u_rest, jν=jν, αν=0.0,
+		)
+
+		flat = S.integrate_ray(sphere, ray_in)
+		gr = S._render_gr_pixel(sphere, ray_in, ray_out, bh_pos, S.Intensity())
+
+		@test flat ≈ jν * 60.0 rtol=0.01
+		@test gr == flat
+	end
+
+	@testset "far ray: sphere straddling BH plane" begin
+		# Sphere centered at (50, 0, 0) — right at the BH clip plane.
+		# Incoming ray only sees the front half (z>0), back half clipped.
+		# Outgoing ray goes in a different direction and misses the sphere.
+		ray_in = make_ray(50.0, 0.0)
+		ray_out = deflected_ray(50.0, 0.0)
+
+		sphere = S.UniformSphere(;
+			center=S.FourPosition(0.0, 50.0, 0.0, 0.0), radius=30.0,
+			u0=u_rest, jν=jν, αν=0.0,
+		)
+
+		flat = S.integrate_ray(sphere, ray_in)
+		gr = S._render_gr_pixel(sphere, ray_in, ray_out, bh_pos, S.Intensity())
+
+		# Flat sees full sphere: I = j * 2R = j * 60
+		@test flat ≈ jν * 60.0 rtol=0.01
+		# GR sees only front half: I = j * R = j * 30 (clipped at BH plane)
+		@test gr ≈ jν * 30.0 rtol=0.01
+		@test gr ≈ flat / 2 rtol=0.01
+	end
+
+	@testset "captured ray: sphere behind BH invisible" begin
+		# Ray at x=0, y=0 — hits BH directly, captured.
+		ray_in = make_ray(0.0, 0.0)
+		ray_out = deflected_ray(0.0, 0.0)
+		@test ray_out === nothing  # captured
+
+		# Sphere behind BH
+		sphere = S.UniformSphere(;
+			center=S.FourPosition(0.0, 0.0, 0.0, -50.0), radius=10.0,
+			u0=u_rest, jν=jν, αν=0.0,
+		)
+
+		flat = S.integrate_ray(sphere, ray_in)
+		gr = S._render_gr_pixel(sphere, ray_in, ray_out, bh_pos, S.Intensity())
+
+		# Flat sees the sphere (straight line goes through it): I = j * 2R
+		@test flat ≈ jν * 20.0 rtol=0.01
+		# GR: incoming ray clipped at BH, ray captured → sphere invisible
+		@test gr === 0.0
+	end
+
+	@testset "intermediate ray: sphere in front visible, behind invisible" begin
+		# Ray at x=10, moderate offset. Strong deflection but not captured.
+		ray_in = make_ray(10.0, 0.0)
+		ray_out = deflected_ray(10.0, 0.0)
+		@test ray_out !== nothing  # not captured
+
+		# Sphere on the incoming ray path, in front of BH
+		sphere_front = S.UniformSphere(;
+			center=S.FourPosition(0.0, 10.0, 0.0, 50.0), radius=10.0,
+			u0=u_rest, jν=jν, αν=0.0,
+		)
+
+		flat_front = S.integrate_ray(sphere_front, ray_in)
+		gr_front = S._render_gr_pixel(sphere_front, ray_in, ray_out, bh_pos, S.Intensity())
+
+		# Flat: I = j * 2R through center
+		@test flat_front ≈ jν * 20.0 rtol=0.01
+		# GR: incoming ray sees the sphere (in front of BH). Outgoing ray deflected away.
+		@test gr_front == flat_front
+
+		# Same sphere but behind BH — should be invisible via GR
+		sphere_behind = S.UniformSphere(;
+			center=S.FourPosition(0.0, 10.0, 0.0, -50.0), radius=10.0,
+			u0=u_rest, jν=jν, αν=0.0,
+		)
+
+		flat_behind = S.integrate_ray(sphere_behind, ray_in)
+		gr_behind = S._render_gr_pixel(sphere_behind, ray_in, ray_out, bh_pos, S.Intensity())
+
+		# Flat sees it (straight line goes through)
+		@test flat_behind ≈ jν * 20.0 rtol=0.01
+		# GR: incoming clipped at BH, outgoing deflected elsewhere → invisible
+		@test gr_behind === 0.0
 	end
 end
