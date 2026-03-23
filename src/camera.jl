@@ -246,13 +246,17 @@ end
 # ============================================================================
 
 """
-	CameraGR(; camera, deflection)
+	CameraGR(; camera, deflection, bh_position=zeros(3), bh_rg=1.0)
 
 GR-lensed camera wrapping a flat-space `CameraOrtho`.
 
 - `camera`: the underlying `CameraOrtho` (defines pixel grid, ν, t, nz, direction).
 - `deflection`: array with the same shape as `camera.xys`, where each element is
   either a `Ray` (outgoing ray after BH deflection) or `nothing` (captured by BH).
+- `bh_position`: spatial position of the black hole (default: origin).
+- `bh_rg`: gravitational radius GM/c² (default: 1). Sets the coordinate scale for the
+  deflection map — Krang computes in units of r_g, so outgoing ray coordinates are
+  `bh_position + bh_rg * krang_coords`.
 
 The deflection map is precomputed from the BH metric (see `compute_deflection_map`
 in the Krang extension) and is reusable across emission models.
@@ -260,43 +264,73 @@ in the Krang extension) and is reusable across emission models.
 @kwdef struct CameraGR{Tcam<:CameraOrtho, Tmap}
 	camera::Tcam
 	deflection::Tmap
+	bh_position::SVector{3,Float64} = zero(SVector{3,Float64})
+	bh_rg::Float64 = 1.0
 end
 
 @unstable render(cam::CameraGR, obj::AbstractMedium, what=Intensity()) = let
-	(; camera, deflection) = cam
+	(; camera, deflection, bh_position) = cam
 	(; e1, e2) = camera
 	k = photon_k(camera.ν, camera.n)
 	ray_base = Ray(FourPosition(camera.t, camera.origin), k, e1, e2, camera.nz, camera.light)
 
 	camera.mapfunc(camera.xys, deflection) do uv, ray_out
-		# Incoming ray (same as CameraOrtho)
 		offset = uv[1] * e1 + uv[2] * e2
 		ray_in = @set ray_base.x0 += FourPosition(0, offset)
 
-		_render_gr_pixel(obj, ray_in, ray_out, what)
+		_render_gr_pixel(obj, ray_in, ray_out, bh_position, what)
 	end
 end
 
-@inline _render_gr_pixel(obj, ray_in, ray_out::Nothing, what) = begin
-	# Captured by BH: only incoming segment contributes
-	integrate_ray(obj, ray_in, what)
+"""s-parameter of closest approach to a point along a ray."""
+@inline _s_closest_to_point(ray::Ray, point::SVector{3}) =
+	dot(point - @swiz(ray.x0.xyz), direction3(ray))
+
+"""Integrate through a medium (or CombinedMedium) with s-clipping, updating accumulator."""
+@inline _integrate_through_clipped(acc, obj::AbstractMedium, ray, clip) = begin
+	seg = z_interval(obj, ray) ∩ clip
+	_integrate_segment(acc, obj, ray, seg)
 end
 
-@inline _render_gr_pixel(obj, ray_in, ray_out::Ray, what) = begin
+@inline _integrate_through_clipped(acc, cm::CombinedMedium, ray, clip) =
+	_integrate_clipped_recursive(acc, cm.objects, ray, clip)
+
+@inline _integrate_clipped_recursive(acc, ::Tuple{}, ray, clip) = acc
+@inline _integrate_clipped_recursive(acc, objs::Tuple, ray, clip) = begin
+	obj = first(objs)
+	seg = z_interval(obj, ray) ∩ clip
+	acc = _integrate_segment(acc, obj, ray, seg)
+	_integrate_clipped_recursive(acc, Base.tail(objs), ray, clip)
+end
+
+@inline _render_gr_pixel(obj, ray_in, ray_out::Nothing, bh_pos, what) = begin
 	ν = frequency(ray_in)
+	s_bh = _s_closest_to_point(ray_in, bh_pos)
+	acc = _gr_init_acc(obj, ray_in, what)
+	acc = _integrate_through_clipped(acc, obj, ray_in, typeof(s_bh)(-Inf) .. s_bh)
+	_postprocess_acc(acc, ν, what)
+end
 
-	# Init accumulator (type-promoting zero-step)
-	seg_in = z_interval(obj, ray_in)
-	k1 = direction4(ray_in)
-	s0 = leftendpoint(seg_in)
-	acc = _integrate_ray_step(_init_acc(typeof(what), ν), obj, ray_in.x0 + s0 * k1, ray_in, zero(float(s0)))
+@inline _render_gr_pixel(obj, ray_in, ray_out::Ray, bh_pos, what) = begin
+	ν = frequency(ray_in)
+	acc = _gr_init_acc(obj, ray_in, what)
 
-	# RT through incoming segment
-	acc = _integrate_segment(acc, obj, ray_in, seg_in)
+	# RT through incoming segment, clipped to stop at BH
+	s_bh_in = _s_closest_to_point(ray_in, bh_pos)
+	acc = _integrate_through_clipped(acc, obj, ray_in, typeof(s_bh_in)(-Inf) .. s_bh_in)
 
-	# RT through outgoing segment
-	seg_out = z_interval(obj, ray_out)
-	acc = _integrate_segment(acc, obj, ray_out, seg_out)
+	# RT through outgoing segment, clipped to start at BH (outgoing half only)
+	s_bh_out = _s_closest_to_point(ray_out, bh_pos)
+	acc = _integrate_through_clipped(acc, obj, ray_out, s_bh_out .. typeof(s_bh_out)(Inf))
 
 	_postprocess_acc(acc, ν, what)
 end
+
+@inline _gr_init_acc(obj::AbstractMedium, ray, what) = begin
+	seg = z_interval(obj, ray)
+	k1 = direction4(ray)
+	s0 = leftendpoint(seg)
+	_integrate_ray_step(_init_acc(typeof(what), frequency(ray)), obj, ray.x0 + s0 * k1, ray, zero(float(s0)))
+end
+
+@inline _gr_init_acc(cm::CombinedMedium, ray, what) = _gr_init_acc(first(cm.objects), ray, what)

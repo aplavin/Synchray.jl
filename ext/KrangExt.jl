@@ -5,7 +5,7 @@ using Synchray: Ray, FourPosition, photon_k, _perpendicular_basis_vector
 using Krang: Krang, Kerr, SlowLightIntensityCamera, emission_coordinates
 
 """
-	compute_deflection_map(spin, θ_obs, cam::Synchray.CameraOrtho; τ_frac=(0.97, 0.99))
+	compute_deflection_map(spin, θ_obs, cam::CameraOrtho; bh_position=zeros(3), bh_rg=1.0, τ_frac=(0.97, 0.99))
 
 Compute a gravitational deflection map for each pixel of `cam`.
 
@@ -14,19 +14,21 @@ Returns an array (same shape as `cam.xys`) where each element is either:
 - `nothing` — the ray is captured by the BH
 
 # Arguments
-- `spin`: BH spin parameter a/M (use ≈0 for Schwarzschild, e.g. `1e-10`)
+- `spin`: BH spin parameter a/M
 - `θ_obs`: observer inclination angle (radians, 0 = face-on, π/2 = edge-on)
-- `cam`: a `CameraOrtho` defining the pixel grid. Screen coordinates `(u, v)` map to
-  Krang screen coordinates `(α, β)` via the camera's `(e1, e2)` basis.
-- `τ_frac`: two fractions of `total_mino_time` at which to evaluate the outgoing
-  asymptote (default `(0.97, 0.99)` — both at large r past the BH).
+- `cam`: a `CameraOrtho` defining the pixel grid
+- `bh_position`: BH spatial position in lab coordinates (default: origin)
+- `bh_rg`: gravitational radius GM/c² (default: 1). Krang coordinates are in units of r_g,
+  so outgoing ray positions are `bh_position + bh_rg * krang_xyz`.
+- `τ_frac`: two fractions of `total_mino_time` for outgoing asymptote evaluation
 """
-function Synchray.compute_deflection_map(spin, θ_obs, cam::Synchray.CameraOrtho; τ_frac=(0.97, 0.99))
+function Synchray.compute_deflection_map(spin, θ_obs, cam::Synchray.CameraOrtho;
+		bh_position=zero(SVector{3,Float64}), bh_rg=1.0, τ_frac=(0.97, 0.99))
 	metric = Kerr(Float64(spin))
 
-	# Build Krang camera matching the pixel grid
-	αs = map(uv -> Float64(uv[1]), cam.xys)
-	βs = map(uv -> Float64(uv[2]), cam.xys)
+	# Krang operates in units of r_g. Convert pixel offsets from lab to Krang units.
+	αs = map(uv -> Float64(uv[1]) / bh_rg, cam.xys)
+	βs = map(uv -> Float64(uv[2]) / bh_rg, cam.xys)
 	αmin, αmax = extrema(αs)
 	βmin, βmax = extrema(βs)
 	res = size(cam.xys, 1)
@@ -34,11 +36,11 @@ function Synchray.compute_deflection_map(spin, θ_obs, cam::Synchray.CameraOrtho
 	krang_cam = SlowLightIntensityCamera(metric, Float64(θ_obs), αmin, αmax, βmin, βmax, res)
 
 	map(krang_cam.screen.pixels) do pix
-		_outgoing_ray_from_pixel(pix, cam, τ_frac)
+		_outgoing_ray_from_pixel(pix, cam, bh_position, bh_rg, τ_frac)
 	end
 end
 
-function _outgoing_ray_from_pixel(pix, cam, τ_frac)
+function _outgoing_ray_from_pixel(pix, cam, bh_position, bh_rg, τ_frac)
 	if _is_captured(pix)
 		return nothing
 	end
@@ -48,7 +50,6 @@ function _outgoing_ray_from_pixel(pix, cam, τ_frac)
 		return nothing
 	end
 
-	# Evaluate geodesic at two points on the outgoing asymptote
 	τ1 = τ_frac[1] * τ_total
 	τ2 = τ_frac[2] * τ_total
 
@@ -59,22 +60,25 @@ function _outgoing_ray_from_pixel(pix, cam, τ_frac)
 		return nothing
 	end
 
-	# BL → Cartesian
-	x1 = _bl_to_cartesian(r1, θ1, φ1)
-	x2 = _bl_to_cartesian(r2, θ2, φ2)
+	# BL → Cartesian in Krang units, then scale to lab coordinates
+	x1_krang = _bl_to_cartesian(r1, θ1, φ1)
+	x2_krang = _bl_to_cartesian(r2, θ2, φ2)
 
-	dir = x2 - x1
+	# Direction is scale-invariant
+	dir = x2_krang - x1_krang
 	n = norm(dir)
 	if n < 1e-10
 		return nothing
 	end
 	n_out = SVector{3}(dir / n)
 
-	# Construct a full Ray
+	# Anchor in lab coordinates
+	x1_lab = bh_position + bh_rg * x1_krang
+
 	k_out = photon_k(cam.ν, n_out)
 	e1_out = _perpendicular_basis_vector(n_out, cam.e2)
 	e2_out = cross(n_out, e1_out)
-	Ray(FourPosition(cam.t, x1), k_out, e1_out, e2_out, cam.nz, cam.light)
+	Ray(FourPosition(cam.t, x1_lab), k_out, e1_out, e2_out, cam.nz, cam.light)
 end
 
 function _is_captured(pix)

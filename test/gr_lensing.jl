@@ -199,4 +199,78 @@
 		# GR: incoming clipped at BH, outgoing deflected elsewhere → invisible
 		@test gr_behind === 0.0
 	end
+
+	@testset "bh_position translation invariance" begin
+		# Shifting BH + sphere + camera by the same offset should give identical pixel values.
+		offset = S.SVector(100.0, -200.0, 300.0)
+
+		# Reference: BH at origin, sphere at (50, 0, 50)
+		sphere_ref = S.UniformSphere(;
+			center=S.FourPosition(0.0, 50.0, 0.0, 50.0), radius=10.0,
+			u0=u_rest, jν=jν, αν=0.0,
+		)
+		ray_in_ref = make_ray(50.0, 0.0)
+		ray_out_ref = deflected_ray(50.0, 0.0)
+		gr_ref = S._render_gr_pixel(sphere_ref, ray_in_ref, ray_out_ref, bh_pos, S.Intensity())
+		@test gr_ref > 0
+
+		# Shifted: everything moved by offset
+		bh_shifted = bh_pos + offset
+		sphere_shifted = S.UniformSphere(;
+			center=S.FourPosition(0.0, (S.SVector(50.0, 0.0, 50.0) + offset)...), radius=10.0,
+			u0=u_rest, jν=jν, αν=0.0,
+		)
+		# Shifted incoming ray: same direction, origin shifted
+		ray_in_shifted = S.Ray(
+			S.FourPosition(0.0, (S.SVector(50.0, 0.0, 1000.0) + offset)...),
+			ray_in_ref.k, ray_in_ref.e1, ray_in_ref.e2, nz, S.SlowLight())
+		# Shifted outgoing ray: same direction, anchor shifted
+		anchor_shifted = S.SVector(ray_out_ref.x0.x, ray_out_ref.x0.y, ray_out_ref.x0.z) + offset
+		ray_out_shifted = S.Ray(
+			S.FourPosition(ray_out_ref.x0.t, anchor_shifted...),
+			ray_out_ref.k, ray_out_ref.e1, ray_out_ref.e2, nz, S.SlowLight())
+
+		gr_shifted = S._render_gr_pixel(sphere_shifted, ray_in_shifted, ray_out_shifted, bh_shifted, S.Intensity())
+
+		@test gr_shifted == gr_ref
+	end
+
+	@testset "bh_rg scaling" begin
+		# Scaling bh_rg by factor s and camera xys by factor s should give identical
+		# pixel values (same geometry, just in different units).
+		scale = 5.0
+
+		# Reference: rg=1, sphere at z=50 radius=10, ray at x=50
+		cam_ref = S.CameraOrtho(;
+			look_direction=S.SVector(0.0, 0.0, -1.0),
+			origin=S.SVector(0.0, 0.0, 1000.0),
+			xys=S.grid(S.SVector, x=[49.0, 50.0, 51.0], y=[-1.0, 0.0, 1.0]),
+			nz=nz, ν=ν, t=0.0,
+		)
+		defl_ref = S.compute_deflection_map(spin, θ_obs, cam_ref; bh_rg=1.0)
+		sphere_ref = S.UniformSphere(;
+			center=S.FourPosition(0.0, 50.0, 0.0, 50.0), radius=10.0,
+			u0=u_rest, jν=jν, αν=0.0,
+		)
+		cam_gr_ref = S.CameraGR(; camera=cam_ref, deflection=defl_ref, bh_rg=1.0)
+		img_ref = S.render(cam_gr_ref, sphere_ref)
+
+		# Scaled: rg=scale, xys*scale, sphere coords*scale, camera origin*scale
+		cam_scaled = S.CameraOrtho(;
+			look_direction=S.SVector(0.0, 0.0, -1.0),
+			origin=S.SVector(0.0, 0.0, 1000.0 * scale),
+			xys=S.grid(S.SVector, x=[49.0, 50.0, 51.0] .* scale, y=[-1.0, 0.0, 1.0] .* scale),
+			nz=nz, ν=ν, t=0.0,
+		)
+		defl_scaled = S.compute_deflection_map(spin, θ_obs, cam_scaled; bh_rg=scale)
+		sphere_scaled = S.UniformSphere(;
+			center=S.FourPosition(0.0, 50.0*scale, 0.0, 50.0*scale), radius=10.0*scale,
+			u0=u_rest, jν=jν, αν=0.0,
+		)
+		cam_gr_scaled = S.CameraGR(; camera=cam_scaled, deflection=defl_scaled, bh_rg=scale)
+		img_scaled = S.render(cam_gr_scaled, sphere_scaled)
+
+		# Optically thin: I = j * path_length. Path scales by `scale`, so I scales too.
+		@test collect(img_scaled) ≈ collect(img_ref) .* scale rtol=0.01
+	end
 end
