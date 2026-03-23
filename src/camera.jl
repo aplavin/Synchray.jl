@@ -110,6 +110,21 @@ RayZ(; x0, k, nz::Int, light=SlowLight()) = _ray_z(x0, k, nz, light)
 _ray_z(x0::FourPosition, k::FourFrequency, nz::Int, light=SlowLight()) = RayZ(x0, k, nz; light)
 _ray_z(x0::FourPosition, k::Number, nz::Int, light=SlowLight()) = RayZ(x0, photon_k(k, SVector(0, 0, 1)), nz; light)
 
+"""Compute a unit vector perpendicular to `n` (preferring to stay close to `hint`)."""
+@inline _perpendicular_basis_vector(n::SVector{3}, hint::SVector{3}) = begin
+	v = cross(hint, n)
+	nv = norm(v)
+	if nv < 1e-8  # hint parallel to n; pick arbitrary perpendicular
+		v = cross(SVector(0, 0, 1), n)
+		nv = norm(v)
+		if nv < 1e-8
+			v = cross(SVector(1, 0, 0), n)
+			nv = norm(v)
+		end
+	end
+	v / nv
+end
+
 
 @unstable ustrip(cam::CameraOrtho) = @p let
     cam
@@ -223,4 +238,65 @@ end
     s = dot(r - cam.origin, cam.n)
     r_screen = r - s * cam.n
     FourPosition(x4.t, r_screen)
+end
+
+
+# ============================================================================
+# GR Camera — gravitational lensing via precomputed deflection map
+# ============================================================================
+
+"""
+	CameraGR(; camera, deflection)
+
+GR-lensed camera wrapping a flat-space `CameraOrtho`.
+
+- `camera`: the underlying `CameraOrtho` (defines pixel grid, ν, t, nz, direction).
+- `deflection`: array with the same shape as `camera.xys`, where each element is
+  either a `Ray` (outgoing ray after BH deflection) or `nothing` (captured by BH).
+
+The deflection map is precomputed from the BH metric (see `compute_deflection_map`
+in the Krang extension) and is reusable across emission models.
+"""
+@kwdef struct CameraGR{Tcam<:CameraOrtho, Tmap}
+	camera::Tcam
+	deflection::Tmap
+end
+
+@unstable render(cam::CameraGR, obj::AbstractMedium, what=Intensity()) = let
+	(; camera, deflection) = cam
+	(; e1, e2) = camera
+	k = photon_k(camera.ν, camera.n)
+	ray_base = Ray(FourPosition(camera.t, camera.origin), k, e1, e2, camera.nz, camera.light)
+
+	camera.mapfunc(camera.xys, deflection) do uv, ray_out
+		# Incoming ray (same as CameraOrtho)
+		offset = uv[1] * e1 + uv[2] * e2
+		ray_in = @set ray_base.x0 += FourPosition(0, offset)
+
+		_render_gr_pixel(obj, ray_in, ray_out, what)
+	end
+end
+
+@inline _render_gr_pixel(obj, ray_in, ray_out::Nothing, what) = begin
+	# Captured by BH: only incoming segment contributes
+	integrate_ray(obj, ray_in, what)
+end
+
+@inline _render_gr_pixel(obj, ray_in, ray_out::Ray, what) = begin
+	ν = frequency(ray_in)
+
+	# Init accumulator (type-promoting zero-step)
+	seg_in = z_interval(obj, ray_in)
+	k1 = direction4(ray_in)
+	s0 = leftendpoint(seg_in)
+	acc = _integrate_ray_step(_init_acc(typeof(what), ν), obj, ray_in.x0 + s0 * k1, ray_in, zero(float(s0)))
+
+	# RT through incoming segment
+	acc = _integrate_segment(acc, obj, ray_in, seg_in)
+
+	# RT through outgoing segment
+	seg_out = z_interval(obj, ray_out)
+	acc = _integrate_segment(acc, obj, ray_out, seg_out)
+
+	_postprocess_acc(acc, ν, what)
 end

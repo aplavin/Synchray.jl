@@ -58,6 +58,9 @@ include("emission_region.jl")
 
 end
 
+# Stub for extension (implemented in SynchrayKrangExt)
+function compute_deflection_map end
+
 # we only export a few things from this module, very minimal;
 # the user is recommended to do `import Synchray as S`
 # and then access things as `S.SomeType` or `S.some_function`
