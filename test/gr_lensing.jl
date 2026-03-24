@@ -273,4 +273,51 @@
 		# Optically thin: I = j * path_length. Path scales by `scale`, so I scales too.
 		@test collect(img_scaled) ≈ collect(img_ref) .* scale rtol=0.01
 	end
+
+	@testset "two spheres: opaque on incoming, bright on deflected" begin
+		# Sphere 1: on incoming ray path at (50, 0, 50). Very opaque, negligible emission.
+		# Sphere 2: on outgoing (deflected) ray path at (0, -300, 0). Bright, transparent.
+		#
+		# Flat camera: only sees sphere 1 (sphere 2 is off the straight-line -z path).
+		# GR camera: incoming ray hits sphere 1, outgoing deflected ray hits sphere 2.
+		# Sphere 1's opacity does NOT attenuate sphere 2 (separate ray segments).
+		ray_in = make_ray(50.0, 0.0)
+		ray_out = deflected_ray(50.0, 0.0)
+		@test ray_out !== nothing
+
+		jν_dim = 1e-25   # sphere 1: negligible emission
+		αν_opaque = 1.0   # sphere 1: τ = α * 2R ≈ 20 → fully opaque
+		jν_bright = 1e-18 # sphere 2: bright emission
+		R1, R2 = 10.0, 20.0
+
+		sphere1 = S.UniformSphere(;
+			center=S.FourPosition(0.0, 50.0, 0.0, 50.0), radius=R1,
+			u0=u_rest, jν=jν_dim, αν=αν_opaque,
+		)
+		# Sphere 2 center chosen so the outgoing ray (direction ≈ (0,-1,0)) passes through it
+		sphere2 = S.UniformSphere(;
+			center=S.FourPosition(0.0, 0.0, -300.0, 0.0), radius=R2,
+			u0=u_rest, jν=jν_bright, αν=0.0,
+		)
+		combined = S.CombinedMedium(sphere1, sphere2)
+
+		# Flat: only sphere 1 visible (sphere 2 not on the -z ray path)
+		flat = S.integrate_ray(combined, ray_in)
+		@test flat ≈ S.integrate_ray(sphere1, ray_in) rtol=1e-10
+		@test S.integrate_ray(sphere2, ray_in) == 0  # sphere 2 invisible in flat
+
+		# GR: incoming sees sphere 1, outgoing sees sphere 2
+		gr = S._render_gr_pixel(combined, ray_in, ray_out, bh_pos, S.Intensity())
+		gr_s1 = S._render_gr_pixel(sphere1, ray_in, ray_out, bh_pos, S.Intensity())
+		gr_s2 = S._render_gr_pixel(sphere2, ray_in, ray_out, bh_pos, S.Intensity())
+
+		# Sphere 2 alone via outgoing ray: I ≈ j_bright * 2R2
+		@test gr_s2 ≈ jν_bright * 2R2 rtol=0.01
+
+		# Combined: sphere 1 (foreground, opaque) attenuates sphere 2 (background, bright).
+		# Photon path: sphere2 → BH → sphere1 → observer.
+		# I_combined ≈ I_s2 * exp(-τ_s1) + I_s1
+		τ_s1 = αν_opaque * 2R1  # = 20
+		@test gr ≈ gr_s2 * exp(-τ_s1) + gr_s1 rtol=0.05
+	end
 end

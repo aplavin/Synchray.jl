@@ -315,13 +315,16 @@ end
 	ν = frequency(ray_in)
 	acc = _gr_init_acc(obj, ray_in, what)
 
-	# RT through incoming segment, clipped to stop at BH
-	s_bh_in = _s_closest_to_point(ray_in, bh_pos)
-	acc = _integrate_through_clipped(acc, obj, ray_in, typeof(s_bh_in)(-Inf) .. s_bh_in)
+	# Photon path: outgoing (far/background) → BH → incoming (near/foreground) → observer.
+	# Integrate background first so foreground can attenuate it.
 
-	# RT through outgoing segment, clipped to start at BH (outgoing half only)
+	# 1. Outgoing segment (background), clipped to outgoing half past BH
 	s_bh_out = _s_closest_to_point(ray_out, bh_pos)
 	acc = _integrate_through_clipped(acc, obj, ray_out, s_bh_out .. typeof(s_bh_out)(Inf))
+
+	# 2. Incoming segment (foreground, attenuates background), clipped before BH
+	s_bh_in = _s_closest_to_point(ray_in, bh_pos)
+	acc = _integrate_through_clipped(acc, obj, ray_in, typeof(s_bh_in)(-Inf) .. s_bh_in)
 
 	_postprocess_acc(acc, ν, what)
 end
