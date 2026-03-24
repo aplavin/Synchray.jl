@@ -3,17 +3,20 @@
 	using Krang
 
 	spin = 0.5
-	θ_obs = π / 3  # 60° inclination
+	θ_view = π / 3  # 60° inclination from the +z spin axis
+	look_direction = S.normalize(S.SVector(0.0, -sin(θ_view), cos(θ_view)))
+	lens = S.GRLens(; spin)
 
 	cam = S.CameraOrtho(;
-		look_direction = S.SVector(0.0, 0.0, -1.0),
+		look_direction,
+		origin = -1000.0 * look_direction,
 		xys = S.grid(S.SVector, x=range(-60.0, 60.0, length=32), y=range(-60.0, 60.0, length=32)),
 		nz = 100, ν = 1e11, t = 0.0,
 	)
 
-	defl = S.compute_deflection_map(spin, θ_obs, cam)
+	defl = S.compute_deflection_map(lens, cam)
 
-	# Incoming direction in Synchray lab frame (opposite of camera look direction)
+	# Incoming photon direction at the observer (opposite of the tracing ray direction).
 	n_in = -cam.n
 
 	@testset "shadow detection" begin
@@ -61,15 +64,16 @@
 
 	@testset "scattering plane" begin
 		# For a ray with β≈0 (offset along cam.e1 only), the scattering plane contains
-		# the incoming direction (-cam.n) and the pixel offset direction.
+		# the incoming direction and the pixel offset direction.
 		# The plane normal should be ≈ ±cam.e2.
 		# Use β=0.01 (not exactly 0 — Krang has a sign(β)=0 degeneracy at β=0).
 		cam_sp = S.CameraOrtho(;
-			look_direction = S.SVector(0.0, 0.0, -1.0),
+			look_direction,
+			origin = -1000.0 * look_direction,
 			xys = S.grid(S.SVector, x=[29.0, 30.0, 31.0], y=[-0.99, 0.01, 1.01]),
 			nz = 100, ν = 1e11, t = 0.0,
 		)
-		defl_sp = S.compute_deflection_map(spin, θ_obs, cam_sp)
+		defl_sp = S.compute_deflection_map(lens, cam_sp)
 		d_sp = defl_sp[2, 2]
 		@test d_sp !== nothing
 
@@ -80,7 +84,7 @@
 	# --- Single-ray tests with spheres ---
 	# Helper: get deflected ray for a single pixel at offset (x, y)
 	u_rest = S.FourVelocity(1.0, 0.0, 0.0, 0.0)
-	bh_pos = S.SVector(0.0, 0.0, 0.0)
+	bh_pos = lens.bh_position
 	ν = 1e11
 	nz = 200
 	jν = 1e-20

@@ -162,6 +162,38 @@ _ray_z(x0::FourPosition, k::Number, nz::Int, light=SlowLight()) = RayZ(x0, photo
 	v / nv
 end
 
+"""
+	GRLens(; spin, bh_position=zeros(SVector{3,Float64}), bh_rg=1.0, τ_frac=(0.97, 0.99))
+
+Black-hole lens specification for GR ray construction and deflection-map generation.
+"""
+@kwdef struct GRLens
+	spin::Float64
+	bh_position::SVector{3,Float64} = zero(SVector{3,Float64})
+	bh_rg::Float64 = 1.0
+	τ_frac::NTuple{2,Float64} = (0.97, 0.99)
+end
+
+"""
+	RayGR2(ray_in, ray_out, bh_position)
+
+Composite GR ray path: a near/foreground incoming ray and an optional far/background
+outgoing ray joined at a black hole position.
+"""
+struct RayGR2{TRin<:Ray,TRout<:Union{Ray,Nothing},TBH<:SVector{3,Float64}}
+	ray_in::TRin
+	ray_out::TRout
+	bh_position::TBH
+
+	function RayGR2(ray_in::TRin, ray_out::TRout, bh_position::TBH) where {TRin<:Ray, TRout<:Union{Ray,Nothing}, TBH<:SVector{3,Float64}}
+		if !isnothing(ray_out)
+			frequency(ray_out) == frequency(ray_in) || throw(ArgumentError("ray_out must have the same observing frequency as ray_in"))
+			typeof(ray_out.light) == typeof(ray_in.light) || throw(ArgumentError("ray_out must use the same light mode as ray_in"))
+		end
+		new{TRin,TRout,TBH}(ray_in, ray_out, bh_position)
+	end
+end
+
 
 @unstable ustrip(cam::CameraOrtho) = @p let
     cam
@@ -190,6 +222,36 @@ struct SpectralIndex end
 
 render(ray::Ray, obj::AbstractMedium, what=Intensity()) = integrate_ray(obj, ray, what)
 
+@inline _orthographic_ray_base(cam::CameraOrtho) =
+	Ray(FourPosition(cam.t, cam.origin), photon_k(cam.ν, cam.n), cam.e1, cam.e2, cam.nz, cam.light)
+
+@inline _camera_ray(cam::CameraOrtho, uv, ray_base::Ray) = begin
+	offset = uv[1] * cam.e1 + uv[2] * cam.e2
+	@set ray_base.x0 += FourPosition(0, offset)
+end
+
+"""
+	camera_ray(cam, uv) -> Ray
+
+Construct the single camera ray for pixel coordinates `uv`.
+"""
+@inline camera_ray(cam::CameraOrtho, uv) = _camera_ray(cam, uv, _orthographic_ray_base(cam))
+
+@inline camera_ray(cam::CameraPerspective, uv) = begin
+	(; e1, e2, n) = cam
+	dir_unnorm = n + uv[1] * e1 + uv[2] * e2
+	dir = dir_unnorm / norm(dir_unnorm)
+	# Photon propagates from scene toward camera (opposite to pixel direction).
+	# Using -dir for k gives correct Doppler shifts and SlowLight retardation.
+	photon_dir = -dir
+	# Per-ray polarization basis: project camera e1 perpendicular to photon direction
+	e1_proj = e1 - dot(e1, photon_dir) * photon_dir
+	e1_ray = e1_proj / norm(e1_proj)
+	e2_ray = cross(photon_dir, e1_ray)
+	k = photon_k(cam.ν, photon_dir)
+	Ray(FourPosition(cam.t, cam.origin), k, e1_ray, e2_ray, cam.nz, cam.light)
+end
+
 @unstable _boundary_mask(img) = begin
     inside = map(x -> iszero(x) || isnan(x), img) |> Matrix
     IXs = CartesianIndices(inside)
@@ -207,12 +269,9 @@ _mean_samples(samples) = mean(skip(isnan, samples))
 _mean_samples(samples::AbstractArray{<:Tuple}) = ntuple(i -> mean(s -> s[i], samples), length(first(samples)))
 
 @unstable render(cam::CameraOrtho, obj::AbstractMedium, what=Intensity(); adaptive_supersampling=false) = let
-    (; e1, e2) = cam
-    k = photon_k(cam.ν, cam.n)
-    ray_base = Ray(FourPosition(cam.t, cam.origin), k, e1, e2, cam.nz, cam.light)
+	ray_base = _orthographic_ray_base(cam)
 	img = cam.mapfunc(cam.xys) do uv
-        offset = uv[1] * e1 + uv[2] * e2
-        ray = @set ray_base.x0 += FourPosition(0, offset)
+		ray = _camera_ray(cam, uv, ray_base)
 		render(ray, obj, what)
 	end
 
@@ -231,8 +290,7 @@ _mean_samples(samples::AbstractArray{<:Tuple}) = ntuple(i -> mean(s -> s[i], sam
         uv0 = cam.xys[I]
         samples = map(grid(SVector, oxs, oys)) do ouv
             uv = uv0 + ouv
-            offset = uv[1] * e1 + uv[2] * e2
-            ray = @set ray_base.x0 += FourPosition(0, offset)
+            ray = _camera_ray(cam, uv, ray_base)
             render(ray, obj, what)
         end
         img[I] = _mean_samples(samples)
@@ -241,24 +299,9 @@ _mean_samples(samples::AbstractArray{<:Tuple}) = ntuple(i -> mean(s -> s[i], sam
     img
 end
 
-@inline _perspective_ray(cam::CameraPerspective, uv) = begin
-    (; e1, e2, n) = cam
-    dir_unnorm = n + uv[1] * e1 + uv[2] * e2
-    dir = dir_unnorm / norm(dir_unnorm)
-    # Photon propagates from scene toward camera (opposite to pixel direction).
-    # Using -dir for k gives correct Doppler shifts and SlowLight retardation.
-    photon_dir = -dir
-    # Per-ray polarization basis: project camera e1 perpendicular to photon direction
-    e1_proj = e1 - dot(e1, photon_dir) * photon_dir
-    e1_ray = e1_proj / norm(e1_proj)
-    e2_ray = cross(photon_dir, e1_ray)
-    k = photon_k(cam.ν, photon_dir)
-    Ray(FourPosition(cam.t, cam.origin), k, e1_ray, e2_ray, cam.nz, cam.light)
-end
-
 @unstable render(cam::CameraPerspective, obj::AbstractMedium, what=Intensity(); adaptive_supersampling=false) = let
 	img = cam.mapfunc(cam.xys) do uv
-		render(_perspective_ray(cam, uv), obj, what)
+		render(camera_ray(cam, uv), obj, what)
 	end
 
     adaptive_supersampling === false && return img
@@ -275,7 +318,7 @@ end
         uv0 = cam.xys[I]
         samples = map(grid(SVector, oxs, oys)) do ouv
             uv = uv0 + ouv
-            render(_perspective_ray(cam, uv), obj, what)
+            render(camera_ray(cam, uv), obj, what)
         end
         img[I] = _mean_samples(samples)
     end
@@ -332,40 +375,49 @@ end
 # ============================================================================
 
 """
-	CameraGR(; camera, deflection, bh_position=zeros(3), bh_rg=1.0)
+	CameraGR(; camera, deflection, lens)
 
-GR-lensed camera wrapping a flat-space `CameraOrtho`.
+GR-lensed camera wrapping a flat-space camera.
 
-- `camera`: the underlying `CameraOrtho` (defines pixel grid, ν, t, nz, direction).
+- `camera`: the underlying flat-space camera (defines pixel grid, ν, t, nz, incoming rays).
 - `deflection`: array with the same shape as `camera.xys`, where each element is
   either a `Ray` (outgoing ray after BH deflection) or `nothing` (captured by BH).
-- `bh_position`: spatial position of the black hole (default: origin).
-- `bh_rg`: gravitational radius GM/c² (default: 1). Sets the coordinate scale for the
-  deflection map — Krang computes in units of r_g, so outgoing ray coordinates are
-  `bh_position + bh_rg * krang_coords`.
+- `lens`: the `GRLens` used to build the deflection map and define the BH clip point.
 
 The deflection map is precomputed from the BH metric (see `compute_deflection_map`
 in the Krang extension) and is reusable across emission models.
 """
-@kwdef struct CameraGR{Tcam<:CameraOrtho, Tmap}
+@kwdef struct CameraGR{Tcam, Tmap, Tlens<:GRLens}
 	camera::Tcam
 	deflection::Tmap
-	bh_position::SVector{3,Float64} = zero(SVector{3,Float64})
-	bh_rg::Float64 = 1.0
+	lens::Tlens
 end
 
 @unstable render(cam::CameraGR, obj::AbstractMedium, what=Intensity()) = let
-	(; camera, deflection, bh_position) = cam
-	(; e1, e2) = camera
-	k = photon_k(camera.ν, camera.n)
-	ray_base = Ray(FourPosition(camera.t, camera.origin), k, e1, e2, camera.nz, camera.light)
+	(; camera, deflection, lens) = cam
 
 	camera.mapfunc(camera.xys, deflection) do uv, ray_out
-		offset = uv[1] * e1 + uv[2] * e2
-		ray_in = @set ray_base.x0 += FourPosition(0, offset)
-
-		_render_gr_pixel(obj, ray_in, ray_out, bh_position, what)
+		ray_in = camera_ray(camera, uv)
+		render(RayGR2(ray_in, ray_out, lens.bh_position), obj, what)
 	end
+end
+
+render(ray::RayGR2, obj::AbstractMedium, what=Intensity()) = let
+	(; ray_in, ray_out, bh_position) = ray
+	ν = frequency(ray_in)
+	acc = _gr_init_acc(obj, ray_in, what)
+
+	if !isnothing(ray_out)
+		# Photon path: outgoing (far/background) → BH → incoming (near/foreground) → observer.
+		# Integrate background first so foreground can attenuate it.
+		s_bh_out = _s_closest_to_point(ray_out, bh_position)
+		acc = _integrate_through_clipped(acc, obj, ray_out, s_bh_out .. typeof(s_bh_out)(Inf))
+	end
+
+	s_bh_in = _s_closest_to_point(ray_in, bh_position)
+	acc = _integrate_through_clipped(acc, obj, ray_in, typeof(s_bh_in)(-Inf) .. s_bh_in)
+
+	_postprocess_acc(acc, ν, what)
 end
 
 """s-parameter of closest approach to a point along a ray."""
@@ -387,32 +439,6 @@ end
 	seg = z_interval(obj, ray) ∩ clip
 	acc = _integrate_segment(acc, obj, ray, seg)
 	_integrate_clipped_recursive(acc, Base.tail(objs), ray, clip)
-end
-
-@inline _render_gr_pixel(obj, ray_in, ray_out::Nothing, bh_pos, what) = begin
-	ν = frequency(ray_in)
-	s_bh = _s_closest_to_point(ray_in, bh_pos)
-	acc = _gr_init_acc(obj, ray_in, what)
-	acc = _integrate_through_clipped(acc, obj, ray_in, typeof(s_bh)(-Inf) .. s_bh)
-	_postprocess_acc(acc, ν, what)
-end
-
-@inline _render_gr_pixel(obj, ray_in, ray_out::Ray, bh_pos, what) = begin
-	ν = frequency(ray_in)
-	acc = _gr_init_acc(obj, ray_in, what)
-
-	# Photon path: outgoing (far/background) → BH → incoming (near/foreground) → observer.
-	# Integrate background first so foreground can attenuate it.
-
-	# 1. Outgoing segment (background), clipped to outgoing half past BH
-	s_bh_out = _s_closest_to_point(ray_out, bh_pos)
-	acc = _integrate_through_clipped(acc, obj, ray_out, s_bh_out .. typeof(s_bh_out)(Inf))
-
-	# 2. Incoming segment (foreground, attenuates background), clipped before BH
-	s_bh_in = _s_closest_to_point(ray_in, bh_pos)
-	acc = _integrate_through_clipped(acc, obj, ray_in, typeof(s_bh_in)(-Inf) .. s_bh_in)
-
-	_postprocess_acc(acc, ν, what)
 end
 
 @inline _gr_init_acc(obj::AbstractMedium, ray, what) = begin

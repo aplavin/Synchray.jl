@@ -6,7 +6,7 @@ using Krang: Krang, Kerr, SlowLightIntensityPixel, emission_coordinates
 using LinearAlgebra: normalize, cross, norm
 
 """
-	compute_deflection_map(spin, θ_obs, cam::CameraOrtho; bh_position=zeros(3), bh_rg=1.0, τ_frac=(0.97, 0.99))
+	compute_deflection_map(lens::GRLens, cam)
 
 Compute a gravitational deflection map for each pixel of `cam`.
 
@@ -15,27 +15,17 @@ Returns a collection with the same topology as `cam.xys`, where each element is 
 - `nothing` — the ray is captured by the BH
 
 # Arguments
-- `spin`: BH spin parameter a/M
-- `θ_obs`: observer inclination angle (radians, 0 = face-on, π/2 = edge-on)
-- `cam`: a `CameraOrtho` defining the pixel grid
-- `bh_position`: BH spatial position in lab coordinates (default: origin)
-- `bh_rg`: gravitational radius GM/c² (default: 1). Krang coordinates are in units of r_g,
-  so outgoing ray positions are `bh_position + bh_rg * R * krang_xyz`.
-- `τ_frac`: two fractions of `total_mino_time` for outgoing asymptote evaluation
+- `lens`: black-hole lens specification
+- `cam`: a flat-space camera supporting `camera_ray(cam, uv)`
 """
-function Synchray.compute_deflection_map(spin, θ_obs, cam::Synchray.CameraOrtho;
-		bh_position=zero(SVector{3,Float64}), bh_rg=1.0, τ_frac=(0.97, 0.99))
-	metric = Kerr(Float64(spin))
-	θ_obs_f = Float64(θ_obs)
+function Synchray.compute_deflection_map(
+	lens::Synchray.GRLens,
+	cam::Union{Synchray.CameraOrtho, Synchray.CameraPerspective},
+)
+	metric = Kerr(lens.spin)
 
-	# Rotation matrix from Krang's Cartesian frame to Synchray's lab frame.
-	# Krang: observer at BL (r→∞, θ=θ_obs, φ=-π/2), spin axis along z.
-	# Synchray: camera with (cam.e1, cam.e2, cam.n) screen/look basis.
-	R = _krang_to_lab_rotation(θ_obs_f, cam)
-
-	map(cam.xys) do uv
-		pix = _krang_pixel(metric, uv, bh_rg, θ_obs_f)
-		_outgoing_ray_from_pixel(pix, cam, R, bh_position, bh_rg, τ_frac)
+	cam.mapfunc(cam.xys) do uv
+		_deflected_ray(metric, camera_ray(cam, uv), lens)
 	end
 end
 
@@ -67,7 +57,7 @@ function _krang_to_lab_rotation(θ_obs, cam)
 	M_cam * M_krang'
 end
 
-function _outgoing_ray_from_pixel(pix, cam, R, bh_position, bh_rg, τ_frac)
+function _outgoing_ray_from_pixel(pix, ray_in, R, bh_position, bh_rg, τ_frac)
 	if _is_captured(pix)
 		return nothing
 	end
@@ -103,10 +93,10 @@ function _outgoing_ray_from_pixel(pix, cam, R, bh_position, bh_rg, τ_frac)
 	n_out = SVector{3}(R * n_out_krang)
 	x1_lab = bh_position + bh_rg * SVector{3}(R * x1_krang)
 
-	k_out = photon_k(cam.ν, n_out)
-	e1_out = _perpendicular_basis_vector(n_out, cam.e2)
+	k_out = photon_k(frequency(ray_in), n_out)
+	e1_out = _perpendicular_basis_vector(n_out, ray_in.e2)
 	e2_out = cross(n_out, e1_out)
-	Ray(FourPosition(cam.t, x1_lab), k_out, e1_out, e2_out, cam.nz, cam.light)
+	Ray(FourPosition(ray_in.x0.t, x1_lab), k_out, e1_out, e2_out, ray_in.nz, ray_in.light)
 end
 
 function _is_captured(pix)
