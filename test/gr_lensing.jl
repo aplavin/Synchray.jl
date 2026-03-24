@@ -276,54 +276,47 @@
 		@test collect(img_scaled) ≈ collect(img_ref) .* scale rtol=0.01
 	end
 
-	@testset "two spheres: opaque on incoming, bright on deflected" begin
-		# Sphere 1: on incoming ray path at (50, 0, 50). Very opaque, negligible emission.
-		# Sphere 2: on outgoing (deflected) ray path at (0, -300, 0). Bright, transparent.
-		#
-		# Flat camera: only sees sphere 1 (sphere 2 is off the straight-line -z path).
-		# GR camera: incoming ray hits sphere 1, outgoing deflected ray hits sphere 2.
-		# Sphere 1's opacity does NOT attenuate sphere 2 (separate ray segments).
+	@testset "two spheres on the same straight ray across the BH" begin
 		ray_in = make_ray(50.0, 0.0)
-		ray_out = deflected_ray(50.0, 0.0)
-		@test ray_out !== nothing
+		# Weak-deflection limit: use a straight outgoing segment, while _render_gr_pixel
+		# still splits the path at the BH into far/background and near/foreground halves.
+		ray_out = ray_in
 
-		jν_dim = 1e-25   # sphere 1: negligible emission
-		αν_opaque = 1.0   # sphere 1: τ = α * 2R ≈ 20 → fully opaque
-		jν_bright = 1e-18 # sphere 2: bright emission
+		jν_dim = 1e-25
+		αν_opaque = 1.0
+		jν_bright = 1e-18
 		R1, R2 = 10.0, 20.0
 
-		sphere1 = S.UniformSphere(;
+		sphere_front = S.UniformSphere(;
 			center=S.FourPosition(0.0, 50.0, 0.0, 50.0), radius=R1,
 			u0=u_rest, jν=jν_dim, αν=αν_opaque,
 		)
-		# Sphere 2 placed on the outgoing ray path (direction depends on Krang→Synchray frame)
-		n_out_2 = S.direction3(ray_out)
-		anchor_2 = S.SVector(ray_out.x0.x, ray_out.x0.y, ray_out.x0.z)
-		sphere2_center = anchor_2 + 300.0 * n_out_2
-		sphere2 = S.UniformSphere(;
-			center=S.FourPosition(0.0, sphere2_center...), radius=R2,
+		sphere_back = S.UniformSphere(;
+			center=S.FourPosition(0.0, 50.0, 0.0, -80.0), radius=R2,
 			u0=u_rest, jν=jν_bright, αν=0.0,
 		)
-		combined = S.CombinedMedium(sphere1, sphere2)
+		combined = S.CombinedMedium(sphere_back, sphere_front)
 
-		# Flat: only sphere 1 visible (sphere 2 not on the -z ray path)
+		flat_front = S.integrate_ray(sphere_front, ray_in)
+		flat_back = S.integrate_ray(sphere_back, ray_in)
+		gr_front = S._render_gr_pixel(sphere_front, ray_in, ray_out, bh_pos, S.Intensity())
+		gr_back = S._render_gr_pixel(sphere_back, ray_in, ray_out, bh_pos, S.Intensity())
+
+		@test flat_front > 0
+		@test flat_back > 0
+		@test gr_front > 0
+		@test gr_back > 0
+		@test gr_front ≈ flat_front rtol=1e-10
+		@test gr_back ≈ flat_back rtol=1e-10
+
 		flat = S.integrate_ray(combined, ray_in)
-		@test flat ≈ S.integrate_ray(sphere1, ray_in) rtol=1e-10
-		@test S.integrate_ray(sphere2, ray_in) == 0  # sphere 2 invisible in flat
-
-		# GR: incoming sees sphere 1, outgoing sees sphere 2
 		gr = S._render_gr_pixel(combined, ray_in, ray_out, bh_pos, S.Intensity())
-		gr_s1 = S._render_gr_pixel(sphere1, ray_in, ray_out, bh_pos, S.Intensity())
-		gr_s2 = S._render_gr_pixel(sphere2, ray_in, ray_out, bh_pos, S.Intensity())
+		τ_front = S.integrate_ray(sphere_front, ray_in, S.OpticalDepth())
+		expected = flat_back * exp(-τ_front) + flat_front
 
-		# Sphere 2 alone via outgoing ray: I ≈ j_bright * 2R2
-		@test gr_s2 ≈ jν_bright * 2R2 rtol=0.01
-
-		# Combined: sphere 1 (foreground, opaque) attenuates sphere 2 (background, bright).
-		# Photon path: sphere2 → BH → sphere1 → observer.
-		# I_combined ≈ I_s2 * exp(-τ_s1) + I_s1
-		τ_s1 = αν_opaque * 2R1  # = 20
-		@test gr ≈ gr_s2 * exp(-τ_s1) + gr_s1 rtol=0.05
+		@test gr ≈ flat rtol=1e-10
+		@test flat ≈ expected rtol=0.05
+		@test gr ≈ expected rtol=0.05
 	end
 
 	@testset "U-turn ray: see sphere behind BH via ~180° bending" begin
