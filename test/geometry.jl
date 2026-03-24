@@ -173,6 +173,61 @@ end
 	@test dot(cam.e2, cam.n) ≈ 0 atol=√eps(1.0)
 	@test dot(cam.e1, cam.e2) ≈ 0 atol=√eps(1.0)
 	@test cross(cam.n, cam.e1) ≈ cam.e2
+
+	uv = SVector(0.3, -0.2)
+	ray_cam = S.camera_ray(cam, uv)
+	expected_anchor = cam.origin + uv[1] * cam.e1 + uv[2] * cam.e2
+	@test S.SVector(ray_cam.x0.x, ray_cam.x0.y, ray_cam.x0.z) ≈ expected_anchor
+	@test ray_cam.x0.t ≈ cam.t
+	@test S.direction3(ray_cam) ≈ cam.n
+	@test ray_cam.e1 ≈ cam.e1
+	@test ray_cam.e2 ≈ cam.e2
+	@test S.frequency(ray_cam) ≈ cam.ν
+
+	u_rest = S.FourVelocity(1.0, 0.0, 0.0, 0.0)
+	sphere_ortho = S.UniformSphere(;
+		center=S.FourPosition(0.0, (expected_anchor + 5 * S.direction3(ray_cam))...),
+		radius=0.5,
+		u0=u_rest,
+		jν=1.0,
+		αν=0.0,
+	)
+	cam_ortho_single = S.CameraOrtho(;
+		look_direction=SVector(1.0, 0.0, 1.0),
+		xys=[uv],
+		nz=64, ν=2.0, t=0.0,
+	)
+	@test only(S.render(cam_ortho_single, sphere_ortho)) ≈ S.render(ray_cam, sphere_ortho)
+
+	cam_p = S.CameraPerspective(;
+		look_direction=SVector(1.0, 0.0, 1.0),
+		origin=SVector(0.5, -0.25, 1.0),
+		xys=SVector{2}[(0.0, 0.0)],
+		nz=64, ν=2.0, t=0.0,
+	)
+	uv_p = SVector(0.2, -0.1)
+	ray_p = S.camera_ray(cam_p, uv_p)
+	dir_expected = -(cam_p.n + uv_p[1] * cam_p.e1 + uv_p[2] * cam_p.e2)
+	dir_expected /= norm(dir_expected)
+	@test S.SVector(ray_p.x0.x, ray_p.x0.y, ray_p.x0.z) ≈ cam_p.origin
+	@test ray_p.x0.t ≈ cam_p.t
+	@test S.direction3(ray_p) ≈ dir_expected
+	@test S.frequency(ray_p) ≈ cam_p.ν
+
+	sphere_p = S.UniformSphere(;
+		center=S.FourPosition(0.0, (cam_p.origin + 5 * dir_expected)...),
+		radius=0.5,
+		u0=u_rest,
+		jν=1.0,
+		αν=0.0,
+	)
+	cam_p_single = S.CameraPerspective(;
+		look_direction=SVector(1.0, 0.0, 1.0),
+		origin=SVector(0.5, -0.25, 1.0),
+		xys=[uv_p],
+		nz=64, ν=2.0, t=0.0,
+	)
+	@test only(S.render(cam_p_single, sphere_p)) ≈ S.render(ray_p, sphere_p)
 end
 
 @testitem "Ellipsoid geometry" begin
