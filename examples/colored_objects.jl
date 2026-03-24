@@ -220,7 +220,7 @@ end
 
 function combined_three_ellipsoids_perspective()
     cam_base = S.CameraPerspective(;
-        look_direction = SVector(0.0, 0.0, -1.0),
+        photon_direction = SVector(0.0, 0.0, 1.0),
         origin = SVector(0.0, 0.0, 20.0),
         xys = grid(SVector, x=range(-0.5..0.5, 512), y=range(-0.5..0.5, 512)),
         nz = 256,
@@ -281,7 +281,7 @@ end
 
 function perspective_xy_movers(; nframes=60)
     cam_base = S.CameraPerspective(;
-        look_direction = SVector(0.0, 0.0, -1.0),
+        photon_direction = SVector(0.0, 0.0, 1.0),
         origin = SVector(0.0, 0.0, 9.0),
         xys = grid(SVector, x=range(-1..1, 256), y=range(-1..1, 256)),
         nz = 256,
@@ -341,7 +341,7 @@ function perspective_xy_movers(; nframes=60)
 
     # Side-by-side animation: SlowLight vs FastLight
     ts = range(-20.0, 20.0, length=nframes)
-    γ = 2
+    γ = 6
 
     all_ch = map([S.SlowLight(), S.FastLight()]) do light_mode
         cam_l = @set cam_base.light = light_mode

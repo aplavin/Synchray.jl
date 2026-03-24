@@ -14,11 +14,11 @@ struct FastLight <: AbstractLightMode end
 
 
 """
-	CameraOrtho(; look_direction, xys, nz, ν, t, origin=zeros(3), up=SVector(0,1,0), light=SlowLight(), mapfunc=map)
+	CameraOrtho(; photon_direction, xys, nz, ν, t, origin=zeros(3), up=SVector(0,1,0), light=SlowLight(), mapfunc=map)
 
 Parallel-ray camera in flat spacetime.
 
-All rays share the same propagation direction `n̂ = normalize(look_direction)` and the same
+All rays share the same propagation direction `n̂ = normalize(photon_direction)` and the same
 frequency `ν`. The camera defines a screen plane: an infinite 2D plane perpendicular to `n̂`
 that passes through `origin`. Each pixel `(u, v)` in `xys` corresponds to a ray anchored at
 `origin + u·e1 + v·e2`, propagating in the `n̂` direction.
@@ -26,7 +26,7 @@ that passes through `origin`. Each pixel `(u, v)` in `xys` corresponds to a ray 
 # Fields
 - `origin`: center of the screen plane — the spatial point where `(u, v) = (0, 0)` maps to.
   Only matters when the scene is not centered at the coordinate origin, or for `event_on_camera_ray`.
-- `n`:  unit ray propagation direction (derived from `look_direction`).
+- `n`:  unit photon propagation direction (derived from `photon_direction`).
 - `e1`, `e2`: orthonormal screen-plane basis vectors (⊥ `n`, ⊥ each other). These also serve
   as the lab-frame polarization reference frame: Stokes Q is measured along `e1`. Derived from
   `up × n` (and then `n × e1`).
@@ -53,14 +53,14 @@ end
 CameraOrtho(origin::To, n::Tn, e1::Tn, e2::Tn, xys::Txys, nz::Integer, ν::Tν, t::Tt, light::TL=SlowLight(), mapfunc::Tf=map) where {Tν, Tt, To<:SVector{3}, Tn<:SVector{3}, Txys, Tf, TL<:AbstractLightMode} =
 	CameraOrtho{Tν, Tt, To, Tn, Txys, Tf, TL}(origin, n, e1, e2, xys, Int(nz), ν, t, light, mapfunc)
 
-function CameraOrtho(; look_direction::SVector{3}, up=SVector(0, 1, 0), origin=zero(look_direction), xys, nz, ν, t, light=SlowLight(), mapfunc=map)
-	n = normalize(look_direction)
+function CameraOrtho(; photon_direction::SVector{3}, up=SVector(0, 1, 0), origin=zero(photon_direction), xys, nz, ν, t, light=SlowLight(), mapfunc=map)
+	n = normalize(photon_direction)
 	e1 = normalize(cross(up, n))
 	e2 = cross(n, e1)
 	CameraOrtho(origin, n, e1, e2, xys, nz, ν, t, light, mapfunc)
 end
 
-"""Convenience constructor for the common Z-direction camera (screen at z=0, rays along +z)."""
+"""Convenience constructor for the common Z-direction camera (screen at z=0, photon direction +z)."""
 function CameraZ(; xys, nz, ν, t, light=SlowLight(), mapfunc=map)
 	sample = first(xys)
 	OT = float(eltype(sample))          # coordinate type (may have units)
@@ -76,13 +76,15 @@ end
 
 
 """
-	CameraPerspective(; look_direction, origin, xys, nz, ν, t, up=SVector(0,1,0), light=SlowLight(), mapfunc=map)
+	CameraPerspective(; photon_direction, origin, xys, nz, ν, t, up=SVector(0,1,0), light=SlowLight(), mapfunc=map)
 
 Perspective (pinhole) camera in flat spacetime.
 
-All rays originate from `origin` and fan out, each pixel `(u, v)` in `xys` determining a
-unique ray direction `normalize(n̂ + u·e1 + v·e2)`.  The `xys` values are tangents of the
-angle from the optical axis, so `xys ∈ [-1, 1]` gives a 90° field of view.
+All rays originate from `origin` and fan out. The on-axis photon propagates in direction
+`n̂ = normalize(photon_direction)`. Each pixel `(u, v)` in `xys` tilts the photon direction
+away from `n̂`: the photon direction is `normalize(n̂ − u·e1 − v·e2)` (the sign inversion
+is the standard pinhole/perspective effect). The `xys` values are tangents of the angle
+from the optical axis, so `xys ∈ [-1, 1]` gives a 90° field of view.
 
 # Fields
 Same as `CameraOrtho` — `origin`, `n`, `e1`, `e2`, `xys`, `nz`, `ν`, `t`, `light`, `mapfunc` —
@@ -104,8 +106,8 @@ end
 CameraPerspective(origin::To, n::Tn, e1::Tn, e2::Tn, xys::Txys, nz::Integer, ν::Tν, t::Tt, light::TL=SlowLight(), mapfunc::Tf=map) where {Tν, Tt, To<:SVector{3}, Tn<:SVector{3}, Txys, Tf, TL<:AbstractLightMode} =
 	CameraPerspective{Tν, Tt, To, Tn, Txys, Tf, TL}(origin, n, e1, e2, xys, Int(nz), ν, t, light, mapfunc)
 
-function CameraPerspective(; look_direction::SVector{3}, up=SVector(0, 1, 0), origin=zero(look_direction), xys, nz, ν, t, light=SlowLight(), mapfunc=map)
-	n = normalize(look_direction)
+function CameraPerspective(; photon_direction::SVector{3}, up=SVector(0, 1, 0), origin=zero(photon_direction), xys, nz, ν, t, light=SlowLight(), mapfunc=map)
+	n = normalize(photon_direction)
 	e1 = normalize(cross(up, n))
 	e2 = cross(n, e1)
 	CameraPerspective(origin, n, e1, e2, xys, nz, ν, t, light, mapfunc)
@@ -239,11 +241,9 @@ Construct the single camera ray for pixel coordinates `uv`.
 
 @inline camera_ray(cam::CameraPerspective, uv) = begin
 	(; e1, e2, n) = cam
-	dir_unnorm = n + uv[1] * e1 + uv[2] * e2
-	dir = dir_unnorm / norm(dir_unnorm)
-	# Photon propagates from scene toward camera (opposite to pixel direction).
-	# Using -dir for k gives correct Doppler shifts and SlowLight retardation.
-	photon_dir = -dir
+	# n is the photon direction. Pixel offsets tilt the photon away from n (pinhole inversion).
+	photon_unnorm = n - uv[1] * e1 - uv[2] * e2
+	photon_dir = photon_unnorm / norm(photon_unnorm)
 	# Per-ray polarization basis: project camera e1 perpendicular to photon direction
 	e1_proj = e1 - dot(e1, photon_dir) * photon_dir
 	e1_ray = e1_proj / norm(e1_proj)

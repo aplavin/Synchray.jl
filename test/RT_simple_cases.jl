@@ -328,7 +328,7 @@ end
 		@testset for n̂ in cam_dirs[2:end]
 			up = abs(dot(SVector(0.0, 1.0, 0.0), n̂)) < 0.9 ? SVector(0.0, 1.0, 0.0) : SVector(1.0, 0.0, 0.0)
 			cam = S.CameraOrtho(;
-				look_direction=n̂, up,
+				photon_direction=n̂, up,
 				xys=grid(SVector, xs, xs),
 				nz, ν, t=0.0,
 			)
@@ -434,15 +434,15 @@ end
 	xs = range(-L..L, N)
 	xys_ortho = grid(SVector, xs, xs)
 
-	# Build perspective xys: ortho (u,v) ↔ perspective (-u/D, v/D)
-	xys_persp = map(uv -> SVector(-uv[1]/D, uv[2]/D), xys_ortho)
+	# Build perspective xys: ortho (u,v) ↔ perspective (u/D, v/D)
+	xys_persp = map(uv -> SVector(uv[1]/D, uv[2]/D), xys_ortho)
 
 	@testset for light in (S.SlowLight(), S.FastLight())
 		t_persp = light isa S.SlowLight ? t_ortho + D : t_ortho
 
 		cam_ortho = S.CameraZ(; xys=xys_ortho, nz, ν, t=t_ortho, light)
 		cam_persp = S.CameraPerspective(;
-			look_direction=SVector(0.0, 0.0, -1.0),
+			photon_direction=SVector(0.0, 0.0, 1.0),
 			origin=SVector(0.0, 0.0, D),
 			xys=xys_persp, nz, ν, t=t_persp, light,
 		)

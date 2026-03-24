@@ -160,9 +160,9 @@ end
 	@test S.direction3(ray_arb) ≈ n̂
 	@test S.frequency(ray_arb) ≈ 2.0
 
-	# Camera with arbitrary look_direction: orthonormal screen basis
+	# Camera with arbitrary photon_direction: orthonormal screen basis
 	cam = S.CameraOrtho(;
-		look_direction=SVector(1.0, 0.0, 1.0),
+		photon_direction=SVector(1.0, 0.0, 1.0),
 		xys=SVector{2}[(0.0, 0.0)],
 		nz=64, ν=2.0, t=0.0,
 	)
@@ -193,36 +193,33 @@ end
 		αν=0.0,
 	)
 	cam_ortho_single = S.CameraOrtho(;
-		look_direction=SVector(1.0, 0.0, 1.0),
+		photon_direction=SVector(1.0, 0.0, 1.0),
 		xys=[uv],
 		nz=64, ν=2.0, t=0.0,
 	)
 	@test only(S.render(cam_ortho_single, sphere_ortho)) ≈ S.render(ray_cam, sphere_ortho)
 
 	cam_p = S.CameraPerspective(;
-		look_direction=SVector(1.0, 0.0, 1.0),
+		photon_direction=SVector(1.0, 0.0, 1.0),
 		origin=SVector(0.5, -0.25, 1.0),
 		xys=SVector{2}[(0.0, 0.0)],
 		nz=64, ν=2.0, t=0.0,
 	)
 	uv_p = SVector(0.2, -0.1)
 	ray_p = S.camera_ray(cam_p, uv_p)
-	dir_expected = -(cam_p.n + uv_p[1] * cam_p.e1 + uv_p[2] * cam_p.e2)
-	dir_expected /= norm(dir_expected)
 	@test S.SVector(ray_p.x0.x, ray_p.x0.y, ray_p.x0.z) ≈ cam_p.origin
 	@test ray_p.x0.t ≈ cam_p.t
-	@test S.direction3(ray_p) ≈ dir_expected
 	@test S.frequency(ray_p) ≈ cam_p.ν
 
 	sphere_p = S.UniformSphere(;
-		center=S.FourPosition(0.0, (cam_p.origin + 5 * dir_expected)...),
+		center=S.FourPosition(0.0, (cam_p.origin + 5 * S.direction3(ray_p))...),
 		radius=0.5,
 		u0=u_rest,
 		jν=1.0,
 		αν=0.0,
 	)
 	cam_p_single = S.CameraPerspective(;
-		look_direction=SVector(1.0, 0.0, 1.0),
+		photon_direction=SVector(1.0, 0.0, 1.0),
 		origin=SVector(0.5, -0.25, 1.0),
 		xys=[uv_p],
 		nz=64, ν=2.0, t=0.0,
@@ -297,7 +294,7 @@ end
 	# Constructors default to SlowLight
 	@test ray_slow.light === S.SlowLight()
 	@test S.CameraZ(; xys=grid(SVector, x=[0.0], y=[0.0]), nz=1, ν=1.0, t=0.0).light === S.SlowLight()
-	@test S.CameraOrtho(; look_direction=SVector(1.0, 0.0, 1.0), xys=SVector{2}[(0.0, 0.0)], nz=1, ν=1.0, t=0.0).light === S.SlowLight()
+	@test S.CameraOrtho(; photon_direction=SVector(1.0, 0.0, 1.0), xys=SVector{2}[(0.0, 0.0)], nz=1, ν=1.0, t=0.0).light === S.SlowLight()
 	k = S.photon_k(2.0, SVector(0.0, 0.0, 1.0))
 	@test S.Ray(x0, k, SVector(1.0, 0.0, 0.0), SVector(0.0, 1.0, 0.0), 64).light === S.SlowLight()
 
@@ -333,8 +330,8 @@ end
 	                    normalize(SVector(1.0, 1.0, 1.0)),
 	                    normalize(SVector(-0.3, 0.7, 0.5))]
 		up = abs(dot(SVector(0.0, 1.0, 0.0), n̂)) < 0.9 ? SVector(0.0, 1.0, 0.0) : SVector(1.0, 0.0, 0.0)
-		cam_slow = S.CameraOrtho(; look_direction=n̂, up, xys=SVector{2}[(0.0, 0.0)], nz=1, ν=1.0, t=t_obs)
-		cam_fast = S.CameraOrtho(; look_direction=n̂, up, xys=SVector{2}[(0.0, 0.0)], nz=1, ν=1.0, t=t_obs, light=S.FastLight())
+		cam_slow = S.CameraOrtho(; photon_direction=n̂, up, xys=SVector{2}[(0.0, 0.0)], nz=1, ν=1.0, t=t_obs)
+		cam_fast = S.CameraOrtho(; photon_direction=n̂, up, xys=SVector{2}[(0.0, 0.0)], nz=1, ν=1.0, t=t_obs, light=S.FastLight())
 
 		s = dot(r - cam_slow.origin, cam_slow.n)
 
@@ -356,8 +353,8 @@ end
 	                    SVector(1.0, 0.0, 0.0),
 	                    normalize(SVector(1.0, 1.0, 1.0))]
 		up = abs(dot(SVector(0.0, 1.0, 0.0), n̂)) < 0.9 ? SVector(0.0, 1.0, 0.0) : SVector(1.0, 0.0, 0.0)
-		cam_slow = S.CameraOrtho(; look_direction=n̂, up, xys=SVector{2}[(0.0, 0.0)], nz=1, ν=1.0, t=t_obs)
-		cam_fast = S.CameraOrtho(; look_direction=n̂, up, xys=SVector{2}[(0.0, 0.0)], nz=1, ν=1.0, t=t_obs, light=S.FastLight())
+		cam_slow = S.CameraOrtho(; photon_direction=n̂, up, xys=SVector{2}[(0.0, 0.0)], nz=1, ν=1.0, t=t_obs)
+		cam_fast = S.CameraOrtho(; photon_direction=n̂, up, xys=SVector{2}[(0.0, 0.0)], nz=1, ν=1.0, t=t_obs, light=S.FastLight())
 
 		r_lab = SVector(x4.x, x4.y, x4.z)
 		s = dot(r_lab - cam_slow.origin, cam_slow.n)

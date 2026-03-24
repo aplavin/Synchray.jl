@@ -292,7 +292,7 @@ end
 		@testset "arbitrary camera direction" begin
 			n̂ = normalize(SVector(1.0, 0.0, 1.0))
 			cam_arb = S.CameraOrtho(;
-				look_direction=n̂, xys=SVector{2}[(0.0, 0.0)], nz=1, ν=1.0, t=3.0,
+				photon_direction=n̂, xys=SVector{2}[(0.0, 0.0)], nz=1, ν=1.0, t=3.0,
 				light=S.FastLight(),
 			)
 			x0 = S.FourPosition(0.0, 1.0, 0.5, 3.0)
