@@ -410,3 +410,53 @@ end
 		end
 	end
 end
+
+
+@testitem "CameraOrtho vs CameraPerspective consistency" begin
+	import Synchray as S
+	using RectiGrids
+
+	# Non-trivial moving ellipsoid with all velocity components nonzero
+	ell = S.MovingUniformEllipsoid(
+		center=S.FourPosition(0, 0, 0, 5.0),
+		sizes=SVector(1.5, 1.0, 1.2),
+		u0=S.FourVelocity(SVector(0.3, 0.2, 0.1)),
+		jν=0.7, αν=1.3,
+	)
+
+	L = 3.0
+	N = 64
+	nz = 512
+	ν = 2.0
+	D = 10_000.0
+	t_ortho = 1.0
+
+	xs = range(-L..L, N)
+	xys_ortho = grid(SVector, xs, xs)
+
+	# Build perspective xys: ortho (u,v) ↔ perspective (-u/D, v/D)
+	xys_persp = map(uv -> SVector(-uv[1]/D, uv[2]/D), xys_ortho)
+
+	@testset for light in (S.SlowLight(), S.FastLight())
+		t_persp = light isa S.SlowLight ? t_ortho + D : t_ortho
+
+		cam_ortho = S.CameraZ(; xys=xys_ortho, nz, ν, t=t_ortho, light)
+		cam_persp = S.CameraPerspective(;
+			look_direction=SVector(0.0, 0.0, -1.0),
+			origin=SVector(0.0, 0.0, D),
+			xys=xys_persp, nz, ν, t=t_persp, light,
+		)
+
+		@testset for what in (S.Intensity(), S.OpticalDepth())
+			img_ortho = S.render(cam_ortho, ell, what)
+			img_persp = S.render(cam_persp, ell, what)
+			@test img_ortho ≈ img_persp rtol=1e-2
+		end
+
+		# Tuple mode: compare components individually
+		img_ortho_t = S.render(cam_ortho, ell, (S.Intensity(), S.OpticalDepth()))
+		img_persp_t = S.render(cam_persp, ell, (S.Intensity(), S.OpticalDepth()))
+		@test getindex.(img_ortho_t, 1) ≈ getindex.(img_persp_t, 1) rtol=1e-2
+		@test getindex.(img_ortho_t, 2) ≈ getindex.(img_persp_t, 2) rtol=1e-2
+	end
+end

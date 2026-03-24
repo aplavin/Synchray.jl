@@ -75,6 +75,43 @@ function CameraZ(; xys, nz, ν, t, light=SlowLight(), mapfunc=map)
 end
 
 
+"""
+	CameraPerspective(; look_direction, origin, xys, nz, ν, t, up=SVector(0,1,0), light=SlowLight(), mapfunc=map)
+
+Perspective (pinhole) camera in flat spacetime.
+
+All rays originate from `origin` and fan out, each pixel `(u, v)` in `xys` determining a
+unique ray direction `normalize(n̂ + u·e1 + v·e2)`.  The `xys` values are tangents of the
+angle from the optical axis, so `xys ∈ [-1, 1]` gives a 90° field of view.
+
+# Fields
+Same as `CameraOrtho` — `origin`, `n`, `e1`, `e2`, `xys`, `nz`, `ν`, `t`, `light`, `mapfunc` —
+but `origin` is the camera (pinhole) position and `xys` are angular-tangent pixel coordinates.
+"""
+struct CameraPerspective{Tν, Tt, To<:SVector{3}, Tn<:SVector{3}, Txys, Tf, TL<:AbstractLightMode}
+	origin::To
+	n::Tn
+	e1::Tn
+	e2::Tn
+	xys::Txys
+	nz::Int
+	ν::Tν
+	t::Tt
+	light::TL
+	mapfunc::Tf
+end
+
+CameraPerspective(origin::To, n::Tn, e1::Tn, e2::Tn, xys::Txys, nz::Integer, ν::Tν, t::Tt, light::TL=SlowLight(), mapfunc::Tf=map) where {Tν, Tt, To<:SVector{3}, Tn<:SVector{3}, Txys, Tf, TL<:AbstractLightMode} =
+	CameraPerspective{Tν, Tt, To, Tn, Txys, Tf, TL}(origin, n, e1, e2, xys, Int(nz), ν, t, light, mapfunc)
+
+function CameraPerspective(; look_direction::SVector{3}, up=SVector(0, 1, 0), origin=zero(look_direction), xys, nz, ν, t, light=SlowLight(), mapfunc=map)
+	n = normalize(look_direction)
+	e1 = normalize(cross(up, n))
+	e2 = cross(n, e1)
+	CameraPerspective(origin, n, e1, e2, xys, nz, ν, t, light, mapfunc)
+end
+
+
 struct Ray{TX<:FourPosition, TK<:FourFrequency, TE<:SVector{3}, TL<:AbstractLightMode}
     x0::TX       # anchor 4-position on the ray
     k::TK        # 4-frequency: k = ν·(1, n̂)
@@ -130,6 +167,13 @@ end
     cam
 	@modify(_u_to_code(_, UCTX.L0), __.origin)
     @modify(_u_to_code(_, UCTX.L0), __.xys)
+    @modify(_u_to_code(_, UCTX.ν0), __.ν)
+    @modify(_u_to_code(_, UCTX.T0), __.t)
+end
+
+@unstable ustrip(cam::CameraPerspective) = @p let
+    cam
+	@modify(_u_to_code(_, UCTX.L0), __.origin)
     @modify(_u_to_code(_, UCTX.ν0), __.ν)
     @modify(_u_to_code(_, UCTX.T0), __.t)
 end
@@ -190,6 +234,48 @@ _mean_samples(samples::AbstractArray{<:Tuple}) = ntuple(i -> mean(s -> s[i], sam
             offset = uv[1] * e1 + uv[2] * e2
             ray = @set ray_base.x0 += FourPosition(0, offset)
             render(ray, obj, what)
+        end
+        img[I] = _mean_samples(samples)
+    end
+
+    img
+end
+
+@inline _perspective_ray(cam::CameraPerspective, uv) = begin
+    (; e1, e2, n) = cam
+    dir_unnorm = n + uv[1] * e1 + uv[2] * e2
+    dir = dir_unnorm / norm(dir_unnorm)
+    # Photon propagates from scene toward camera (opposite to pixel direction).
+    # Using -dir for k gives correct Doppler shifts and SlowLight retardation.
+    photon_dir = -dir
+    # Per-ray polarization basis: project camera e1 perpendicular to photon direction
+    e1_proj = e1 - dot(e1, photon_dir) * photon_dir
+    e1_ray = e1_proj / norm(e1_proj)
+    e2_ray = cross(photon_dir, e1_ray)
+    k = photon_k(cam.ν, photon_dir)
+    Ray(FourPosition(cam.t, cam.origin), k, e1_ray, e2_ray, cam.nz, cam.light)
+end
+
+@unstable render(cam::CameraPerspective, obj::AbstractMedium, what=Intensity(); adaptive_supersampling=false) = let
+	img = cam.mapfunc(cam.xys) do uv
+		render(_perspective_ray(cam, uv), obj, what)
+	end
+
+    adaptive_supersampling === false && return img
+    n = adaptive_supersampling::Int
+    @assert n ≥ 2
+
+    steps = map(step, axiskeys(cam.xys))
+    boundary = _boundary_mask(img)
+
+    offs(n, d) = range(0 ± 0.7 * d, length=n)
+    oxs, oys = offs.(n, steps)
+
+    for I in findall(boundary)
+        uv0 = cam.xys[I]
+        samples = map(grid(SVector, oxs, oys)) do ouv
+            uv = uv0 + ouv
+            render(_perspective_ray(cam, uv), obj, what)
         end
         img[I] = _mean_samples(samples)
     end

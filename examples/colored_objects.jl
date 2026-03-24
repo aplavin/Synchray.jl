@@ -218,6 +218,167 @@ function animated_flying_ellipsoid(; nframes=120)
     fig
 end
 
-colored_ellipsoid_doppler()
-combined_three_ellipsoids()
-animated_flying_ellipsoid(; nframes=20)
+function combined_three_ellipsoids_perspective()
+    cam_base = S.CameraPerspective(;
+        look_direction = SVector(0.0, 0.0, -1.0),
+        origin = SVector(0.0, 0.0, 20.0),
+        xys = grid(SVector, x=range(-0.5..0.5, 512), y=range(-0.5..0.5, 512)),
+        nz = 256,
+        ν = 1.0,
+        t = 0.0,
+    )
+
+    # Back (low z): large stationary elliptic blob, green
+    back = S.EmissionRegion(
+        geometry = S.Geometries.Ellipsoid(;
+            center = S.Geometries.InertialWorldline(
+                S.FourPosition(0, 0, 0, 0),
+                S.FourVelocity(SVector(0.0, 0.0, 0.0)),
+            ),
+            sizes = SVector(4, 1.3, 2),
+        ),
+        emission = S.PeakedEmission(S=S.Profiles.Constant(1.0), α=S.Profiles.Constant(0.5), ν₀=1.0, σ=0.15),
+    )
+
+    # Middle: r=2 sphere moving away (βz < 0 → redshift), center at xy=(1,0)
+    mid = S.EmissionRegion(
+        geometry = S.Geometries.Ellipsoid(;
+            center = S.Geometries.InertialWorldline(
+                S.FourPosition(0, 1, 0, 7),
+                S.FourVelocity(SVector(0.0, 0.0, -0.2)),
+            ),
+            sizes = SVector(2.0, 2.0, 2.0),
+        ),
+        emission = S.PeakedEmission(S=S.Profiles.Constant(1.0), α=S.Profiles.Constant(0.5), ν₀=1.0, σ=0.15),
+    )
+
+    # Front (high z): r=2 sphere moving toward us (βz > 0 → blueshift), center at xy=(-1,0)
+    front = S.EmissionRegion(
+        geometry = S.Geometries.Ellipsoid(;
+            center = S.Geometries.InertialWorldline(
+                S.FourPosition(0, -1, 0, 11),
+                S.FourVelocity(SVector(0.0, 0.0, 0.2)),
+            ),
+            sizes = SVector(2.0, 2.0, 2.0),
+        ),
+        emission = S.PeakedEmission(S=S.Profiles.Constant(1.0), α=S.Profiles.Constant(0.5), ν₀=1.0, σ=0.15),
+    )
+
+    combined = S.CombinedMedium(back, mid, front)
+
+    channels = render_rgb(cam_base, combined)
+    rgb = assemble_rgb(channels)
+
+    fig = Figure(size=(600, 600))
+    ax = Axis(fig[1, 1]; title="CameraPerspective: 3 ellipsoids", aspect=DataAspect())
+    image!(ax, rgb)
+    hidespines!(ax)
+    hidedecorations!(ax)
+    resize_to_layout!(fig)
+    save(joinpath(outdir, "combined_three_ellipsoids_perspective.png"), fig)
+    fig
+end
+
+function perspective_xy_movers(; nframes=60)
+    cam_base = S.CameraPerspective(;
+        look_direction = SVector(0.0, 0.0, -1.0),
+        origin = SVector(0.0, 0.0, 9.0),
+        xys = grid(SVector, x=range(-1..1, 256), y=range(-1..1, 256)),
+        nz = 256,
+        ν = 1.0,
+        t = 0.0,
+    )
+
+    # Stationary background ellipsoid at z=0
+    bg = S.EmissionRegion(
+        geometry = S.Geometries.Ellipsoid(;
+            center = S.Geometries.InertialWorldline(
+                S.FourPosition(0, 0, 0, 0),
+                S.FourVelocity(SVector(0.0, 0.0, 0.0)),
+            ),
+            sizes = SVector(3.0, 3.0, 1.5),
+        ),
+        emission = S.PeakedEmission(S=S.Profiles.Constant(1.0), α=S.Profiles.Constant(0.5), ν₀=1.0, σ=0.15),
+    )
+
+    # Sphere moving in +x direction
+    mover_x = S.EmissionRegion(
+        geometry = S.Geometries.Ellipsoid(;
+            center = S.Geometries.InertialWorldline(
+                S.FourPosition(0, 0, 0.5, 5),
+                S.FourVelocity(SVector(0.9, 0.0, 0.0)),
+            ),
+            sizes = SVector(1.5, 1.5, 1.5),
+        ),
+        emission = S.PeakedEmission(S=S.Profiles.Constant(1.0), α=S.Profiles.Constant(0.8), ν₀=1.0, σ=0.15),
+    )
+
+    # Sphere moving in -y direction
+    mover_y = S.EmissionRegion(
+        geometry = S.Geometries.Ellipsoid(;
+            center = S.Geometries.InertialWorldline(
+                S.FourPosition(0, -0.5, 0, 3),
+                S.FourVelocity(SVector(0.0, -0.9, 0.0)),
+            ),
+            sizes = SVector(1.5, 1.5, 1.5),
+        ),
+        emission = S.PeakedEmission(S=S.Profiles.Constant(1.0), α=S.Profiles.Constant(0.8), ν₀=1.0, σ=0.15),
+    )
+
+    # Sphere moving diagonally in xy plane
+    mover_xy = S.EmissionRegion(
+        geometry = S.Geometries.Ellipsoid(;
+            center = S.Geometries.InertialWorldline(
+                S.FourPosition(0, 0.5, -0.5, 1),
+                S.FourVelocity(SVector(-0.6, 0.6, 0.0)),
+            ),
+            sizes = SVector(1.5, 1.5, 1.5),
+        ),
+        emission = S.PeakedEmission(S=S.Profiles.Constant(1.0), α=S.Profiles.Constant(0.8), ν₀=1.0, σ=0.15),
+    )
+
+    combined = S.CombinedMedium(bg, mover_x, mover_y, mover_xy)
+
+    # Side-by-side animation: SlowLight vs FastLight
+    ts = range(-20.0, 20.0, length=nframes)
+    γ = 2
+
+    all_ch = map([S.SlowLight(), S.FastLight()]) do light_mode
+        cam_l = @set cam_base.light = light_mode
+        map(ts) do t
+            cam = @set cam_l.t = t
+            render_rgb(cam, combined)
+        end
+    end
+    mx = maximum(chs -> maximum(ch -> maximum(maximum, ch), chs), all_ch)
+
+    fig = Figure(size=(1200, 600))
+    ax1 = Axis(fig[1, 1]; title="SlowLight", aspect=DataAspect())
+    ax2 = Axis(fig[1, 2]; title="FastLight", aspect=DataAspect())
+    for ax in (ax1, ax2); hidespines!(ax); hidedecorations!(ax; label=false); end
+
+    obs_sl = Observable(assemble_rgb(first(all_ch[1]), mx; gamma=γ))
+    obs_fl = Observable(assemble_rgb(first(all_ch[2]), mx; gamma=γ))
+    image!(ax1, obs_sl)
+    image!(ax2, obs_fl)
+
+    # Save PNG at t=0 frame
+    i_zero = argmin(abs.(ts))
+    obs_sl[] = assemble_rgb(all_ch[1][i_zero], mx; gamma=γ)
+    obs_fl[] = assemble_rgb(all_ch[2][i_zero], mx; gamma=γ)
+    save(joinpath(outdir, "perspective_xy_movers.png"), fig)
+
+    record(fig, joinpath(outdir, "perspective_xy_movers.mp4"), eachindex(ts); framerate=7) do i
+        obs_sl[] = assemble_rgb(all_ch[1][i], mx; gamma=γ)
+        obs_fl[] = assemble_rgb(all_ch[2][i], mx; gamma=γ)
+    end
+    fig
+end
+
+if abspath(PROGRAM_FILE) == @__FILE__
+    colored_ellipsoid_doppler()
+    combined_three_ellipsoids()
+    combined_three_ellipsoids_perspective()
+    perspective_xy_movers()
+    animated_flying_ellipsoid(; nframes=20)
+end
