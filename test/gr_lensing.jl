@@ -320,4 +320,51 @@
 		τ_s1 = αν_opaque * 2R1  # = 20
 		@test gr ≈ gr_s2 * exp(-τ_s1) + gr_s1 rtol=0.05
 	end
+
+	@testset "U-turn ray: see sphere via ~180° bending" begin
+		# Ray at α≈6.118 (just outside shadow) bends ~178° around the BH.
+		# Place a sphere on the outgoing ray path — invisible to the flat camera,
+		# visible only through GR bending.
+		ray_in = make_ray(6.118, 0.0)
+		ray_out = deflected_ray(6.118, 0.0)
+		@test ray_out !== nothing
+
+		# Place sphere along the outgoing ray, 200 units from anchor
+		n_out = S.direction3(ray_out)
+		anchor = S.SVector(ray_out.x0.x, ray_out.x0.y, ray_out.x0.z)
+		sphere_center = anchor + 200.0 * n_out
+		sphere = S.UniformSphere(;
+			center=S.FourPosition(0.0, sphere_center...),
+			radius=20.0, u0=u_rest, jν=jν, αν=0.0,
+		)
+
+		flat = S.integrate_ray(sphere, ray_in)
+		gr = S._render_gr_pixel(sphere, ray_in, ray_out, bh_pos, S.Intensity())
+
+		# Flat: incoming straight-line ray misses the sphere entirely
+		@test flat === 0.0
+		# GR: the bent outgoing ray hits the sphere — nonzero!
+		@test gr ≈ jν * 40.0 rtol=0.02  # j * 2R, center hit
+	end
+
+	@testset "90° bend ray: see sphere around the corner" begin
+		# Ray at α≈6.79 bends ~91° — a quarter turn around the BH.
+		ray_in = make_ray(6.79, 0.0)
+		ray_out = deflected_ray(6.79, 0.0)
+		@test ray_out !== nothing
+
+		n_out = S.direction3(ray_out)
+		anchor = S.SVector(ray_out.x0.x, ray_out.x0.y, ray_out.x0.z)
+		sphere_center = anchor + 200.0 * n_out
+		sphere = S.UniformSphere(;
+			center=S.FourPosition(0.0, sphere_center...),
+			radius=20.0, u0=u_rest, jν=jν, αν=0.0,
+		)
+
+		flat = S.integrate_ray(sphere, ray_in)
+		gr = S._render_gr_pixel(sphere, ray_in, ray_out, bh_pos, S.Intensity())
+
+		@test flat === 0.0
+		@test gr ≈ jν * 40.0 rtol=0.02
+	end
 end
