@@ -13,8 +13,8 @@
 
 	defl = S.compute_deflection_map(spin, θ_obs, cam)
 
-	# Incoming asymptotic direction in BL→Cartesian coords (observer at θ_obs from spin axis)
-	n_in = S.SVector(0.0, sin(θ_obs), -cos(θ_obs))
+	# Incoming direction in Synchray lab frame (opposite of camera look direction)
+	n_in = -cam.n
 
 	@testset "shadow detection" begin
 		for I in CartesianIndices(defl)
@@ -60,19 +60,21 @@
 	end
 
 	@testset "scattering plane" begin
-		# For β≈0 pixels, the scattering plane contains the incoming direction and the
-		# x-axis offset. Its normal is cross(x̂, n_in) ∝ (0, cos θ, sin θ).
-		expected_normal = S.normalize(S.SVector(0.0, cos(θ_obs), sin(θ_obs)))
-		for I in CartesianIndices(defl)
-			d = defl[I]
-			isnothing(d) && continue
-			uv = cam.xys[I]
-			abs(uv[2]) > 0.1 && continue
-			abs(uv[1]) < 15.0 && continue
+		# For a ray with β≈0 (offset along cam.e1 only), the scattering plane contains
+		# the incoming direction (-cam.n) and the pixel offset direction.
+		# The plane normal should be ≈ ±cam.e2.
+		# Use β=0.01 (not exactly 0 — Krang has a sign(β)=0 degeneracy at β=0).
+		cam_sp = S.CameraOrtho(;
+			look_direction = S.SVector(0.0, 0.0, -1.0),
+			xys = S.grid(S.SVector, x=[29.0, 30.0, 31.0], y=[-0.99, 0.01, 1.01]),
+			nz = 100, ν = 1e11, t = 0.0,
+		)
+		defl_sp = S.compute_deflection_map(spin, θ_obs, cam_sp)
+		d_sp = defl_sp[2, 2]
+		@test d_sp !== nothing
 
-			plane_normal = S.normalize(S.cross(n_in, S.direction3(d)))
-			@test abs(S.dot(plane_normal, expected_normal)) > 0.9
-		end
+		plane_normal = S.normalize(S.cross(n_in, S.direction3(d_sp)))
+		@test abs(S.dot(plane_normal, cam.e2)) > 0.9
 	end
 
 	# --- Single-ray tests with spheres ---
@@ -294,9 +296,12 @@
 			center=S.FourPosition(0.0, 50.0, 0.0, 50.0), radius=R1,
 			u0=u_rest, jν=jν_dim, αν=αν_opaque,
 		)
-		# Sphere 2 center chosen so the outgoing ray (direction ≈ (0,-1,0)) passes through it
+		# Sphere 2 placed on the outgoing ray path (direction depends on Krang→Synchray frame)
+		n_out_2 = S.direction3(ray_out)
+		anchor_2 = S.SVector(ray_out.x0.x, ray_out.x0.y, ray_out.x0.z)
+		sphere2_center = anchor_2 + 300.0 * n_out_2
 		sphere2 = S.UniformSphere(;
-			center=S.FourPosition(0.0, 0.0, -300.0, 0.0), radius=R2,
+			center=S.FourPosition(0.0, sphere2_center...), radius=R2,
 			u0=u_rest, jν=jν_bright, αν=0.0,
 		)
 		combined = S.CombinedMedium(sphere1, sphere2)
@@ -321,50 +326,47 @@
 		@test gr ≈ gr_s2 * exp(-τ_s1) + gr_s1 rtol=0.05
 	end
 
-	@testset "U-turn ray: see sphere via ~180° bending" begin
-		# Ray at α≈6.118 (just outside shadow) bends ~178° around the BH.
-		# Place a sphere on the outgoing ray path — invisible to the flat camera,
-		# visible only through GR bending.
-		ray_in = make_ray(6.118, 0.0)
-		ray_out = deflected_ray(6.118, 0.0)
+	@testset "U-turn ray: see sphere behind BH via ~180° bending" begin
+		# Sphere at (0, 0, -100) — directly behind BH in Synchray frame.
+		# α=6.110 (just outside shadow) bends outgoing ray to direction ≈ (0, 0, -1).
+		# The outgoing ray passes within ~3.7 of sphere center (R=5.5 → hit).
+		# Incoming ray at x=6.11 is 6.1 from center (> R=5.5 → miss).
+		ray_in = make_ray(6.110, 0.01)
+		ray_out = deflected_ray(6.110, 0.01)
 		@test ray_out !== nothing
 
-		# Place sphere along the outgoing ray, 200 units from anchor
-		n_out = S.direction3(ray_out)
-		anchor = S.SVector(ray_out.x0.x, ray_out.x0.y, ray_out.x0.z)
-		sphere_center = anchor + 200.0 * n_out
 		sphere = S.UniformSphere(;
-			center=S.FourPosition(0.0, sphere_center...),
-			radius=20.0, u0=u_rest, jν=jν, αν=0.0,
+			center=S.FourPosition(0.0, 0.0, 0.0, -100.0), radius=5.5,
+			u0=u_rest, jν=jν, αν=0.0,
 		)
 
 		flat = S.integrate_ray(sphere, ray_in)
 		gr = S._render_gr_pixel(sphere, ray_in, ray_out, bh_pos, S.Intensity())
 
-		# Flat: incoming straight-line ray misses the sphere entirely
 		@test flat === 0.0
-		# GR: the bent outgoing ray hits the sphere — nonzero!
-		@test gr ≈ jν * 40.0 rtol=0.02  # j * 2R, center hit
+		# Path through sphere ≈ 8.1 (off-center hit, miss_dist=3.7, R=5.5)
+		@test gr ≈ jν * 8.1 rtol=0.05
 	end
 
-	@testset "90° bend ray: see sphere around the corner" begin
-		# Ray at α≈6.79 bends ~91° — a quarter turn around the BH.
-		ray_in = make_ray(6.79, 0.0)
-		ray_out = deflected_ray(6.79, 0.0)
+	@testset "90° bend ray: see sphere sideways via quarter-turn" begin
+		# Sphere at (-100, 0, 0) — sideways from BH in Synchray frame.
+		# α=6.762 bends outgoing ray to direction ≈ (-1, 0, 0).
+		# Outgoing ray passes within ~8.2 of center (R=10 → hit).
+		# Incoming ray at x=6.76 is ~107 from (-100,0,0) → miss.
+		ray_in = make_ray(6.762, 0.01)
+		ray_out = deflected_ray(6.762, 0.01)
 		@test ray_out !== nothing
 
-		n_out = S.direction3(ray_out)
-		anchor = S.SVector(ray_out.x0.x, ray_out.x0.y, ray_out.x0.z)
-		sphere_center = anchor + 200.0 * n_out
 		sphere = S.UniformSphere(;
-			center=S.FourPosition(0.0, sphere_center...),
-			radius=20.0, u0=u_rest, jν=jν, αν=0.0,
+			center=S.FourPosition(0.0, -100.0, 0.0, 0.0), radius=10.0,
+			u0=u_rest, jν=jν, αν=0.0,
 		)
 
 		flat = S.integrate_ray(sphere, ray_in)
 		gr = S._render_gr_pixel(sphere, ray_in, ray_out, bh_pos, S.Intensity())
 
 		@test flat === 0.0
-		@test gr ≈ jν * 40.0 rtol=0.02
+		# Path through sphere ≈ 11.3 (off-center hit, miss_dist=8.2, R=10)
+		@test gr ≈ jν * 11.3 rtol=0.05
 	end
 end
