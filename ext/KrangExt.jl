@@ -2,7 +2,7 @@ module KrangExt
 
 using Synchray
 using Synchray: Ray, FourPosition, photon_k, _perpendicular_basis_vector
-using Krang: Krang, Kerr, SlowLightIntensityCamera, emission_coordinates
+using Krang: Krang, Kerr, SlowLightIntensityPixel, emission_coordinates
 using LinearAlgebra: normalize, cross, norm
 
 """
@@ -10,7 +10,7 @@ using LinearAlgebra: normalize, cross, norm
 
 Compute a gravitational deflection map for each pixel of `cam`.
 
-Returns an array (same shape as `cam.xys`) where each element is either:
+Returns a collection with the same topology as `cam.xys`, where each element is either:
 - a `Ray` — the outgoing asymptotic ray after BH deflection
 - `nothing` — the ray is captured by the BH
 
@@ -26,29 +26,25 @@ Returns an array (same shape as `cam.xys`) where each element is either:
 function Synchray.compute_deflection_map(spin, θ_obs, cam::Synchray.CameraOrtho;
 		bh_position=zero(SVector{3,Float64}), bh_rg=1.0, τ_frac=(0.97, 0.99))
 	metric = Kerr(Float64(spin))
-
-	# Krang operates in units of r_g. Convert pixel offsets from lab to Krang units.
-	αs = map(uv -> Float64(uv[1]) / bh_rg, cam.xys)
-	βs = map(uv -> Float64(uv[2]) / bh_rg, cam.xys)
-	αmin, αmax = extrema(αs)
-	βmin, βmax = extrema(βs)
-	# Nudge β range asymmetrically to avoid any pixel landing at β=0 exactly —
-	# Krang has a sign(β)=0 degeneracy there that pins θ=π/2.
-	if βmin ≤ 0 ≤ βmax
-		βmin += 1e-8
-	end
-	res = size(cam.xys, 1)
-
-	krang_cam = SlowLightIntensityCamera(metric, Float64(θ_obs), αmin, αmax, βmin, βmax, res)
+	θ_obs_f = Float64(θ_obs)
 
 	# Rotation matrix from Krang's Cartesian frame to Synchray's lab frame.
 	# Krang: observer at BL (r→∞, θ=θ_obs, φ=-π/2), spin axis along z.
 	# Synchray: camera with (cam.e1, cam.e2, cam.n) screen/look basis.
-	R = _krang_to_lab_rotation(Float64(θ_obs), cam)
+	R = _krang_to_lab_rotation(θ_obs_f, cam)
 
-	map(krang_cam.screen.pixels) do pix
+	map(cam.xys) do uv
+		pix = _krang_pixel(metric, uv, bh_rg, θ_obs_f)
 		_outgoing_ray_from_pixel(pix, cam, R, bh_position, bh_rg, τ_frac)
 	end
+end
+
+function _krang_pixel(metric, uv, bh_rg, θ_obs)
+	α = Float64(uv[1]) / bh_rg
+	β = Float64(uv[2]) / bh_rg
+	# Krang has a sign(β)=0 degeneracy there that pins θ=π/2.
+	β = iszero(β) ? 1e-8 : β
+	SlowLightIntensityPixel(metric, α, β, θ_obs)
 end
 
 """Rotation matrix from Krang's Cartesian frame to Synchray's lab frame."""

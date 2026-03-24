@@ -93,15 +93,43 @@
 	end
 
 	function deflected_ray(x, y)
-		# Use 3x3 grid (Krang needs nonzero range), take center pixel
 		xf, yf = Float64(x), Float64(y)
-		cam_3px = S.CameraOrtho(;
+		cam_1px = S.CameraOrtho(;
 			look_direction=S.SVector(0.0, 0.0, -1.0),
 			origin=S.SVector(0.0, 0.0, 1000.0),
-			xys=S.grid(S.SVector, x=[xf-1, xf, xf+1], y=[yf-1, yf, yf+1]),
+			xys=[S.SVector(xf, yf)],
 			nz=nz, ν=ν, t=0.0,
 		)
-		S.compute_deflection_map(spin, θ_obs, cam_3px)[2, 2]
+		only(S.compute_deflection_map(spin, θ_obs, cam_1px))
+	end
+
+	@testset "vector xys topology is preserved" begin
+		xys_vec = [
+			S.SVector(50.0, 0.0),
+			S.SVector(10.0, 0.0),
+			S.SVector(0.0, 0.0),
+		]
+		cam_vec = S.CameraOrtho(;
+			look_direction=S.SVector(0.0, 0.0, -1.0),
+			origin=S.SVector(0.0, 0.0, 1000.0),
+			xys=xys_vec,
+			nz=nz, ν=ν, t=0.0,
+		)
+		defl_vec = S.compute_deflection_map(spin, θ_obs, cam_vec)
+
+		@test defl_vec isa Vector
+		@test axes(defl_vec) == axes(xys_vec)
+
+		for (i, uv) in pairs(xys_vec)
+			ray_vec = defl_vec[i]
+			ray_single = deflected_ray(uv[1], uv[2])
+			@test isnothing(ray_vec) == isnothing(ray_single)
+			isnothing(ray_vec) && continue
+			@test ray_vec.x0 ≈ ray_single.x0
+			@test ray_vec.k ≈ ray_single.k
+			@test ray_vec.e1 ≈ ray_single.e1
+			@test ray_vec.e2 ≈ ray_single.e2
+		end
 	end
 
 	@testset "far ray: sphere in front of BH" begin
