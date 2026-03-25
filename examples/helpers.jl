@@ -93,12 +93,12 @@ function render_rgb(cam_base, obj; log_path=nothing)
         S.render(cam, obj)
     end
     if log_path !== nothing
-        do_render()
         npx = size(cam_base.xys, 1)
         nz = cam_base.nz
         label = f"{nameof(typeof(obj)):27s},     RGB 3×render, {npx}px × {nz}"
         open(log_path, "a") do io
             redirect_stdout(io) do
+                do_render()
                 @time label do_render()
             end
         end
@@ -115,12 +115,14 @@ function render_rgb_metal(cam_base, obj; log_path=nothing)
         @modify(Array, AxisKeys.keyless_unname(S.render(cam_gpu, obj32)))
     end
     if log_path !== nothing
-        do_render()
         npx = size(cam_base.xys, 1)
         nz = cam_base.nz
         label = f"{nameof(typeof(obj)):27s},     RGB 3×render, {npx}px × {nz}"
         open(log_path, "a") do io
             redirect_stdout(io) do
+                # XXX: two seem to be needed for metal to warm up?..
+                do_render()
+                do_render()
                 @time label do_render()
             end
         end
