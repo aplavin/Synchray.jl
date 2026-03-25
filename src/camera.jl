@@ -270,8 +270,10 @@ _mean_samples(samples::AbstractArray{<:Tuple}) = ntuple(i -> mean(s -> s[i], sam
 
 @unstable render(cam::CameraOrtho, obj::AbstractMedium, what=Intensity(); adaptive_supersampling=false) = let
 	ray_base = _orthographic_ray_base(cam)
+	# strip xys so the closure captures only isbits fields (xys may be an array)
+	cam_noxys = @set cam.xys = nothing
 	img = cam.mapfunc(cam.xys) do uv
-		ray = _camera_ray(cam, uv, ray_base)
+		ray = _camera_ray(cam_noxys, uv, ray_base)
 		render(ray, obj, what)
 	end
 
@@ -290,7 +292,7 @@ _mean_samples(samples::AbstractArray{<:Tuple}) = ntuple(i -> mean(s -> s[i], sam
         uv0 = cam.xys[I]
         samples = map(grid(SVector, oxs, oys)) do ouv
             uv = uv0 + ouv
-            ray = _camera_ray(cam, uv, ray_base)
+            ray = _camera_ray(cam_noxys, uv, ray_base)
             render(ray, obj, what)
         end
         img[I] = _mean_samples(samples)
@@ -300,8 +302,10 @@ _mean_samples(samples::AbstractArray{<:Tuple}) = ntuple(i -> mean(s -> s[i], sam
 end
 
 @unstable render(cam::CameraPerspective, obj::AbstractMedium, what=Intensity(); adaptive_supersampling=false) = let
+	# strip xys so the closure captures only isbits fields (xys may be an array)
+	cam_noxys = @set cam.xys = nothing
 	img = cam.mapfunc(cam.xys) do uv
-		render(camera_ray(cam, uv), obj, what)
+		render(camera_ray(cam_noxys, uv), obj, what)
 	end
 
     adaptive_supersampling === false && return img
