@@ -51,7 +51,7 @@ function colored_ellipsoid_doppler(; render_rgb_fn=render_rgb, log_path=nothing,
         ax = Axis(fig[row, col]; title, ylabel, aspect=DataAspect())
         image!(ax, rgb)
         hidespines!(ax)
-        hidedecorations!(ax; label=false)
+        hidedecorations!(ax)
     end
 
     resize_to_layout!(fig)
@@ -329,7 +329,7 @@ function perspective_xy_movers(; render_rgb_fn=render_rgb, log_path=nothing, suf
     fig = Figure(size=(1200, 600))
     ax1 = Axis(fig[1, 1]; title="SlowLight", aspect=DataAspect())
     ax2 = Axis(fig[1, 2]; title="FastLight", aspect=DataAspect())
-    for ax in (ax1, ax2); hidespines!(ax); hidedecorations!(ax; label=false); end
+    for ax in (ax1, ax2); hidespines!(ax); hidedecorations!(ax); end
 
     obs_sl = Observable(assemble_rgb(first(all_ch[1]), mx; gamma=γ))
     obs_fl = Observable(assemble_rgb(first(all_ch[2]), mx; gamma=γ))
