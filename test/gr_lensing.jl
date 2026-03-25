@@ -15,18 +15,18 @@
 
 	@testset "shadow detection" begin
 		# Inside shadow (b well below critical ~6.2)
-		@test S.RayGR2(S.camera_ray(cam, S.SVector(0.0, 0.0)), lens).ray_out === nothing
-		@test S.RayGR2(S.camera_ray(cam, S.SVector(3.0, 0.0)), lens).ray_out === nothing
-		@test S.RayGR2(S.camera_ray(cam, S.SVector(0.0, 5.0)), lens).ray_out === nothing
+		@test S.is_captured_ray(S.RayGR2(S.camera_ray(cam, S.SVector(0.0, 0.0)), lens).ray_out)
+		@test S.is_captured_ray(S.RayGR2(S.camera_ray(cam, S.SVector(3.0, 0.0)), lens).ray_out)
+		@test S.is_captured_ray(S.RayGR2(S.camera_ray(cam, S.SVector(0.0, 5.0)), lens).ray_out)
 		# Outside shadow
-		@test S.RayGR2(S.camera_ray(cam, S.SVector(10.0, 0.0)), lens).ray_out !== nothing
-		@test S.RayGR2(S.camera_ray(cam, S.SVector(0.0, 50.0)), lens).ray_out !== nothing
+		@test !S.is_captured_ray(S.RayGR2(S.camera_ray(cam, S.SVector(10.0, 0.0)), lens).ray_out)
+		@test !S.is_captured_ray(S.RayGR2(S.camera_ray(cam, S.SVector(0.0, 50.0)), lens).ray_out)
 	end
 
 	@testset "outgoing direction is unit vector" begin
 		for uv in [S.SVector(10.0, 0.0), S.SVector(30.0, 5.0), S.SVector(50.0, -20.0)]
 			d = S.RayGR2(S.camera_ray(cam, uv), lens).ray_out
-			@test d !== nothing
+			@test !S.is_captured_ray(d)
 			@test S.norm(S.direction3(d)) ≈ 1 atol=1e-10
 		end
 	end
@@ -37,7 +37,7 @@
 		for uv in [S.SVector(40.0, 10.0), S.SVector(30.0, 30.0), S.SVector(45.0, -20.0)]
 			b = S.norm(uv)
 			d = S.RayGR2(S.camera_ray(cam, uv), lens).ray_out
-			@test d !== nothing
+			@test !S.is_captured_ray(d)
 			# Both direction3 vectors are photon travel directions; for zero deflection they're parallel.
 			defl_angle = acos(clamp(S.dot(cam.n, S.direction3(d)), -1, 1))
 			@test defl_angle ≈ 4.0 / b rtol=0.1
@@ -51,7 +51,7 @@
 		# Use β=0.01 (not exactly 0 — Krang has a sign(β)=0 degeneracy at β=0).
 		uv_sp = S.SVector(30.0, 0.01)
 		d_sp = S.RayGR2(S.camera_ray(cam, uv_sp), lens).ray_out
-		@test d_sp !== nothing
+		@test !S.is_captured_ray(d_sp)
 
 		plane_normal = S.normalize(S.cross(cam.n, S.direction3(d_sp)))
 		@test abs(S.dot(plane_normal, cam.e2)) > 0.9
@@ -87,12 +87,12 @@
 		)
 		raygr_twisted = S.RayGR2(ray_in_twisted, lens)
 
-		@test raygr_inferred.ray_out !== nothing
+		@test !S.is_captured_ray(raygr_inferred.ray_out)
 		@test raygr_inferred.ray_out.x0 ≈ raygr_explicit.ray_out.x0
 		@test raygr_inferred.ray_out.k ≈ raygr_explicit.ray_out.k
 		@test raygr_inferred.ray_out.e1 ≈ raygr_explicit.ray_out.e1
 		@test raygr_inferred.ray_out.e2 ≈ raygr_explicit.ray_out.e2
-		@test raygr_twisted.ray_out !== nothing
+		@test !S.is_captured_ray(raygr_twisted.ray_out)
 		@test raygr_twisted.ray_out.x0 ≈ raygr_inferred.ray_out.x0
 		@test raygr_twisted.ray_out.k ≈ raygr_inferred.ray_out.k
 
@@ -114,7 +114,7 @@
 		)
 
 		@test_throws ArgumentError S.RayGR2(ray_in, ray_out_bad_freq, bh_pos)
-		@test_throws ArgumentError S.RayGR2(ray_in, ray_out_bad_light, bh_pos)
+		@test_throws MethodError S.RayGR2(ray_in, ray_out_bad_light, bh_pos)
 	end
 
 	@testset "CameraGR wraps orthographic and perspective cameras" begin
@@ -150,7 +150,7 @@
 		# (in BL→Cartesian frame, ~60° away) misses it entirely.
 		ray_in = make_ray(50.0, 0.0)
 		ray_gr = S.RayGR2(make_ray(50.0, 0.0), lens)
-		@test ray_gr.ray_out !== nothing
+		@test !S.is_captured_ray(ray_gr.ray_out)
 
 		sphere = S.UniformSphere(;
 			center=S.FourPosition(0.0, 50.0, 0.0, 50.0), radius=30.0,
@@ -190,7 +190,7 @@
 		# Ray at x=0, y=0 — hits BH directly, captured.
 		ray_in = make_ray(0.0, 0.0)
 		ray_gr = S.RayGR2(make_ray(0.0, 0.0), lens)
-		@test ray_out = ray_gr.ray_out === nothing  # captured
+		@test S.is_captured_ray(ray_gr.ray_out)  # captured
 
 		# Sphere behind BH
 		sphere = S.UniformSphere(;
@@ -211,7 +211,7 @@
 		# Ray at x=10, moderate offset. Strong deflection but not captured.
 		ray_in = make_ray(10.0, 0.0)
 		ray_gr = S.RayGR2(make_ray(10.0, 0.0), lens)
-		@test ray_gr.ray_out !== nothing  # not captured
+		@test !S.is_captured_ray(ray_gr.ray_out)  # not captured
 
 		# Sphere on the incoming ray path, in front of BH
 		sphere_front = S.UniformSphere(;
@@ -268,7 +268,7 @@
 			ray_in_ref.k, ray_in_ref.e1, ray_in_ref.e2, nz, S.SlowLight())
 		lens_shifted = S.GRLens(; spin, bh_position=bh_shifted)
 		raygr_shifted = S.RayGR2(ray_in_shifted, lens_shifted)
-		@test raygr_shifted.ray_out !== nothing
+		@test !S.is_captured_ray(raygr_shifted.ray_out)
 		gr_shifted = S.render(raygr_shifted, sphere_shifted, S.Intensity())
 
 		@test gr_shifted == gr_ref
@@ -362,7 +362,7 @@
 		ray_in = make_ray(6.110, 0.01)
 		ray_gr = S.RayGR2(make_ray(6.110, 0.01), lens)
 		ray_out = ray_gr.ray_out
-		@test ray_out !== nothing
+		@test !S.is_captured_ray(ray_out)
 		@test abs(S.dot(S.direction3(ray_in), S.direction3(ray_out))) < 0.1
 
 		radius = 5.5
@@ -388,8 +388,8 @@
 		)
 		gr_pos = S.RayGR2(make_ray(50.0, 0.0), lens)
 		gr_neg = S.RayGR2(ray_z_neg, lens)
-		@test gr_pos.ray_out !== nothing
-		@test gr_neg.ray_out !== nothing
+		@test !S.is_captured_ray(gr_pos.ray_out)
+		@test !S.is_captured_ray(gr_neg.ray_out)
 		@test S.direction3(gr_pos.ray_out) ≈ S.direction3(gr_neg.ray_out) atol=1e-10
 	end
 
@@ -399,7 +399,7 @@
 		ray_in = make_ray(5.30, 0.01)
 		ray_gr = S.RayGR2(make_ray(5.30, 0.01), lens)
 		ray_out = ray_gr.ray_out
-		@test ray_out !== nothing
+		@test !S.is_captured_ray(ray_out)
 		# ~179° bend: directions nearly anti-parallel
 		@test S.dot(S.direction3(ray_in), S.direction3(ray_out)) < -0.9
 
@@ -437,7 +437,7 @@ end
 
 	# Deflected ray: 4 points
 	ray_gr = S.RayGR2(S.camera_ray(cam, S.SVector(30.0, 0.01)), lens)
-	@test ray_gr.ray_out !== nothing
+	@test !S.is_captured_ray(ray_gr.ray_out)
 	pts = S.ray_in_local_coords(ray_gr, geom; s_range)
 	@test length(pts) == 4
 	@test all(p -> p isa SVector{3}, pts)
@@ -448,7 +448,7 @@ end
 
 	# Captured ray: 2 points
 	ray_cap = S.RayGR2(S.camera_ray(cam, S.SVector(0.0, 0.0)), lens)
-	@test ray_cap.ray_out === nothing
+	@test S.is_captured_ray(ray_cap.ray_out)
 	pts_cap = S.ray_in_local_coords(ray_cap, geom; s_range)
 	@test length(pts_cap) == 2
 	@test all(p -> p isa SVector{3}, pts_cap)

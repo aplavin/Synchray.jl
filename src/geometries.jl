@@ -545,7 +545,7 @@ function ray_in_local_coords(ray::RayGR2, geom; s_range)
 	pt_obs   = r0_in + s_hi * n̂_in      # far observer end (n̂_in points toward observer)
 	pt_bh_in = r0_in + s_bh_in * n̂_in   # near BH on incoming ray
 
-	if isnothing(ray_out)
+	if is_captured_ray(ray_out)
 		return map(SVector(pt_obs, pt_bh_in)) do p
 			rotate_lab_to_local(geom, p)
 		end |> collect |> StructArray

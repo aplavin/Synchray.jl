@@ -176,23 +176,32 @@ Black-hole lens specification for GR ray construction and deflection-map generat
 	τ_frac::NTuple{2,Float64} = (0.97, 0.99)
 end
 
+"""True if the ray is a NaN-sentinel representing a photon captured by the BH."""
+@inline is_captured_ray(ray::Ray) = isnan(ray.x0.t)
+
+"""Create a NaN-sentinel Ray (captured by BH) preserving frequency, nz, and light mode from `ray_in`."""
+@inline _captured_ray(ray_in::Ray) = Ray(
+	FourPosition(oftype(ray_in.x0.t, NaN), SVector(oftype(ray_in.x0.t, NaN), oftype(ray_in.x0.t, NaN), oftype(ray_in.x0.t, NaN))),
+	ray_in.k, ray_in.e1, ray_in.e2, ray_in.nz, ray_in.light)
+
 """
 	RayGR2(ray_in, ray_out, bh_position)
 
-Composite GR ray path: a near/foreground incoming ray and an optional far/background
+Composite GR ray path: a near/foreground incoming ray and a far/background
 outgoing ray joined at a black hole position.
+If the photon is captured by the BH, `ray_out` is a NaN-sentinel (check with `is_captured_ray`).
 """
-struct RayGR2{TRin<:Ray,TRout<:Union{Ray,Nothing},TBH<:SVector{3,Float64}}
-	ray_in::TRin
-	ray_out::TRout
+struct RayGR2{TRay<:Ray,TBH<:SVector{3,Float64}}
+	ray_in::TRay
+	ray_out::TRay
 	bh_position::TBH
 
-	function RayGR2(ray_in::TRin, ray_out::TRout, bh_position::TBH) where {TRin<:Ray, TRout<:Union{Ray,Nothing}, TBH<:SVector{3,Float64}}
-		if !isnothing(ray_out)
+	function RayGR2(ray_in::TRay, ray_out::TRay, bh_position::TBH) where {TRay<:Ray, TBH<:SVector{3,Float64}}
+		if !is_captured_ray(ray_out)
 			frequency(ray_out) == frequency(ray_in) || throw(ArgumentError("ray_out must have the same observing frequency as ray_in"))
 			typeof(ray_out.light) == typeof(ray_in.light) || throw(ArgumentError("ray_out must use the same light mode as ray_in"))
 		end
-		new{TRin,TRout,TBH}(ray_in, ray_out, bh_position)
+		new{TRay,TBH}(ray_in, ray_out, bh_position)
 	end
 end
 
@@ -407,7 +416,7 @@ render(ray::RayGR2, obj::AbstractMedium, what=Intensity()) = let
 	ν = frequency(ray_in)
 	acc = _gr_init_acc(obj, ray_in, what)
 
-	if !isnothing(ray_out)
+	if !is_captured_ray(ray_out)
 		# Photon path: source → [outgoing ray, background] → BH → [incoming ray, foreground] → observer.
 		# Integrate background (outgoing) first, then foreground (incoming) attenuates it.
 		s_bh_out = _s_closest_to_point(ray_out, bh_position)

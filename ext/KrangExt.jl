@@ -1,7 +1,7 @@
 module KrangExt
 
 using Synchray
-using Synchray: GRLens, Ray, RayGR2, FourPosition, photon_k, _perpendicular_basis_vector, camera_ray, direction3, frequency, @swiz
+using Synchray: GRLens, Ray, RayGR2, FourPosition, photon_k, _perpendicular_basis_vector, _captured_ray, camera_ray, direction3, frequency, @swiz
 using Krang: Krang, Kerr, SlowLightIntensityPixel, emission_coordinates
 using LinearAlgebra: cross, dot, norm
 
@@ -99,11 +99,11 @@ end
 """Construct the outgoing flat-space ray from a Krang geodesic solution.
 Samples two points on the outgoing asymptote to get direction, then transforms to lab frame."""
 function _outgoing_ray_from_pixel(pix, ray_in, R, bh_position, bh_rg, τ_frac)
-	_is_captured(pix) && return nothing
+	_is_captured(pix) && return _captured_ray(ray_in)
 
 	τ_total = pix.total_mino_time
 	if isnan(τ_total) || τ_total ≤ 0
-		return nothing
+		return _captured_ray(ray_in)
 	end
 
 	# Sample two points on the outgoing geodesic to determine direction.
@@ -115,7 +115,7 @@ function _outgoing_ray_from_pixel(pix, ray_in, R, bh_position, bh_rg, τ_frac)
 	t2, r2, θ2, φ2, _, _, ok2 = emission_coordinates(pix, τ2)
 
 	if !ok1 || !ok2
-		return nothing
+		return _captured_ray(ray_in)
 	end
 
 	# BL → Cartesian in Krang frame
@@ -126,7 +126,7 @@ function _outgoing_ray_from_pixel(pix, ray_in, R, bh_position, bh_rg, τ_frac)
 	dir = x1_krang - x2_krang
 	n = norm(dir)
 	if n < 1e-10
-		return nothing
+		return _captured_ray(ray_in)
 	end
 	n_out_krang = dir / n
 

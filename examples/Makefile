@@ -1,4 +1,4 @@
-SCRIPTS = simple_objects.jl jets.jl jet_timedep.jl jet_polarization.jl colored_objects.jl
+SCRIPTS = simple_objects.jl jets.jl jet_timedep.jl jet_polarization.jl colored_objects.jl gr_jet.jl
 
 all: $(SCRIPTS)
 
