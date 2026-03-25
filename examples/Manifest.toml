@@ -2,7 +2,7 @@
 
 julia_version = "1.10.11"
 manifest_format = "2.0"
-project_hash = "9abfbc186891e561821cfd0009188389ba53d9e1"
+project_hash = "92e75b7caed2c30aaaed8b8c0c57d921c11b36d3"
 
 [[deps.ADTypes]]
 git-tree-sha1 = "f7304359109c768cf32dc5fa2d371565bb63b68a"
@@ -413,6 +413,11 @@ version = "0.13.1"
 git-tree-sha1 = "c761b00e7755700f9cdf5b02039939d1359330e1"
 uuid = "861a8166-3701-5b0c-9a16-15d98fcdc6aa"
 version = "1.1.0"
+
+[[deps.CommonSolve]]
+git-tree-sha1 = "78ea4ddbcf9c241827e7035c3a03e2e456711470"
+uuid = "38540f10-b2f7-11e9-35d8-d573e4eb0ff2"
+version = "0.2.6"
 
 [[deps.CommonSubexpressions]]
 deps = ["MacroTools"]
@@ -1121,6 +1126,23 @@ version = "1.4.0"
     [deps.JSON.weakdeps]
     ArrowTypes = "31f734f8-188a-4ce0-8406-c8a06bd891cd"
 
+[[deps.JacobiElliptic]]
+deps = ["DocStringExtensions", "ForwardDiff", "StaticArrays"]
+git-tree-sha1 = "a84bebec1b39092cb13d48e82f88cc49880a73e8"
+uuid = "2a8b799e-c098-4961-872a-356c768d184c"
+version = "0.3.9"
+
+    [deps.JacobiElliptic.extensions]
+    JacobiEllipticEnzymeExt = "Enzyme"
+    JacobiEllipticForwardDiffExt = "ForwardDiff"
+    JacobiEllipticMetalExt = "Metal"
+    JacobiEllipticZygoteExt = "Zygote"
+
+    [deps.JacobiElliptic.weakdeps]
+    Enzyme = "7da242da-08ed-463a-9acd-ee780be4f1d9"
+    Metal = "dde4c033-4e86-420c-a63e-0dd931031962"
+    Zygote = "e88e6eb3-aa80-5325-afca-941959d7151f"
+
 [[deps.JpegTurbo]]
 deps = ["CEnum", "FileIO", "ImageCore", "JpegTurbo_jll", "TOML"]
 git-tree-sha1 = "9496de8fb52c224a2e3f9ff403947674517317d9"
@@ -1154,6 +1176,12 @@ deps = ["Distributions", "DocStringExtensions", "FFTA", "Interpolations", "Stats
 git-tree-sha1 = "4260cfc991b8885bf747801fb60dd4503250e478"
 uuid = "5ab0869b-81aa-558d-bb23-cbf5423bbe9b"
 version = "0.6.11"
+
+[[deps.Krang]]
+deps = ["DocStringExtensions", "GeometryBasics", "JacobiElliptic", "KernelAbstractions", "PolarizedTypes", "Roots", "Rotations", "StaticArrays"]
+git-tree-sha1 = "443db48f776b7bddaafb15ae363a8bc4c9dc599d"
+uuid = "54806c32-d51a-438d-8447-e0041be2fbfb"
+version = "0.4.1"
 
 [[deps.KwdefHelpers]]
 deps = ["Accessors"]
@@ -1618,6 +1646,12 @@ git-tree-sha1 = "26ca162858917496748aad52bb5d3be4d26a228a"
 uuid = "995b91a9-d308-5afd-9ec6-746e21dbc043"
 version = "1.4.4"
 
+[[deps.PolarizedTypes]]
+deps = ["ChainRulesCore", "DocStringExtensions", "LinearAlgebra", "PrecompileTools", "StaticArrays"]
+git-tree-sha1 = "4217710242df1f4708e58e00763de2569cfbe880"
+uuid = "d3c5d4cd-a8ee-40d6-aac7-e34df5a20044"
+version = "0.1.2"
+
 [[deps.PolygonOps]]
 git-tree-sha1 = "77b3d3605fc1cd0b42d95eba87dfcd2bf67d5ff6"
 uuid = "647866c9-e3ac-4575-94e7-e3d426903924"
@@ -1686,6 +1720,12 @@ version = "2.11.2"
     [deps.QuadGK.weakdeps]
     Enzyme = "7da242da-08ed-463a-9acd-ee780be4f1d9"
 
+[[deps.Quaternions]]
+deps = ["LinearAlgebra", "Random", "RealDot"]
+git-tree-sha1 = "4d8c1b7c3329c1885b857abb50d08fa3f4d9e3c8"
+uuid = "94ee1d12-ae83-5a48-8b1c-48b8ff168ae0"
+version = "0.7.7"
+
 [[deps.REPL]]
 deps = ["InteractiveUtils", "Markdown", "Sockets", "Unicode"]
 uuid = "3fa0cd96-eef1-5676-8a61-b3b8758bbffb"
@@ -1721,6 +1761,12 @@ weakdeps = ["FixedPointNumbers"]
     [deps.Ratios.extensions]
     RatiosFixedPointNumbersExt = "FixedPointNumbers"
 
+[[deps.RealDot]]
+deps = ["LinearAlgebra"]
+git-tree-sha1 = "9f0a1b71baaf7650f4fa8a1d168c7fb6ee41f0c9"
+uuid = "c1ae055f-0cd5-4b69-90a6-9a35b1a98df9"
+version = "0.1.0"
+
 [[deps.RectiGrids]]
 deps = ["AxisKeys", "ConstructionBase", "Random"]
 git-tree-sha1 = "d7cef068f5463910bcd09d005ff9212489cfeceb"
@@ -1755,6 +1801,40 @@ deps = ["Artifacts", "JLLWrappers", "Libdl"]
 git-tree-sha1 = "58cdd8fb2201a6267e1db87ff148dd6c1dbd8ad8"
 uuid = "f50d1b31-88e8-58de-be2c-1cc44531875f"
 version = "0.5.1+0"
+
+[[deps.Roots]]
+deps = ["Accessors", "CommonSolve", "Printf"]
+git-tree-sha1 = "b2f70f34eb9973572d55c332933c6a04c911f549"
+uuid = "f2b01f46-fcfa-551c-844a-d8ac1e96c665"
+version = "2.2.14"
+
+    [deps.Roots.extensions]
+    RootsChainRulesCoreExt = "ChainRulesCore"
+    RootsForwardDiffExt = "ForwardDiff"
+    RootsIntervalRootFindingExt = "IntervalRootFinding"
+    RootsSymPyExt = "SymPy"
+    RootsSymPyPythonCallExt = "SymPyPythonCall"
+    RootsUnitfulExt = "Unitful"
+
+    [deps.Roots.weakdeps]
+    ChainRulesCore = "d360d2e6-b24c-11e9-a2a3-2a2ae2dbcce4"
+    ForwardDiff = "f6369f11-7733-5829-9624-2563aa707210"
+    IntervalRootFinding = "d2bf35a9-74e0-55ec-b149-d360ff49b807"
+    SymPy = "24249f21-da20-56a4-8eb1-6a02cf4ae2e6"
+    SymPyPythonCall = "bc8888f7-b21e-4b7c-a06a-5d9c9496438c"
+    Unitful = "1986cc42-f94f-5a68-af5c-568840ba703d"
+
+[[deps.Rotations]]
+deps = ["LinearAlgebra", "Quaternions", "Random", "StaticArrays"]
+git-tree-sha1 = "5680a9276685d392c87407df00d57c9924d9f11e"
+uuid = "6038ab10-8711-5258-84ad-4b1120ba62dc"
+version = "1.7.1"
+
+    [deps.Rotations.extensions]
+    RotationsRecipesBaseExt = "RecipesBase"
+
+    [deps.Rotations.weakdeps]
+    RecipesBase = "3cdcf5f2-1ef4-517c-9805-6587b60abb01"
 
 [[deps.RoundingEmulator]]
 git-tree-sha1 = "40b9edad2e5287e05bd413a38f61a8ff55b9557b"
@@ -1981,12 +2061,10 @@ deps = ["Accessors", "AccessorsExtra", "DataPipes", "DispatchDoctor", "FastPower
 path = "/Users/aplavin/.julia/dev/Synchray"
 uuid = "00000000-0000-4000-b000-202512310000"
 version = "0.1.4"
+weakdeps = ["Krang"]
 
     [deps.Synchray.extensions]
     KrangExt = "Krang"
-
-    [deps.Synchray.weakdeps]
-    Krang = "54806c32-d51a-438d-8447-e0041be2fbfb"
 
 [[deps.TOML]]
 deps = ["Dates"]
