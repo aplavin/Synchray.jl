@@ -1,36 +1,9 @@
-import Pkg
-Pkg.activate(@__DIR__)
-
-using Synchray
-import Synchray as S
-using MakieExtra; import CairoMakie
-using RectiGrids
-
-outdir = joinpath(@__DIR__, "images")
-isdir(outdir) || mkpath(outdir)
+include("helpers.jl")
 
 
-# RGB rendering frequencies (code units, peaked at ν₀=1 for green)
-const νs_RGB = [0.7, 1.0, 1.4]
+function colored_ellipsoid_doppler(; render_rgb_fn=render_rgb, log_path=nothing, suffix="")
+    log_path !== nothing && log_section!(log_path, "colored_ellipsoid_doppler")
 
-function render_rgb(cam_base, obj)
-    map(νs_RGB) do ν
-        cam = @set cam_base.ν = ν
-        S.render(cam, obj)
-    end
-end
-
-function assemble_rgb(channels)
-    # normalize each channel to [0,1] using a shared max across all channels
-    mx = maximum(maximum, channels)
-    mx == 0 && return fill(RGBf(0,0,0), size(channels[1]))
-    map(channels[1], channels[2], channels[3]) do r, g, b
-        RGBf(r/mx, g/mx, b/mx)
-    end
-end
-
-
-function colored_ellipsoid_doppler()
     cam_base = S.CameraZ(;
         xys = grid(SVector, x=range(-2.0..2.0, 256), y=range(-2.0..2.0, 256)),
         nz = 256,
@@ -70,7 +43,7 @@ function colored_ellipsoid_doppler()
     fig = Figure(size=(900, 650))
     for (row, opacity) in enumerate(opacity_cases), (col, vel) in enumerate(velocity_cases)
         obj = make_obj(vel.βz; opacity.α_val)
-        channels = render_rgb(cam_base, obj)
+        channels = render_rgb_fn(cam_base, obj; log_path)
         rgb = assemble_rgb(channels)
 
         title = row == 1 ? vel.label : ""
@@ -82,11 +55,13 @@ function colored_ellipsoid_doppler()
     end
 
     resize_to_layout!(fig)
-    save(joinpath(outdir, "colored_ellipsoid_doppler.png"), fig)
+    save(joinpath(outdir, "colored_ellipsoid_doppler$(suffix).png"), fig)
     fig
 end
 
-function combined_three_ellipsoids()
+function combined_three_ellipsoids(; render_rgb_fn=render_rgb, log_path=nothing, suffix="")
+    log_path !== nothing && log_section!(log_path, "combined_three_ellipsoids")
+
     cam_base = S.CameraZ(;
         xys = grid(SVector, x=range(-4.0..4.0, 512), y=range(-4.0..4.0, 512)),
         nz = 256,
@@ -132,7 +107,7 @@ function combined_three_ellipsoids()
 
     combined = S.CombinedMedium(back, mid, front)
 
-    channels = render_rgb(cam_base, combined)
+    channels = render_rgb_fn(cam_base, combined; log_path)
     rgb = assemble_rgb(channels)
 
     fig = Figure(size=(600, 600))
@@ -141,18 +116,13 @@ function combined_three_ellipsoids()
     hidespines!(ax)
     hidedecorations!(ax)
     resize_to_layout!(fig)
-    save(joinpath(outdir, "combined_three_ellipsoids.png"), fig)
+    save(joinpath(outdir, "combined_three_ellipsoids$(suffix).png"), fig)
     fig
 end
 
-function assemble_rgb(channels, mx; gamma=1)
-    mx == 0 && return fill(RGBf(0,0,0), size(channels[1]))
-    map(channels[1], channels[2], channels[3]) do r, g, b
-        RGBf(clamp(r/mx, 0, 1)^(1/gamma), clamp(g/mx, 0, 1)^(1/gamma), clamp(b/mx, 0, 1)^(1/gamma))
-    end
-end
+function animated_flying_ellipsoid(; render_rgb_fn=render_rgb, log_path=nothing, suffix="", nframes=120)
+    log_path !== nothing && log_section!(log_path, "animated_flying_ellipsoid")
 
-function animated_flying_ellipsoid(; nframes=120)
     cam_base = S.CameraZ(;
         xys = grid(SVector, x=range(-5.0..5.0, 256), y=range(-5.0..5.0, 256)),
         nz = 256,
@@ -196,10 +166,10 @@ function animated_flying_ellipsoid(; nframes=120)
 
     ts = range(-16.0, -1.0, length=nframes)
 
-    # Pre-render all frames to find global normalization
+    # Pre-render all frames to find global normalization (no per-frame timing for animations)
     all_channels = map(ts) do t
         cam = @set cam_base.t = t
-        render_rgb(cam, combined)
+        render_rgb_fn(cam, combined)
     end
     mx = maximum(ch -> maximum(maximum, ch), all_channels)
 
@@ -212,13 +182,15 @@ function animated_flying_ellipsoid(; nframes=120)
     img_obs = Observable(rgb0)
     image!(ax, img_obs)
 
-    record(fig, joinpath(outdir, "animated_flying_ellipsoid.mp4"), eachindex(ts); framerate=30) do i
+    record(fig, joinpath(outdir, "animated_flying_ellipsoid$(suffix).mp4"), eachindex(ts); framerate=30) do i
         img_obs[] = assemble_rgb(all_channels[i], mx; gamma=γ)
     end
     fig
 end
 
-function combined_three_ellipsoids_perspective()
+function combined_three_ellipsoids_perspective(; render_rgb_fn=render_rgb, log_path=nothing, suffix="")
+    log_path !== nothing && log_section!(log_path, "combined_three_ellipsoids_perspective")
+
     cam_base = S.CameraPerspective(;
         photon_direction = SVector(0.0, 0.0, 1.0),
         origin = SVector(0.0, 0.0, 20.0),
@@ -266,7 +238,7 @@ function combined_three_ellipsoids_perspective()
 
     combined = S.CombinedMedium(back, mid, front)
 
-    channels = render_rgb(cam_base, combined)
+    channels = render_rgb_fn(cam_base, combined; log_path)
     rgb = assemble_rgb(channels)
 
     fig = Figure(size=(600, 600))
@@ -275,11 +247,13 @@ function combined_three_ellipsoids_perspective()
     hidespines!(ax)
     hidedecorations!(ax)
     resize_to_layout!(fig)
-    save(joinpath(outdir, "combined_three_ellipsoids_perspective.png"), fig)
+    save(joinpath(outdir, "combined_three_ellipsoids_perspective$(suffix).png"), fig)
     fig
 end
 
-function perspective_xy_movers(; nframes=60)
+function perspective_xy_movers(; render_rgb_fn=render_rgb, log_path=nothing, suffix="", nframes=60)
+    log_path !== nothing && log_section!(log_path, "perspective_xy_movers")
+
     cam_base = S.CameraPerspective(;
         photon_direction = SVector(0.0, 0.0, 1.0),
         origin = SVector(0.0, 0.0, 9.0),
@@ -339,7 +313,7 @@ function perspective_xy_movers(; nframes=60)
 
     combined = S.CombinedMedium(bg, mover_x, mover_y, mover_xy)
 
-    # Side-by-side animation: SlowLight vs FastLight
+    # Side-by-side animation: SlowLight vs FastLight (no per-frame timing for animations)
     ts = range(-20.0, 20.0, length=nframes)
     γ = 6
 
@@ -347,7 +321,7 @@ function perspective_xy_movers(; nframes=60)
         cam_l = @set cam_base.light = light_mode
         map(ts) do t
             cam = @set cam_l.t = t
-            render_rgb(cam, combined)
+            render_rgb_fn(cam, combined)
         end
     end
     mx = maximum(chs -> maximum(ch -> maximum(maximum, ch), chs), all_ch)
@@ -366,19 +340,28 @@ function perspective_xy_movers(; nframes=60)
     i_zero = argmin(abs.(ts))
     obs_sl[] = assemble_rgb(all_ch[1][i_zero], mx; gamma=γ)
     obs_fl[] = assemble_rgb(all_ch[2][i_zero], mx; gamma=γ)
-    save(joinpath(outdir, "perspective_xy_movers.png"), fig)
+    save(joinpath(outdir, "perspective_xy_movers$(suffix).png"), fig)
 
-    record(fig, joinpath(outdir, "perspective_xy_movers.mp4"), eachindex(ts); framerate=7) do i
+    record(fig, joinpath(outdir, "perspective_xy_movers$(suffix).mp4"), eachindex(ts); framerate=7) do i
         obs_sl[] = assemble_rgb(all_ch[1][i], mx; gamma=γ)
         obs_fl[] = assemble_rgb(all_ch[2][i], mx; gamma=γ)
     end
     fig
 end
 
+
+function main(; render_rgb_fn=render_rgb, log_path=nothing, suffix="")
+    colored_ellipsoid_doppler(; render_rgb_fn, log_path, suffix)
+    combined_three_ellipsoids(; render_rgb_fn, log_path, suffix)
+    combined_three_ellipsoids_perspective(; render_rgb_fn, log_path, suffix)
+    perspective_xy_movers(; render_rgb_fn, suffix)
+    animated_flying_ellipsoid(; render_rgb_fn, suffix, nframes=20)
+end
+
 if abspath(PROGRAM_FILE) == @__FILE__
-    colored_ellipsoid_doppler()
-    combined_three_ellipsoids()
-    combined_three_ellipsoids_perspective()
-    perspective_xy_movers()
-    animated_flying_ellipsoid(; nframes=20)
+    logs = init_script(@__FILE__)
+    main(; render_rgb_fn=render_rgb, log_path=logs.log_cpu)
+    if HAS_METAL
+        main(; render_rgb_fn=render_rgb_metal, log_path=logs.log_metal, suffix="_metal")
+    end
 end

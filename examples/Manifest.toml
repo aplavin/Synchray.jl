@@ -1982,6 +1982,12 @@ path = "/Users/aplavin/.julia/dev/Synchray"
 uuid = "00000000-0000-4000-b000-202512310000"
 version = "0.1.4"
 
+    [deps.Synchray.extensions]
+    KrangExt = "Krang"
+
+    [deps.Synchray.weakdeps]
+    Krang = "54806c32-d51a-438d-8447-e0041be2fbfb"
+
 [[deps.TOML]]
 deps = ["Dates"]
 uuid = "fa267f1f-6049-4f14-aa54-33bafae1ed76"
