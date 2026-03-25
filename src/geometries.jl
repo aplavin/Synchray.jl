@@ -514,12 +514,52 @@ Compute the two endpoints of a ray segment in the geometry's local coordinate fr
 A 2-element `StructArray` of `SVector{3}`: the local-frame positions at the two `s_range` endpoints.
 The local z-axis is aligned with `geometry_axis(geom)`.
 """
-function ray_in_local_coords(ray, geom; s_range)
+function ray_in_local_coords(ray::Ray, geom; s_range)
 	n̂ = direction3(ray)
 	r0 = @swiz ray.x0.xyz
 	map(endpoints(s_range)) do s
 		r_lab = r0 + s * n̂
 		rotate_lab_to_local(geom, r_lab)
+	end |> collect |> StructArray
+end
+
+"""
+	ray_in_local_coords(ray::RayGR2, geom; s_range) -> StructArray{SVector{3}}
+
+Compute the GR-deflected ray path in the geometry's local coordinate frame.
+
+Returns 4 points tracing the bent photon path (or 2 if the photon is captured):
+1. Far observer end of the incoming ray
+2. Near-BH end of the incoming ray
+3. Near-BH end of the outgoing ray
+4. Far source end of the outgoing ray
+"""
+function ray_in_local_coords(ray::RayGR2, geom; s_range)
+	(; ray_in, ray_out, bh_position) = ray
+	s_lo, s_hi = extrema(endpoints(s_range))
+
+	n̂_in = direction3(ray_in)
+	r0_in = @swiz ray_in.x0.xyz
+	s_bh_in = _s_closest_to_point(ray_in, bh_position)
+
+	pt_obs   = r0_in + s_hi * n̂_in      # far observer end (n̂_in points toward observer)
+	pt_bh_in = r0_in + s_bh_in * n̂_in   # near BH on incoming ray
+
+	if isnothing(ray_out)
+		return map(SVector(pt_obs, pt_bh_in)) do p
+			rotate_lab_to_local(geom, p)
+		end |> collect |> StructArray
+	end
+
+	n̂_out = direction3(ray_out)
+	r0_out = @swiz ray_out.x0.xyz
+	s_bh_out = _s_closest_to_point(ray_out, bh_position)
+
+	pt_bh_out = r0_out + s_bh_out * n̂_out  # near BH on outgoing ray
+	pt_src    = r0_out + s_lo * n̂_out       # far source end (n̂_out points toward BH, so negative s → source)
+
+	map(SVector(pt_obs, pt_bh_in, pt_bh_out, pt_src)) do p
+		rotate_lab_to_local(geom, p)
 	end |> collect |> StructArray
 end
 

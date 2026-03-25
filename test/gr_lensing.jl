@@ -414,4 +414,42 @@
 		@test flat === 0.0
 		@test gr ≈ jν * 5.95 rtol=0.05
 	end
+
+end
+
+@testitem "ray_in_local_coords for RayGR2" begin
+	import Synchray as S
+	using Krang
+
+	spin = 0.5
+	θ_view = π / 3
+	photon_direction = S.normalize(S.SVector(0.0, -sin(θ_view), cos(θ_view)))
+	lens = S.GRLens(; spin)
+
+	cam = S.CameraOrtho(;
+		photon_direction,
+		xys = S.grid(S.SVector, x=range(-60.0, 60.0, length=32), y=range(-60.0, 60.0, length=32)),
+		nz = 100, ν = 1e11, t = 0.0,
+	)
+
+	geom = S.Geometries.Conical(S.SVector(0.0, 0.0, 1.0), 0.1, 1.0 .. 100.0)
+	s_range = -1e4 .. 1e4
+
+	# Deflected ray: 4 points
+	ray_gr = S.RayGR2(S.camera_ray(cam, S.SVector(30.0, 0.01)), lens)
+	@test ray_gr.ray_out !== nothing
+	pts = S.ray_in_local_coords(ray_gr, geom; s_range)
+	@test length(pts) == 4
+	@test all(p -> p isa SVector{3}, pts)
+	# Points 2 and 3 (near-BH) should be close to each other (both near BH)
+	@test S.norm(pts[2] - pts[3]) < S.norm(pts[1] - pts[4])
+	# Points 1 and 4 (far endpoints) should be far apart
+	@test S.norm(pts[1] - pts[4]) > 100
+
+	# Captured ray: 2 points
+	ray_cap = S.RayGR2(S.camera_ray(cam, S.SVector(0.0, 0.0)), lens)
+	@test ray_cap.ray_out === nothing
+	pts_cap = S.ray_in_local_coords(ray_cap, geom; s_range)
+	@test length(pts_cap) == 2
+	@test all(p -> p isa SVector{3}, pts_cap)
 end
