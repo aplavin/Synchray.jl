@@ -5,6 +5,7 @@ using Rotations
 using DistributionsExtra
 using PyFormattedStrings
 using DataManipulation
+using StructArrays
 
 using Synchray
 import Synchray as S
@@ -31,7 +32,7 @@ jet = let
 end
 
 # ── UI ──
-fig = Figure(size=(1200, 700))
+fig = Figure(size=(1200, 1000))
 
 params, = SliderGrid(GridLayout(fig[1, 1], tellheight=false)[1,1], AccessibleModel((;
 	viewing_ang = P(1..179, 20)u"°",
@@ -86,25 +87,6 @@ gr_camera = @lift S.CameraGR(; camera=$flat_camera, lens=$lens)
 img_flat = @lift S.render($flat_camera, jet)
 img_gr = @lift S.render($gr_camera, jet)
 
-is_perspective = @lift !$params.orthogonal
-
-plot_xs_flat = @lift let
-	xs = collect(Float64, axiskeys($img_flat, 1))
-	$is_perspective ? camera_distance .* xs : xs
-end
-plot_ys_flat = @lift let
-	ys = collect(Float64, axiskeys($img_flat, 2))
-	$is_perspective ? camera_distance .* ys : ys
-end
-plot_xs_gr = @lift let
-	xs = collect(Float64, axiskeys($img_gr, 1))
-	$is_perspective ? camera_distance .* xs : xs
-end
-plot_ys_gr = @lift let
-	ys = collect(Float64, axiskeys($img_gr, 2))
-	$is_perspective ? camera_distance .* ys : ys
-end
-
 # ── Plot ──
 colorscale = @lift SymLog(1e-3 * max(maximum($img_flat), maximum($img_gr)))
 
@@ -121,5 +103,54 @@ ax_gr = Axis(fig[1, 3];
 plt_gr = image!(ax_gr, img_gr; colorscale, colormap = :inferno)
 
 Colorbar(fig[1, 4], plt_gr, tickformat=EngTicks())
+
+# ── Mouse selection ──
+uv_sel = Observable(SVector(30.0, 0.0))
+
+on(mouse_position_obs(ax_flat; key=Mouse.left)) do pos
+	uv_sel[] = SVector(pos...)
+end
+on(mouse_position_obs(ax_gr; key=Mouse.left)) do pos
+	uv_sel[] = SVector(pos...)
+end
+
+# Mark selected pixel on both images
+scatter!(ax_flat, @lift(Point2f($uv_sel...)); color=:transparent, markersize=15, marker=:circle, strokewidth=1, strokecolor=:cyan)
+scatter!(ax_gr, @lift(Point2f($uv_sel...)); color=:transparent, markersize=15, marker=:circle, strokewidth=1, strokecolor=:cyan)
+
+# # ── 3D ray visualization ──
+ray_gr_sel = @lift let
+	uv = $uv_sel
+	cam = $flat_camera
+	l = $lens
+	ray_in = S.camera_ray(cam, uv)
+	S.RayGR2(ray_in, l)
+end::Any
+
+s_range_3d = -500.0 .. 500.0
+
+ray_path_3d = @lift let
+	ray = $ray_gr_sel
+	geom = jet.geometry
+	pts = S.ray_in_local_coords(ray, geom; s_range=s_range_3d)
+	colors = Makie.wong_colors()[[1,1,2,2]][1:length(pts)]
+	StructArray(;pts, colors)
+end
+
+ax3d = Axis3(fig[2, 2:3];
+	limits=((-20, 20), (-20, 20), (-20, 20)),
+	xlabel="x", ylabel="y", zlabel="z (jet axis)",
+	aspect=:data,
+	title="GR ray path (local coords)")
+
+# BH sphere
+bh_local = @lift let
+	S.rotate_lab_to_local(jet.geometry, $lens.bh_position)
+end
+meshscatter!(ax3d, @lift(Point3f($bh_local...)); markersize=1, color=:black)
+
+# GR ray path
+linesegments!(ax3d, (@lift FPlot($ray_path_3d, first, color=last)); linewidth=2)
+
 
 display(fig)
