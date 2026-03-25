@@ -204,6 +204,7 @@ end
 
 
 # --- CombinedMedium integration ---
+# XXX: @inline hurts CPU performance a bit with 3+ objects, but without it GPU is slow
 @inline _integrate_segment(acc, obj, ray, seg) = begin
 	isempty(seg) && return acc
 	ν = frequency(ray)
