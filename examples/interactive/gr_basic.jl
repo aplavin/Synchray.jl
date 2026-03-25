@@ -16,7 +16,7 @@ MakieExtra.show_gl_icon_in_dock()
 jet = let
 	axis = SVector(0.0, 0.0, 1.0)
 	S.EmissionRegion(;
-		geometry = S.Geometries.Conical(; axis, φj=deg2rad(15), z=20.0..200.0),
+		geometry = S.Geometries.Conical(; axis, φj=deg2rad(15), z=5.0..200.0),
 		velocity = S.VelocitySpec(S.Directions.Axial(), S.gamma, S.Profiles.Constant(20.0)),
 		emission = S.SynchrotronEmission(
 			ne = S.Profiles.Axial(S.PowerLaw(-2; val0=100.0, s0=1.0)),
@@ -39,11 +39,10 @@ params, = SliderGrid(GridLayout(fig[1, 1], tellheight=false)[1,1], AccessibleMod
 	npix = P(discreterange(log, 32..300, length=30), 80),
 	nz = P(discreterange(log, 10..500, length=30), 100),
 	orthogonal = P([false, true], true),
-	gr = P([false, true], true),
 ), AccessibleModels.Auto()))
 
 # ── Camera setup ──
-camera_label(use_ortho, use_gr) = use_gr ? "GR" : use_ortho ? "Ortho" : "Perspective"
+camera_label(use_ortho) = use_ortho ? "Ortho" : "Perspective"
 
 camera_distance = 1000.0
 camera_extent = 60.0
@@ -77,49 +76,50 @@ camera_perspective = @lift let
 	)
 end
 
-lens = @lift let
-	S.GRLens(; spin=$params.spin)
-end
+lens = @lift S.GRLens(; spin=$params.spin)
 
-flat_camera = @lift let
-	$params.orthogonal ? $camera_ortho : $camera_perspective
-end
+flat_camera = @lift($params.orthogonal ? $camera_ortho : $camera_perspective)::Any
 
-defl_map = @lift let
-	S.compute_deflection_map($lens, $flat_camera)
-end
-
-camera = @lift let
-	if $params.gr
-		S.CameraGR(; camera=$flat_camera, deflection=$defl_map, lens=$lens)
-	else
-		$flat_camera
-	end
-end::Any
+gr_camera = @lift S.CameraGR(; camera=$flat_camera, lens=$lens)
 
 # ── Render ──
-img = @lift S.render($camera, jet)
+img_flat = @lift S.render($flat_camera, jet)
+img_gr = @lift S.render($gr_camera, jet)
 
-uses_perspective(cam) =
-	cam isa S.CameraPerspective || (cam isa S.CameraGR && cam.camera isa S.CameraPerspective)
+is_perspective = @lift !$params.orthogonal
 
-plot_xs = @lift let
-	xs = collect(Float64, axiskeys($img, 1))
-	uses_perspective($camera) ? camera_distance .* xs : xs
+plot_xs_flat = @lift let
+	xs = collect(Float64, axiskeys($img_flat, 1))
+	$is_perspective ? camera_distance .* xs : xs
 end
-
-plot_ys = @lift let
-	ys = collect(Float64, axiskeys($img, 2))
-	uses_perspective($camera) ? camera_distance .* ys : ys
+plot_ys_flat = @lift let
+	ys = collect(Float64, axiskeys($img_flat, 2))
+	$is_perspective ? camera_distance .* ys : ys
+end
+plot_xs_gr = @lift let
+	xs = collect(Float64, axiskeys($img_gr, 1))
+	$is_perspective ? camera_distance .* xs : xs
+end
+plot_ys_gr = @lift let
+	ys = collect(Float64, axiskeys($img_gr, 2))
+	$is_perspective ? camera_distance .* ys : ys
 end
 
 # ── Plot ──
-ax = Axis(fig[1, 2];
-	title = @lift(f"{camera_label($params.orthogonal, $params.gr)} jet  θ={$params.viewing_ang:.0f}  a={$params.spin:.2f}"),
+colorscale = @lift SymLog(1e-3 * max(maximum($img_flat), maximum($img_gr)))
+
+ax_flat = Axis(fig[1, 2];
+	title = @lift(f"{camera_label($params.orthogonal)} jet  θ={$params.viewing_ang:.0f}"),
 	xlabel = "x [rg]", ylabel = "y [rg]",
 	aspect = DataAspect())
+plt_flat = image!(ax_flat, img_flat; colorscale, colormap = :inferno)
 
-plt = image!(ax, img; colorscale=(@lift SymLog(1e-3*maximum($img))),colormap = :inferno)
-Colorbar(fig[1, 3], plt, tickformat=EngTicks())
+ax_gr = Axis(fig[1, 3];
+	title = @lift(f"GR  a={$params.spin:.2f}  θ={$params.viewing_ang:.0f}"),
+	xlabel = "x [rg]", ylabel = "y [rg]",
+	aspect = DataAspect())
+plt_gr = image!(ax_gr, img_gr; colorscale, colormap = :inferno)
+
+Colorbar(fig[1, 4], plt_gr, tickformat=EngTicks())
 
 display(fig)
