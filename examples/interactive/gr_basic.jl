@@ -130,6 +130,11 @@ end::Any
 s_range_3d = -500.0 .. 500.0
 
 ray_path_3d = @lift let
+	ray = $ray_gr_sel.ray_in
+	geom = jet.geometry
+	S.ray_in_local_coords(ray, geom; s_range=s_range_3d)
+end
+raygr_path_3d = @lift let
 	ray = $ray_gr_sel
 	geom = jet.geometry
 	pts = S.ray_in_local_coords(ray, geom; s_range=s_range_3d)
@@ -137,11 +142,52 @@ ray_path_3d = @lift let
 	StructArray(;pts, colors)
 end
 
+# ── 3D emissivity volume ──
+vol_extent = 40.0
+vol_n = 60
+vol_data = let
+	geom = jet.geometry
+	k_vol = S.photon_k(1e11, SVector(0.0, 0.0, 1.0))
+	xs = range(-vol_extent, vol_extent, length=vol_n)
+	ys = range(-vol_extent, vol_extent, length=vol_n)
+	zs = range(-vol_extent, vol_extent, length=vol_n)
+	data = zeros(Float32, vol_n, vol_n, vol_n)
+	for (iz, z) in enumerate(zs), (iy, y) in enumerate(ys), (ix, x) in enumerate(xs)
+		r_local = SVector(x, y, z)
+		r_lab = S.rotate_local_to_lab(geom, r_local)
+		x4 = S.FourPosition(0.0, r_lab...)
+		if S.is_inside(jet, x4)
+			u = S.four_velocity(jet, x4)
+			k′ = S.lorentz_unboost(u, k_vol)
+			data[ix, iy, iz] = Float32(S.emissivity(jet, x4, k′))
+		end
+	end
+	m = maximum(data)
+	m > 0 && (data ./= m)
+	data
+end
+
+vol_cmap = let
+	cmap = Makie.to_colormap(:inferno)
+	# cmap[1] = Makie.RGBA(0, 0, 0, 0)  # make lowest color fully transparent
+	# cmap
+	[Makie.RGBAf(c.r, c.g, c.b, i / length(cmap)) for (i, c) in enumerate(cmap)]
+end
+
 ax3d = Axis3(fig[2, 2:3];
-	limits=((-20, 20), (-20, 20), (-20, 20)),
+	limits=((-vol_extent, vol_extent), (-vol_extent, vol_extent), (-vol_extent, vol_extent)),
 	xlabel="x", ylabel="y", zlabel="z (jet axis)",
 	aspect=:data,
 	title="GR ray path (local coords)")
+
+volume!(ax3d, (-vol_extent, vol_extent), (-vol_extent, vol_extent), (-vol_extent, vol_extent), vol_data;
+	colormap=vol_cmap,
+	colorscale=SymLog(1e-10*maximum(vol_data)),
+	# algorithm=:absorption,
+	transparency=true,
+	# colormap=:inferno,
+	alpha=0.8
+	)
 
 # BH sphere
 bh_local = @lift let
@@ -149,8 +195,9 @@ bh_local = @lift let
 end
 meshscatter!(ax3d, @lift(Point3f($bh_local...)); markersize=1, color=:black)
 
-# GR ray path
-linesegments!(ax3d, (@lift FPlot($ray_path_3d, first, color=last)); linewidth=2)
+# ray paths
+linesegments!(ax3d, ray_path_3d; linestyle=:dash, linewidth=2)
+linesegments!(ax3d, (@lift FPlot($raygr_path_3d, first, color=last)); linewidth=2)
 
 
 display(fig)
