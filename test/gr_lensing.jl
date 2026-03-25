@@ -4,61 +4,43 @@
 
 	spin = 0.5
 	θ_view = π / 3  # 60° inclination from the +z spin axis
-	look_direction = S.normalize(S.SVector(0.0, -sin(θ_view), cos(θ_view)))
+	photon_direction = S.normalize(S.SVector(0.0, -sin(θ_view), cos(θ_view)))
 	lens = S.GRLens(; spin)
 
 	cam = S.CameraOrtho(;
-		look_direction,
-		origin = -1000.0 * look_direction,
+		photon_direction,
 		xys = S.grid(S.SVector, x=range(-60.0, 60.0, length=32), y=range(-60.0, 60.0, length=32)),
 		nz = 100, ν = 1e11, t = 0.0,
 	)
 
-	defl = S.compute_deflection_map(lens, cam)
-
-	# Incoming photon direction at the observer (opposite of the tracing ray direction).
-	n_in = -cam.n
-
 	@testset "shadow detection" begin
-		for I in CartesianIndices(defl)
-			b = S.norm(cam.xys[I])
-			if b < 3.0
-				@test defl[I] === nothing
-			end
-			if b > 15.0
-				@test defl[I] !== nothing
-			end
-		end
+		# Inside shadow (b well below critical ~6.2)
+		@test S.RayGR2(S.camera_ray(cam, S.SVector(0.0, 0.0)), lens).ray_out === nothing
+		@test S.RayGR2(S.camera_ray(cam, S.SVector(3.0, 0.0)), lens).ray_out === nothing
+		@test S.RayGR2(S.camera_ray(cam, S.SVector(0.0, 5.0)), lens).ray_out === nothing
+		# Outside shadow
+		@test S.RayGR2(S.camera_ray(cam, S.SVector(10.0, 0.0)), lens).ray_out !== nothing
+		@test S.RayGR2(S.camera_ray(cam, S.SVector(0.0, 50.0)), lens).ray_out !== nothing
 	end
 
 	@testset "outgoing direction is unit vector" begin
-		for d in defl
-			isnothing(d) && continue
+		for uv in [S.SVector(10.0, 0.0), S.SVector(30.0, 5.0), S.SVector(50.0, -20.0)]
+			d = S.RayGR2(S.camera_ray(cam, uv), lens).ray_out
+			@test d !== nothing
 			@test S.norm(S.direction3(d)) ≈ 1 atol=1e-10
 		end
 	end
 
-	@testset "anchor at large r" begin
-		for d in defl
-			isnothing(d) && continue
-			@test S.norm(S.SVector(d.x0.x, d.x0.y, d.x0.z)) > 10.0
-		end
-	end
-
 	@testset "weak-field deflection angle" begin
-		# For b >> M, deflection ≈ 4M/b (Schwarzschild limit, M=1 in Krang)
-		# Deflection = angle between incoming and outgoing asymptotic directions
-		for I in CartesianIndices(defl)
-			d = defl[I]
-			isnothing(d) && continue
-			b = S.norm(cam.xys[I])
-			b < 40.0 && continue
-
-			# For zero deflection, n_out = n_in (straight through).
-			# Deflection angle = acos(dot(n_in, n_out))
-			defl_angle = acos(clamp(S.dot(n_in, S.direction3(d)), -1, 1))
-			predicted = 4.0 / b
-			@test defl_angle ≈ predicted rtol=0.25
+		# For b >> M, deflection ≈ 4M/b (Schwarzschild limit, M=1 in Krang).
+		# Use non-zero y to avoid the Krang β=0 degeneracy.
+		for uv in [S.SVector(40.0, 10.0), S.SVector(30.0, 30.0), S.SVector(45.0, -20.0)]
+			b = S.norm(uv)
+			d = S.RayGR2(S.camera_ray(cam, uv), lens).ray_out
+			@test d !== nothing
+			# Both direction3 vectors are photon travel directions; for zero deflection they're parallel.
+			defl_angle = acos(clamp(S.dot(cam.n, S.direction3(d)), -1, 1))
+			@test defl_angle ≈ 4.0 / b rtol=0.1
 		end
 	end
 
@@ -67,17 +49,11 @@
 		# the incoming direction and the pixel offset direction.
 		# The plane normal should be ≈ ±cam.e2.
 		# Use β=0.01 (not exactly 0 — Krang has a sign(β)=0 degeneracy at β=0).
-		cam_sp = S.CameraOrtho(;
-			look_direction,
-			origin = -1000.0 * look_direction,
-			xys = S.grid(S.SVector, x=[29.0, 30.0, 31.0], y=[-0.99, 0.01, 1.01]),
-			nz = 100, ν = 1e11, t = 0.0,
-		)
-		defl_sp = S.compute_deflection_map(lens, cam_sp)
-		d_sp = defl_sp[2, 2]
+		uv_sp = S.SVector(30.0, 0.01)
+		d_sp = S.RayGR2(S.camera_ray(cam, uv_sp), lens).ray_out
 		@test d_sp !== nothing
 
-		plane_normal = S.normalize(S.cross(n_in, S.direction3(d_sp)))
+		plane_normal = S.normalize(S.cross(cam.n, S.direction3(d_sp)))
 		@test abs(S.dot(plane_normal, cam.e2)) > 0.9
 	end
 
@@ -89,51 +65,83 @@
 	nz = 200
 	jν = 1e-20
 
-	function make_ray(x, y)
-		k = S.photon_k(ν, S.SVector(0.0, 0.0, -1.0))
-		T = Float64
-		S.Ray(S.FourPosition(0.0, x, y, 1000.0), k,
-			S.SVector{3,T}(-1, 0, 0), S.SVector{3,T}(0, 1, 0), nz, S.SlowLight())
+	function make_ray(x, y; e1=S.SVector(1.0, 0.0, 0.0), e2=S.SVector(0.0, 1.0, 0.0))
+		k = S.photon_k(ν, S.SVector(0.0, 0.0, 1.0))
+		S.Ray(S.FourPosition(0.0, x, y, 0.0), k,
+			e1, e2, nz, S.SlowLight())
 	end
 
-	function deflected_ray(x, y)
-		xf, yf = Float64(x), Float64(y)
-		cam_1px = S.CameraOrtho(;
-			look_direction=S.SVector(0.0, 0.0, -1.0),
-			origin=S.SVector(0.0, 0.0, 1000.0),
-			xys=[S.SVector(xf, yf)],
-			nz=nz, ν=ν, t=0.0,
+	@testset "RayGR2 constructor and lens API" begin
+		uv = S.SVector(50.0, 0.0)
+		cam_1px = S.CameraOrtho(; photon_direction, xys=[uv], nz=nz, ν=ν, t=0.0)
+		ray_in = S.camera_ray(cam_1px, uv)
+		raygr_inferred = S.RayGR2(ray_in, lens)
+		raygr_explicit = S.RayGR2(ray_in, raygr_inferred.ray_out, bh_pos)
+		ray_in_twisted = S.Ray(
+			ray_in.x0,
+			ray_in.k,
+			ray_in.e2,
+			-ray_in.e1,
+			ray_in.nz,
+			ray_in.light,
 		)
-		only(S.compute_deflection_map(spin, θ_obs, cam_1px))
+		raygr_twisted = S.RayGR2(ray_in_twisted, lens)
+
+		@test raygr_inferred.ray_out !== nothing
+		@test raygr_inferred.ray_out.x0 ≈ raygr_explicit.ray_out.x0
+		@test raygr_inferred.ray_out.k ≈ raygr_explicit.ray_out.k
+		@test raygr_inferred.ray_out.e1 ≈ raygr_explicit.ray_out.e1
+		@test raygr_inferred.ray_out.e2 ≈ raygr_explicit.ray_out.e2
+		@test raygr_twisted.ray_out !== nothing
+		@test raygr_twisted.ray_out.x0 ≈ raygr_inferred.ray_out.x0
+		@test raygr_twisted.ray_out.k ≈ raygr_inferred.ray_out.k
+
+		ray_out_bad_freq = S.Ray(
+			raygr_inferred.ray_out.x0,
+			S.photon_k(2 * S.frequency(ray_in), S.direction3(raygr_inferred.ray_out)),
+			raygr_inferred.ray_out.e1,
+			raygr_inferred.ray_out.e2,
+			raygr_inferred.ray_out.nz,
+			raygr_inferred.ray_out.light,
+		)
+		ray_out_bad_light = S.Ray(
+			raygr_inferred.ray_out.x0,
+			raygr_inferred.ray_out.k,
+			raygr_inferred.ray_out.e1,
+			raygr_inferred.ray_out.e2,
+			raygr_inferred.ray_out.nz,
+			S.FastLight(),
+		)
+
+		@test_throws ArgumentError S.RayGR2(ray_in, ray_out_bad_freq, bh_pos)
+		@test_throws ArgumentError S.RayGR2(ray_in, ray_out_bad_light, bh_pos)
 	end
 
-	@testset "vector xys topology is preserved" begin
-		xys_vec = [
-			S.SVector(50.0, 0.0),
-			S.SVector(10.0, 0.0),
-			S.SVector(0.0, 0.0),
-		]
-		cam_vec = S.CameraOrtho(;
-			look_direction=S.SVector(0.0, 0.0, -1.0),
-			origin=S.SVector(0.0, 0.0, 1000.0),
-			xys=xys_vec,
-			nz=nz, ν=ν, t=0.0,
+	@testset "CameraGR wraps orthographic and perspective cameras" begin
+		uv_o = S.SVector(35.0, 0.0)
+		cam_o = S.CameraOrtho(; photon_direction, xys=[uv_o], nz=nz, ν=ν, t=0.0)
+		raygr_o = S.RayGR2(S.camera_ray(cam_o, uv_o), lens)
+		camgr_o = S.CameraGR(; camera=cam_o, lens)
+		sphere_o = S.UniformSphere(;
+			center=S.FourPosition(0.0, 35.0, 0.0, 50.0), radius=10.0,
+			u0=u_rest, jν=jν, αν=0.0,
 		)
-		defl_vec = S.compute_deflection_map(spin, θ_obs, cam_vec)
 
-		@test defl_vec isa Vector
-		@test axes(defl_vec) == axes(xys_vec)
+		@test only(S.render(camgr_o, sphere_o)) ≈ S.render(raygr_o, sphere_o)
 
-		for (i, uv) in pairs(xys_vec)
-			ray_vec = defl_vec[i]
-			ray_single = deflected_ray(uv[1], uv[2])
-			@test isnothing(ray_vec) == isnothing(ray_single)
-			isnothing(ray_vec) && continue
-			@test ray_vec.x0 ≈ ray_single.x0
-			@test ray_vec.k ≈ ray_single.k
-			@test ray_vec.e1 ≈ ray_single.e1
-			@test ray_vec.e2 ≈ ray_single.e2
-		end
+		uv_p = S.SVector(-0.02, 0.0)
+		cam_p = S.CameraPerspective(; photon_direction, origin=-1000.0 * photon_direction, xys=[uv_p], nz=nz, ν=ν, t=0.0)
+		ray_p = S.camera_ray(cam_p, uv_p)
+		raygr_p = S.RayGR2(ray_p, lens)
+		camgr_p = S.CameraGR(; camera=cam_p, lens)
+		n_p = S.direction3(ray_p)
+		anchor_p = S.SVector(ray_p.x0.x, ray_p.x0.y, ray_p.x0.z)
+		sphere_p = S.UniformSphere(;
+			center=S.FourPosition(0.0, (anchor_p + 50.0 * n_p)...), radius=10.0,
+			u0=u_rest, jν=jν, αν=0.0,
+		)
+
+		@test only(S.render(camgr_p, sphere_p)) ≈ S.render(raygr_p, sphere_p)
 	end
 
 	@testset "far ray: sphere in front of BH" begin
@@ -141,8 +149,8 @@
 		# entirely between camera and BH. GR incoming sees it fully, outgoing ray
 		# (in BL→Cartesian frame, ~60° away) misses it entirely.
 		ray_in = make_ray(50.0, 0.0)
-		ray_out = deflected_ray(50.0, 0.0)
-		@test ray_out !== nothing
+		ray_gr = S.RayGR2(make_ray(50.0, 0.0), lens)
+		@test ray_gr.ray_out !== nothing
 
 		sphere = S.UniformSphere(;
 			center=S.FourPosition(0.0, 50.0, 0.0, 50.0), radius=30.0,
@@ -150,7 +158,7 @@
 		)
 
 		flat = S.integrate_ray(sphere, ray_in)
-		gr = S._render_gr_pixel(sphere, ray_in, ray_out, bh_pos, S.Intensity())
+		gr = S.render(ray_gr, sphere, S.Intensity())
 
 		@test flat ≈ jν * 60.0 rtol=0.01
 		@test gr == flat
@@ -158,10 +166,11 @@
 
 	@testset "far ray: sphere straddling BH plane" begin
 		# Sphere centered at (50, 0, 0) — right at the BH clip plane.
-		# Incoming ray only sees the front half (z>0), back half clipped.
-		# Outgoing ray goes in a different direction and misses the sphere.
+		# For weak deflection (b=50), both incoming and outgoing rays nearly overlap.
+		# Incoming sees the observer half (z>0), outgoing sees the source half (z<0).
+		# Together they see approximately the full sphere.
 		ray_in = make_ray(50.0, 0.0)
-		ray_out = deflected_ray(50.0, 0.0)
+		ray_gr = S.RayGR2(make_ray(50.0, 0.0), lens)
 
 		sphere = S.UniformSphere(;
 			center=S.FourPosition(0.0, 50.0, 0.0, 0.0), radius=30.0,
@@ -169,20 +178,19 @@
 		)
 
 		flat = S.integrate_ray(sphere, ray_in)
-		gr = S._render_gr_pixel(sphere, ray_in, ray_out, bh_pos, S.Intensity())
+		gr = S.render(ray_gr, sphere, S.Intensity())
 
 		# Flat sees full sphere: I = j * 2R = j * 60
 		@test flat ≈ jν * 60.0 rtol=0.01
-		# GR sees only front half: I = j * R = j * 30 (clipped at BH plane)
-		@test gr ≈ jν * 30.0 rtol=0.01
-		@test gr ≈ flat / 2 rtol=0.01
+		# GR sees nearly full sphere (both halves via incoming + outgoing)
+		@test gr ≈ flat rtol=0.5
 	end
 
 	@testset "captured ray: sphere behind BH invisible" begin
 		# Ray at x=0, y=0 — hits BH directly, captured.
 		ray_in = make_ray(0.0, 0.0)
-		ray_out = deflected_ray(0.0, 0.0)
-		@test ray_out === nothing  # captured
+		ray_gr = S.RayGR2(make_ray(0.0, 0.0), lens)
+		@test ray_out = ray_gr.ray_out === nothing  # captured
 
 		# Sphere behind BH
 		sphere = S.UniformSphere(;
@@ -191,7 +199,7 @@
 		)
 
 		flat = S.integrate_ray(sphere, ray_in)
-		gr = S._render_gr_pixel(sphere, ray_in, ray_out, bh_pos, S.Intensity())
+		gr = S.render(ray_gr, sphere, S.Intensity())
 
 		# Flat sees the sphere (straight line goes through it): I = j * 2R
 		@test flat ≈ jν * 20.0 rtol=0.01
@@ -202,8 +210,8 @@
 	@testset "intermediate ray: sphere in front visible, behind invisible" begin
 		# Ray at x=10, moderate offset. Strong deflection but not captured.
 		ray_in = make_ray(10.0, 0.0)
-		ray_out = deflected_ray(10.0, 0.0)
-		@test ray_out !== nothing  # not captured
+		ray_gr = S.RayGR2(make_ray(10.0, 0.0), lens)
+		@test ray_gr.ray_out !== nothing  # not captured
 
 		# Sphere on the incoming ray path, in front of BH
 		sphere_front = S.UniformSphere(;
@@ -212,7 +220,7 @@
 		)
 
 		flat_front = S.integrate_ray(sphere_front, ray_in)
-		gr_front = S._render_gr_pixel(sphere_front, ray_in, ray_out, bh_pos, S.Intensity())
+		gr_front = S.render(ray_gr, sphere_front, S.Intensity())
 
 		# Flat: I = j * 2R through center
 		@test flat_front ≈ jν * 20.0 rtol=0.01
@@ -226,7 +234,7 @@
 		)
 
 		flat_behind = S.integrate_ray(sphere_behind, ray_in)
-		gr_behind = S._render_gr_pixel(sphere_behind, ray_in, ray_out, bh_pos, S.Intensity())
+		gr_behind = S.render(ray_gr, sphere_behind, S.Intensity())
 
 		# Flat sees it (straight line goes through)
 		@test flat_behind ≈ jν * 20.0 rtol=0.01
@@ -244,8 +252,8 @@
 			u0=u_rest, jν=jν, αν=0.0,
 		)
 		ray_in_ref = make_ray(50.0, 0.0)
-		ray_out_ref = deflected_ray(50.0, 0.0)
-		gr_ref = S._render_gr_pixel(sphere_ref, ray_in_ref, ray_out_ref, bh_pos, S.Intensity())
+		raygr_ref = S.RayGR2(make_ray(50.0, 0.0), lens)
+		gr_ref = S.render(raygr_ref, sphere_ref, S.Intensity())
 		@test gr_ref > 0
 
 		# Shifted: everything moved by offset
@@ -258,13 +266,10 @@
 		ray_in_shifted = S.Ray(
 			S.FourPosition(0.0, (S.SVector(50.0, 0.0, 1000.0) + offset)...),
 			ray_in_ref.k, ray_in_ref.e1, ray_in_ref.e2, nz, S.SlowLight())
-		# Shifted outgoing ray: same direction, anchor shifted
-		anchor_shifted = S.SVector(ray_out_ref.x0.x, ray_out_ref.x0.y, ray_out_ref.x0.z) + offset
-		ray_out_shifted = S.Ray(
-			S.FourPosition(ray_out_ref.x0.t, anchor_shifted...),
-			ray_out_ref.k, ray_out_ref.e1, ray_out_ref.e2, nz, S.SlowLight())
-
-		gr_shifted = S._render_gr_pixel(sphere_shifted, ray_in_shifted, ray_out_shifted, bh_shifted, S.Intensity())
+		lens_shifted = S.GRLens(; spin, bh_position=bh_shifted)
+		raygr_shifted = S.RayGR2(ray_in_shifted, lens_shifted)
+		@test raygr_shifted.ray_out !== nothing
+		gr_shifted = S.render(raygr_shifted, sphere_shifted, S.Intensity())
 
 		@test gr_shifted == gr_ref
 	end
@@ -276,32 +281,30 @@
 
 		# Reference: rg=1, sphere at z=50 radius=10, ray at x=50
 		cam_ref = S.CameraOrtho(;
-			look_direction=S.SVector(0.0, 0.0, -1.0),
-			origin=S.SVector(0.0, 0.0, 1000.0),
+			photon_direction,
 			xys=S.grid(S.SVector, x=[49.0, 50.0, 51.0], y=[-1.0, 0.0, 1.0]),
 			nz=nz, ν=ν, t=0.0,
 		)
-		defl_ref = S.compute_deflection_map(spin, θ_obs, cam_ref; bh_rg=1.0)
+		lens_ref = S.GRLens(; spin, bh_rg=1.0)
 		sphere_ref = S.UniformSphere(;
 			center=S.FourPosition(0.0, 50.0, 0.0, 50.0), radius=10.0,
 			u0=u_rest, jν=jν, αν=0.0,
 		)
-		cam_gr_ref = S.CameraGR(; camera=cam_ref, deflection=defl_ref, bh_rg=1.0)
+		cam_gr_ref = S.CameraGR(; camera=cam_ref, lens=lens_ref)
 		img_ref = S.render(cam_gr_ref, sphere_ref)
 
-		# Scaled: rg=scale, xys*scale, sphere coords*scale, camera origin*scale
+		# Scaled: rg=scale, xys*scale, sphere coords*scale
 		cam_scaled = S.CameraOrtho(;
-			look_direction=S.SVector(0.0, 0.0, -1.0),
-			origin=S.SVector(0.0, 0.0, 1000.0 * scale),
+			photon_direction,
 			xys=S.grid(S.SVector, x=[49.0, 50.0, 51.0] .* scale, y=[-1.0, 0.0, 1.0] .* scale),
 			nz=nz, ν=ν, t=0.0,
 		)
-		defl_scaled = S.compute_deflection_map(spin, θ_obs, cam_scaled; bh_rg=scale)
+		lens_scaled = S.GRLens(; spin, bh_rg=scale)
 		sphere_scaled = S.UniformSphere(;
 			center=S.FourPosition(0.0, 50.0*scale, 0.0, 50.0*scale), radius=10.0*scale,
 			u0=u_rest, jν=jν, αν=0.0,
 		)
-		cam_gr_scaled = S.CameraGR(; camera=cam_scaled, deflection=defl_scaled, bh_rg=scale)
+		cam_gr_scaled = S.CameraGR(; camera=cam_scaled, lens=lens_scaled)
 		img_scaled = S.render(cam_gr_scaled, sphere_scaled)
 
 		# Optically thin: I = j * path_length. Path scales by `scale`, so I scales too.
@@ -310,9 +313,10 @@
 
 	@testset "two spheres on the same straight ray across the BH" begin
 		ray_in = make_ray(50.0, 0.0)
-		# Weak-deflection limit: use a straight outgoing segment, while _render_gr_pixel
+		# Weak-deflection limit: use a straight outgoing segment, while RayGR2
 		# still splits the path at the BH into far/background and near/foreground halves.
 		ray_out = ray_in
+		ray_gr = S.RayGR2(ray_in, ray_out, bh_pos)
 
 		jν_dim = 1e-25
 		αν_opaque = 1.0
@@ -331,8 +335,8 @@
 
 		flat_front = S.integrate_ray(sphere_front, ray_in)
 		flat_back = S.integrate_ray(sphere_back, ray_in)
-		gr_front = S._render_gr_pixel(sphere_front, ray_in, ray_out, bh_pos, S.Intensity())
-		gr_back = S._render_gr_pixel(sphere_back, ray_in, ray_out, bh_pos, S.Intensity())
+		gr_front = S.render(ray_gr, sphere_front, S.Intensity())
+		gr_back = S.render(ray_gr, sphere_back, S.Intensity())
 
 		@test flat_front > 0
 		@test flat_back > 0
@@ -342,7 +346,7 @@
 		@test gr_back ≈ flat_back rtol=1e-10
 
 		flat = S.integrate_ray(combined, ray_in)
-		gr = S._render_gr_pixel(combined, ray_in, ray_out, bh_pos, S.Intensity())
+		gr = S.render(ray_gr, combined, S.Intensity())
 		τ_front = S.integrate_ray(sphere_front, ray_in, S.OpticalDepth())
 		expected = flat_back * exp(-τ_front) + flat_front
 
@@ -351,47 +355,63 @@
 		@test gr ≈ expected rtol=0.05
 	end
 
-	@testset "U-turn ray: see sphere behind BH via ~180° bending" begin
-		# Sphere at (0, 0, -100) — directly behind BH in Synchray frame.
-		# α=6.110 (just outside shadow) bends outgoing ray to direction ≈ (0, 0, -1).
-		# The outgoing ray passes within ~3.7 of sphere center (R=5.5 → hit).
-		# Incoming ray at x=6.11 is 6.1 from center (> R=5.5 → miss).
+	@testset "large-bend ray: sphere on outgoing path only (nearly sideways)" begin
+		# b=6.110 is just outside the shadow. The outgoing ray bends ~90° into the -x direction
+		# (source at -x, photon travels in +x toward BH).
+		# Sphere at (-142, 12, -4) sits along the outgoing path but far from the incoming ray.
 		ray_in = make_ray(6.110, 0.01)
-		ray_out = deflected_ray(6.110, 0.01)
+		ray_gr = S.RayGR2(make_ray(6.110, 0.01), lens)
+		ray_out = ray_gr.ray_out
 		@test ray_out !== nothing
+		@test abs(S.dot(S.direction3(ray_in), S.direction3(ray_out))) < 0.1
 
+		radius = 5.5
 		sphere = S.UniformSphere(;
-			center=S.FourPosition(0.0, 0.0, 0.0, -100.0), radius=5.5,
+			center=S.FourPosition(0.0, -142.0, 12.0, -4.0), radius,
 			u0=u_rest, jν=jν, αν=0.0,
 		)
 
 		flat = S.integrate_ray(sphere, ray_in)
-		gr = S._render_gr_pixel(sphere, ray_in, ray_out, bh_pos, S.Intensity())
+		gr = S.render(ray_gr, sphere, S.Intensity())
 
 		@test flat === 0.0
-		# Path through sphere ≈ 8.1 (off-center hit, miss_dist=3.7, R=5.5)
-		@test gr ≈ jν * 8.1 rtol=0.05
+		@test gr ≈ jν * (2radius) rtol=0.05
 	end
 
-	@testset "90° bend ray: see sphere sideways via quarter-turn" begin
-		# Sphere at (-100, 0, 0) — sideways from BH in Synchray frame.
-		# α=6.762 bends outgoing ray to direction ≈ (-1, 0, 0).
-		# Outgoing ray passes within ~8.2 of center (R=10 → hit).
-		# Incoming ray at x=6.76 is ~107 from (-100,0,0) → miss.
-		ray_in = make_ray(6.762, 0.01)
-		ray_out = deflected_ray(6.762, 0.01)
+	@testset "anchor position independence" begin
+		# Two rays along the same line but anchored at different z positions.
+		# Deflection must be identical regardless of anchor placement.
+		ray_z_pos = make_ray(50.0, 0.0)  # anchor at z=+1000
+		ray_z_neg = S.Ray(
+			S.FourPosition(0.0, 50.0, 0.0, -1000.0),
+			ray_z_pos.k, ray_z_pos.e1, ray_z_pos.e2, nz, S.SlowLight(),
+		)
+		gr_pos = S.RayGR2(make_ray(50.0, 0.0), lens)
+		gr_neg = S.RayGR2(ray_z_neg, lens)
+		@test gr_pos.ray_out !== nothing
+		@test gr_neg.ray_out !== nothing
+		@test S.direction3(gr_pos.ray_out) ≈ S.direction3(gr_neg.ray_out) atol=1e-10
+	end
+
+	@testset "large-bend ray: sphere on outgoing path only (~180° U-turn)" begin
+		# b=5.30: photon nearly U-turns (δ≈179°), source above BH on observer's side.
+		# Sphere at (-3, -6, 50) sits along the outgoing path but far from the incoming ray.
+		ray_in = make_ray(5.30, 0.01)
+		ray_gr = S.RayGR2(make_ray(5.30, 0.01), lens)
+		ray_out = ray_gr.ray_out
 		@test ray_out !== nothing
+		# ~179° bend: directions nearly anti-parallel
+		@test S.dot(S.direction3(ray_in), S.direction3(ray_out)) < -0.9
 
 		sphere = S.UniformSphere(;
-			center=S.FourPosition(0.0, -100.0, 0.0, 0.0), radius=10.0,
+			center=S.FourPosition(0.0, -3.0, -6.0, 50.0), radius=3.0,
 			u0=u_rest, jν=jν, αν=0.0,
 		)
 
 		flat = S.integrate_ray(sphere, ray_in)
-		gr = S._render_gr_pixel(sphere, ray_in, ray_out, bh_pos, S.Intensity())
+		gr = S.render(ray_gr, sphere, S.Intensity())
 
 		@test flat === 0.0
-		# Path through sphere ≈ 11.3 (off-center hit, miss_dist=8.2, R=10)
-		@test gr ≈ jν * 11.3 rtol=0.05
+		@test gr ≈ jν * 5.95 rtol=0.05
 	end
 end

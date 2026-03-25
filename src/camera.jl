@@ -375,23 +375,19 @@ end
 # ============================================================================
 
 """
-	CameraGR(; camera, deflection, lens)
+	CameraGR(; camera, lens)
 
 GR-lensed camera wrapping a flat-space camera.
 
 - `camera`: the underlying flat-space camera (defines pixel grid, ν, t, nz, incoming rays).
-- `deflection`: array with the same shape as `camera.xys`, where each element is
-  either a `Ray` (outgoing ray after BH deflection) or `nothing` (captured by BH).
-- `lens`: the `GRLens` used to build the deflection map and define the BH clip point.
-
-The deflection map is precomputed from the BH metric (see `compute_deflection_map`
-in the Krang extension) and is reusable across emission models.
+- `lens`: the `GRLens` specifying the black hole parameters.
 """
-@kwdef struct CameraGR{Tcam, Tmap, Tlens<:GRLens}
+struct CameraGR{Tcam, Tmap, Tlens<:GRLens}
 	camera::Tcam
 	deflection::Tmap
 	lens::Tlens
 end
+CameraGR(; camera, lens, deflection=compute_deflection_map(lens, camera)) = CameraGR(camera, deflection, lens)
 
 @unstable render(cam::CameraGR, obj::AbstractMedium, what=Intensity()) = let
 	(; camera, deflection, lens) = cam
@@ -408,14 +404,14 @@ render(ray::RayGR2, obj::AbstractMedium, what=Intensity()) = let
 	acc = _gr_init_acc(obj, ray_in, what)
 
 	if !isnothing(ray_out)
-		# Photon path: outgoing (far/background) → BH → incoming (near/foreground) → observer.
-		# Integrate background first so foreground can attenuate it.
+		# Photon path: source → [outgoing ray, background] → BH → [incoming ray, foreground] → observer.
+		# Integrate background (outgoing) first, then foreground (incoming) attenuates it.
 		s_bh_out = _s_closest_to_point(ray_out, bh_position)
-		acc = _integrate_through_clipped(acc, obj, ray_out, s_bh_out .. typeof(s_bh_out)(Inf))
+		acc = _integrate_through_clipped(acc, obj, ray_out, typeof(s_bh_out)(-Inf) .. s_bh_out)
 	end
 
 	s_bh_in = _s_closest_to_point(ray_in, bh_position)
-	acc = _integrate_through_clipped(acc, obj, ray_in, typeof(s_bh_in)(-Inf) .. s_bh_in)
+	acc = _integrate_through_clipped(acc, obj, ray_in, s_bh_in .. typeof(s_bh_in)(Inf))
 
 	_postprocess_acc(acc, ν, what)
 end
