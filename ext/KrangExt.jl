@@ -141,7 +141,7 @@ function _outgoing_ray_from_pixel(pix, ray_in, R, bh_position, bh_rg, τ_frac)
 	Ray(
 		FourPosition(ray_in.x0.t, x1_lab), k_out,
 		e1_out, e2_out,
-		ray_in.nz, ray_in.light)
+		ray_in.nz, ray_in.light, ray_in.s_max)
 end
 
 """Check if a photon is captured by the BH: complex roots in the radial potential mean no turning point exists."""

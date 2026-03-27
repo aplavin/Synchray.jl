@@ -177,7 +177,7 @@ end
 
 
 integrate_ray(obj::AbstractMedium, ray::Ray, what=Intensity()) = begin
-	seg = z_interval(obj, ray)
+	seg = z_interval_clipped(obj, ray)
 
 	ν = frequency(ray)
 	k1 = direction4(ray)
@@ -230,7 +230,7 @@ integrate_ray(cm::CombinedMedium, ray::Ray, what=Intensity()) = begin
 
 	# Type-promoting zero-step (same pattern as existing integrate_ray)
 	obj1 = first(cm.objects)
-	seg1 = z_interval(obj1, ray)
+	seg1 = z_interval_clipped(obj1, ray)
 	s_init = leftendpoint(seg1)
 	acc = _integrate_ray_step(_init_acc(typeof(what), frequency(ray)), obj1, ray.x0 + s_init * k1, ray, zero(float(s_init)))
 
@@ -242,7 +242,7 @@ end
 @inline _integrate_combined_recursive(acc, ::Tuple{}, ray) = acc
 @inline _integrate_combined_recursive(acc, objs::Tuple, ray) = begin
 	obj = first(objs)
-	seg = z_interval(obj, ray)
+	seg = z_interval_clipped(obj, ray)
 	acc = _integrate_segment(acc, obj, ray, seg)
 	_integrate_combined_recursive(acc, Base.tail(objs), ray)
 end
@@ -267,7 +267,7 @@ Returns a StructArray with columns:
 - `dIν_to_obs`: same as `dIinv_to_obs`, converted to ordinary intensity via ν³
 """
 ray_contribution_profile(obj::AbstractMedium, ray::Ray) = begin
-	seg = z_interval(obj, ray)
+	seg = z_interval_clipped(obj, ray)
 	k = ray.k
 	ν = frequency(ray)
 	k1 = direction4(ray)
@@ -322,7 +322,7 @@ Returns a StructArray with the same structure as `ray_contribution_profile`, but
 `dIν_to_obs` as a StokesIQU vector instead of scalar.
 """
 ray_contribution_profile_IQU(obj::AbstractMedium, ray::Ray) = begin
-	seg = z_interval(obj, ray)
+	seg = z_interval_clipped(obj, ray)
 	k = ray.k
 	ν = frequency(ray)
 	k1 = direction4(ray)

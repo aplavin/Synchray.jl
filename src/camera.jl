@@ -114,18 +114,23 @@ function CameraPerspective(; photon_direction::SVector{3}, up=SVector(0, 1, 0), 
 end
 
 
-struct Ray{TX<:FourPosition, TK<:FourFrequency, TE<:SVector{3}, TL<:AbstractLightMode}
+struct Ray{TX<:FourPosition, TK<:FourFrequency, TE<:SVector{3}, TL<:AbstractLightMode, TS}
     x0::TX       # anchor 4-position on the ray
     k::TK        # 4-frequency: k = ν·(1, n̂)
     e1::TE       # polarization frame vector 1 (lab-frame spatial, ⊥ n̂)
     e2::TE       # polarization frame vector 2 (lab-frame spatial, ⊥ n̂, ⊥ e1)
     nz::Int
     light::TL
+    s_max::TS    # maximum valid ray parameter (nothing = unbounded, 0 = half-ray for perspective)
 end
 
-"""Construct a `Ray` defaulting to `SlowLight()`."""
+"""Construct a `Ray` defaulting to `SlowLight()` and unbounded `s_max`."""
 Ray(x0::FourPosition, k::FourFrequency, e1::SVector{3}, e2::SVector{3}, nz::Int) =
-    Ray(x0, k, e1, e2, nz, SlowLight())
+    Ray(x0, k, e1, e2, nz, SlowLight(), nothing)
+
+"""Construct a `Ray` with given light mode and unbounded `s_max`."""
+Ray(x0::FourPosition, k::FourFrequency, e1::SVector{3}, e2::SVector{3}, nz::Int, light::AbstractLightMode) =
+    Ray(x0, k, e1, e2, nz, light, nothing)
 
 """Unit spatial direction of ray propagation."""
 direction3(ray::Ray) = direction3(ray.k)
@@ -179,10 +184,10 @@ end
 """True if the ray is a NaN-sentinel representing a photon captured by the BH."""
 @inline is_captured_ray(ray::Ray) = isnan(ray.x0.t)
 
-"""Create a NaN-sentinel Ray (captured by BH) preserving frequency, nz, and light mode from `ray_in`."""
+"""Create a NaN-sentinel Ray (captured by BH) preserving frequency, nz, light mode, and s_max from `ray_in`."""
 @inline _captured_ray(ray_in::Ray) = Ray(
 	FourPosition(oftype(ray_in.x0.t, NaN), SVector(oftype(ray_in.x0.t, NaN), oftype(ray_in.x0.t, NaN), oftype(ray_in.x0.t, NaN))),
-	ray_in.k, ray_in.e1, ray_in.e2, ray_in.nz, ray_in.light)
+	ray_in.k, ray_in.e1, ray_in.e2, ray_in.nz, ray_in.light, ray_in.s_max)
 
 """
 	RayGR2(ray_in, ray_out, bh_position)
@@ -222,6 +227,11 @@ end
 end
 
 
+"""Compute ray-geometry intersection clipped to the ray's valid parameter domain (`s ≤ ray.s_max`)."""
+@inline z_interval_clipped(obj, ray::Ray) = _clip_z_interval(z_interval(obj, ray), ray.s_max)
+@inline _clip_z_interval(seg, ::Nothing) = seg
+@inline _clip_z_interval(seg, s_max) = leftendpoint(seg) .. min(rightendpoint(seg), s_max)
+
 frequency(ray::Ray) = frequency(ray.k)
 Accessors.set(ray::Ray, ::typeof(frequency), ν) = @set frequency(ray.k) = ν
 
@@ -258,7 +268,8 @@ Construct the single camera ray for pixel coordinates `uv`.
 	e1_ray = e1_proj / norm(e1_proj)
 	e2_ray = cross(photon_dir, e1_ray)
 	k = photon_k(cam.ν, photon_dir)
-	Ray(FourPosition(cam.t, cam.origin), k, e1_ray, e2_ray, cam.nz, cam.light)
+	# s_max = 0: scene is at negative s, behind-camera is at positive s
+	Ray(FourPosition(cam.t, cam.origin), k, e1_ray, e2_ray, cam.nz, cam.light, zero(float(eltype(cam.origin))))
 end
 
 @unstable _boundary_mask(img) = begin
@@ -435,7 +446,7 @@ end
 
 """Integrate through a medium (or CombinedMedium) with s-clipping, updating accumulator."""
 @inline _integrate_through_clipped(acc, obj::AbstractMedium, ray, clip) = begin
-	seg = z_interval(obj, ray) ∩ clip
+	seg = z_interval_clipped(obj, ray) ∩ clip
 	_integrate_segment(acc, obj, ray, seg)
 end
 
@@ -445,13 +456,13 @@ end
 @inline _integrate_clipped_recursive(acc, ::Tuple{}, ray, clip) = acc
 @inline _integrate_clipped_recursive(acc, objs::Tuple, ray, clip) = begin
 	obj = first(objs)
-	seg = z_interval(obj, ray) ∩ clip
+	seg = z_interval_clipped(obj, ray) ∩ clip
 	acc = _integrate_segment(acc, obj, ray, seg)
 	_integrate_clipped_recursive(acc, Base.tail(objs), ray, clip)
 end
 
 @inline _gr_init_acc(obj::AbstractMedium, ray, what) = begin
-	seg = z_interval(obj, ray)
+	seg = z_interval_clipped(obj, ray)
 	k1 = direction4(ray)
 	s0 = leftendpoint(seg)
 	_integrate_ray_step(_init_acc(typeof(what), frequency(ray)), obj, ray.x0 + s0 * k1, ray, zero(float(s0)))

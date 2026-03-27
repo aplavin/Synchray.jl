@@ -460,3 +460,63 @@ end
 		@test getindex.(img_ortho_t, 2) ≈ getindex.(img_persp_t, 2) rtol=1e-2
 	end
 end
+
+@testitem "CameraPerspective behind-camera clipping" begin
+	import Synchray as S
+	using RectiGrids
+
+	# Camera at origin, photon_direction = +z.
+	# Scene (negative s) is at z < 0; behind-camera (positive s) is at z > 0.
+	nz = 256
+	ν = 1.0
+	jν = 1.0
+
+	# With zero absorption: Iν = jν * L (pure emission, no attenuation)
+
+	sphere_front = S.UniformSphere(
+		center=S.FourPosition(0.0, 0.0, 0.0, -10.0), radius=2.0,
+		u0=S.FourVelocity(1.0, 0.0, 0.0, 0.0), jν=jν, αν=0.0,
+	)
+	sphere_behind = S.UniformSphere(
+		center=S.FourPosition(0.0, 0.0, 0.0, 10.0), radius=2.0,
+		u0=S.FourVelocity(1.0, 0.0, 0.0, 0.0), jν=jν, αν=0.0,
+	)
+	sphere_straddling = S.UniformSphere(
+		center=S.FourPosition(0.0, 0.0, 0.0, -1.0), radius=5.0,
+		u0=S.FourVelocity(1.0, 0.0, 0.0, 0.0), jν=jν, αν=0.0,
+	)
+
+	@testset for light in (S.SlowLight(), S.FastLight())
+		cam = S.CameraPerspective(;
+			photon_direction=SVector(0.0, 0.0, 1.0),
+			origin=SVector(0.0, 0.0, 0.0),
+			xys=grid(SVector, x=range(-0.3..0.3, 8), y=range(-0.3..0.3, 8)),
+			nz, ν, t=0.0, light,
+		)
+
+		ray = S.camera_ray(cam, SVector(0.0, 0.0))
+		@test ray.s_max == 0
+		@test isbits(ray)
+
+		# Front sphere (center z=-10, radius 2): full diameter path L=4
+		@test S.render(ray, sphere_front) ≈ jν * 4.0 rtol=1e-2
+
+		# Behind sphere (center z=+10): entirely clipped → zero
+		@test S.render(ray, sphere_behind) == 0.0
+		@test all(iszero, S.render(cam, sphere_behind))
+
+		# Straddling sphere (center z=-1, radius 5): seg -6..4 clipped to -6..0, path L=6
+		@test S.render(ray, sphere_straddling) ≈ jν * 6.0 rtol=1e-2
+		# Without clipping, full path L=10:
+		ray_unclipped = S.Ray(ray.x0, ray.k, ray.e1, ray.e2, ray.nz, ray.light, nothing)
+		@test S.render(ray_unclipped, sphere_straddling) ≈ jν * 10.0 rtol=1e-2
+	end
+
+	# Ortho camera: no clipping, sees both spheres with full diameter path L=4
+	cam_ortho = S.CameraZ(; xys=grid(SVector, x=range(-3.0..3.0, 8), y=range(-3.0..3.0, 8)), nz, ν, t=0.0)
+	ray_ortho = S.camera_ray(cam_ortho, SVector(0.0, 0.0))
+	@test isnothing(ray_ortho.s_max)
+	@test S.render(ray_ortho, sphere_front) ≈ jν * 4.0 rtol=1e-2
+	@test S.render(ray_ortho, sphere_behind) ≈ jν * 4.0 rtol=1e-2
+	@test S.render(ray_ortho, sphere_straddling) ≈ jν * 10.0 rtol=1e-2
+end
