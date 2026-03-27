@@ -463,12 +463,11 @@ For `FastLight`: finds the event at `t = cam.t` (simultaneity hyperplane).
 - `x`: The observed spacetime event on the worldline.
 - `tau`: The proper time on the worldline at that event.
 """
-@inline retarded_event(wl::Geometries.InertialWorldline, cam::CameraOrtho) =
+@inline retarded_event(wl::Geometries.InertialWorldline, cam::Union{CameraOrtho, CameraPerspective}) =
     _retarded_event(cam.light, wl, cam)
 
-@inline function _retarded_event(::SlowLight, wl, cam)
-    # Inertial worldline: x(τ) = x0 + u·τ
-    # Null hyperplane: t - n̂·r = t_obs - n̂·origin
+@inline function _retarded_event(::SlowLight, wl, cam::CameraOrtho)
+    # Orthographic: null hyperplane t - n̂·r = t_obs - n̂·origin (linear in τ)
     #
     # Solve for τ:
     #   (x0.t + u.t·τ) - n̂·(x0_xyz + u_xyz·τ) = t_obs - n̂·origin
@@ -482,7 +481,25 @@ For `FastLight`: finds the event at `t = cam.t` (simultaneity hyperplane).
     return (; x, tau)
 end
 
-@inline function _retarded_event(::FastLight, wl, cam)
+@inline function _retarded_event(::SlowLight, wl, cam::CameraPerspective)
+    # Perspective: light cone (t_obs - t(τ))² = |r(τ) - origin|² (quadratic in τ)
+    #
+    # With u·u = 1 (Minkowski norm), this simplifies to:
+    #   τ² - 2b·τ + c = 0
+    #   b = Δt·γ + Δr·v,  c = Δt² - |Δr|²
+    # Retarded root (Δt - γτ > 0): τ = b - √(b² - c)
+    (; x0, u) = wl
+    Δr = @swiz(x0.xyz) - cam.origin
+    Δt = cam.t - x0.t
+    v = @swiz u.xyz
+    b = Δt * u.t + dot(Δr, v)
+    c = Δt^2 - dot(Δr, Δr)
+    tau = b - sqrt(b^2 - c)
+    x = x0 + u * tau
+    return (; x, tau)
+end
+
+@inline function _retarded_event(::FastLight, wl, cam::Union{CameraOrtho, CameraPerspective})
     # Simultaneity hyperplane: t = t_obs
     (; x0, u) = wl
     tau = (cam.t - x0.t) / u.t

@@ -308,4 +308,92 @@ end
 			@test anchor.t ≈ cam_arb.t atol=1e-12
 		end
 	end
+
+	@testset "CameraPerspective SlowLight" begin
+		using LinearAlgebra: norm
+
+		# Helper: perspective camera looking along +z from a given origin
+		make_persp_cam(; origin, t) = S.CameraPerspective(;
+			photon_direction=SVector(0.0, 0.0, 1.0),
+			origin, xys=SVector{2}[(0.0, 0.0)], nz=1, ν=1.0, t,
+		)
+
+		@testset "stationary source — analytic check" begin
+			# Source at rest at (0, 0, 5), camera at origin, t_obs = 10
+			# Expected: light travels distance 5, so tau = Δt - d = 10 - 5 = 5
+			x0 = S.FourPosition(0.0, 0.0, 0.0, 5.0)
+			u = S.FourVelocity(SVector(0.0, 0.0, 0.0))  # stationary, γ=1
+			wl = S.Geometries.InertialWorldline(x0, u)
+			cam = make_persp_cam(origin=SVector(0.0, 0.0, 0.0), t=10.0)
+			ret = S.retarded_event(wl, cam)
+			@test ret.tau ≈ 5.0 atol=1e-12
+			@test ret.x.t ≈ 5.0 atol=1e-12
+			@test ret.x ≈ x0 + u * ret.tau atol=1e-12
+		end
+
+		@testset "light cone condition" begin
+			x0 = S.FourPosition(0.0, 1.0, 0.5, 3.0)
+			u = S.FourVelocity(SVector(0.1, 0.05, 0.9))
+			wl = S.Geometries.InertialWorldline(x0, u)
+			for t_obs in (0.0, 5.0, 15.0, -3.0)
+				cam = make_persp_cam(origin=SVector(0.0, 0.0, 0.0), t=t_obs)
+				ret = S.retarded_event(wl, cam)
+				r_emit = SVector(ret.x.x, ret.x.y, ret.x.z)
+				# Light cone: (t_obs - t_emit)² = |origin - r_emit|²
+				@test (cam.t - ret.x.t)^2 ≈ sum(abs2, cam.origin - r_emit) atol=1e-10
+				# On worldline
+				@test ret.x ≈ x0 + u * ret.tau atol=1e-12
+				# Causality: emission before observation
+				@test cam.t > ret.x.t
+			end
+		end
+
+		@testset "off-origin camera" begin
+			x0 = S.FourPosition(0.0, 0.0, 0.0, 5.0)
+			u = S.FourVelocity(SVector(0.0, 0.0, 0.0))
+			wl = S.Geometries.InertialWorldline(x0, u)
+			cam = make_persp_cam(origin=SVector(3.0, 4.0, 0.0), t=10.0)
+			ret = S.retarded_event(wl, cam)
+			r_emit = SVector(ret.x.x, ret.x.y, ret.x.z)
+			# Distance = √(9 + 16 + 25) = √50
+			d = norm(cam.origin - r_emit)
+			@test (cam.t - ret.x.t) ≈ d atol=1e-10
+			@test ret.x ≈ x0 + u * ret.tau atol=1e-12
+		end
+
+		@testset "arbitrary camera direction" begin
+			n̂ = normalize(SVector(1.0, 0.0, 1.0))
+			cam = S.CameraPerspective(;
+				photon_direction=n̂, origin=SVector(0.0, 0.0, -10.0),
+				xys=SVector{2}[(0.0, 0.0)], nz=1, ν=1.0, t=15.0,
+			)
+			x0 = S.FourPosition(0.0, 1.0, 0.5, 3.0)
+			u = construct(S.FourVelocity, S.gamma => 5, S.direction3 => normalize(SVector(0.2, 0.1, 0.97)))
+			wl = S.Geometries.InertialWorldline(x0, u)
+			ret = S.retarded_event(wl, cam)
+			r_emit = SVector(ret.x.x, ret.x.y, ret.x.z)
+			@test (cam.t - ret.x.t)^2 ≈ sum(abs2, cam.origin - r_emit) atol=1e-10
+			@test ret.x ≈ x0 + u * ret.tau atol=1e-12
+			@test cam.t > ret.x.t
+		end
+
+		@testset "consistency with CameraOrtho for on-axis stationary source" begin
+			# For a stationary source on axis, perspective and ortho give identical retarded events
+			D = 1000.0
+			x0 = S.FourPosition(0.0, 0.0, 0.0, 0.0)
+			u = S.FourVelocity(SVector(0.0, 0.0, 0.0))  # stationary
+			wl = S.Geometries.InertialWorldline(x0, u)
+
+			t_obs_ortho = 20.0
+			cam_ortho = S.CameraZ(; xys=grid(SVector, x=[0.0], y=[0.0]), nz=1, ν=1.0, t=t_obs_ortho)
+			ret_ortho = S.retarded_event(wl, cam_ortho)
+
+			# Perspective camera at z=-D, t shifted by D (light travel from screen to pinhole)
+			cam_persp = make_persp_cam(origin=SVector(0.0, 0.0, -D), t=t_obs_ortho + D)
+			ret_persp = S.retarded_event(wl, cam_persp)
+
+			@test ret_persp.x.t ≈ ret_ortho.x.t atol=1e-10
+			@test ret_persp.tau ≈ ret_ortho.tau atol=1e-10
+		end
+	end
 end
