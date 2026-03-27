@@ -223,8 +223,8 @@ end
 # N=1: delegate directly, zero overhead
 integrate_ray(cm::CombinedMedium{<:Tuple{Any}}, ray::Ray, what=Intensity()) = integrate_ray(cm.objects[1], ray, what)
 
-# General: integrate objects in tuple order (must be back-to-front)
-integrate_ray(cm::CombinedMedium, ray::Ray, what=Intensity()) = begin
+# Tuple: recursive unrolling for type stability and GPU
+integrate_ray(cm::CombinedMedium{<:Tuple}, ray::Ray, what=Intensity()) = begin
 	ν = frequency(ray)
 	k1 = direction4(ray)
 
@@ -245,6 +245,24 @@ end
 	seg = z_interval_clipped(obj, ray)
 	acc = _integrate_segment(acc, obj, ray, seg)
 	_integrate_combined_recursive(acc, Base.tail(objs), ray)
+end
+
+# AbstractVector: loop-based
+integrate_ray(cm::CombinedMedium{<:AbstractVector}, ray::Ray, what=Intensity()) = begin
+	ν = frequency(ray)
+	k1 = direction4(ray)
+
+	obj1 = first(cm.objects)
+	seg1 = z_interval_clipped(obj1, ray)
+	s_init = leftendpoint(seg1)
+	acc = _integrate_ray_step(_init_acc(typeof(what), frequency(ray)), obj1, ray.x0 + s_init * k1, ray, zero(float(s_init)))
+
+	for obj in cm.objects
+		seg = z_interval_clipped(obj, ray)
+		acc = _integrate_segment(acc, obj, ray, seg)
+	end
+
+	return _postprocess_acc(acc, ν, what)
 end
 
 

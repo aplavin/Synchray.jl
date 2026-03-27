@@ -276,6 +276,60 @@ end
 	@test S.four_velocity(geom_moving, S.FourPosition(0,0,0,0)) === u_moving
 end
 
+@testitem "Ball geometry" begin
+	import Synchray as S
+
+	u0 = S.FourVelocity(1.0, 0.0, 0.0, 0.0)  # stationary
+	wl = S.Geometries.InertialWorldline(S.FourPosition(0.0, 0.0, 0.0, 0.0), u0)
+	geom = S.Geometries.Ball(wl, 1.0)
+
+	# four_velocity returns the worldline velocity
+	@test S.four_velocity(geom, S.FourPosition(0,0,0,0)) === u0
+
+	# prepare_for_computations is identity
+	@test S.prepare_for_computations(geom) === geom
+
+	# z_interval: ray through center of stationary unit ball
+	ray_center = S.RayZ(; x0=S.FourPosition(0.0, 0.0, 0.0, 0.0), k=1.0, nz=64)
+	zi = S.z_interval(geom, ray_center)
+	@test leftendpoint(zi) ≈ -1.0
+	@test rightendpoint(zi) ≈ 1.0
+
+	# z_interval: ray that misses
+	ray_miss = S.RayZ(; x0=S.FourPosition(0.0, 5.0, 0.0, 0.0), k=1.0, nz=64)
+	zi_miss = S.z_interval(geom, ray_miss)
+	@test isempty(zi_miss)
+
+	# z_interval: shifted center
+	wl_shifted = S.Geometries.InertialWorldline(S.FourPosition(0.0, 0.0, 0.0, 3.0), u0)
+	geom_shifted = S.Geometries.Ball(wl_shifted, 1.0)
+	ray_at_shifted = S.RayZ(; x0=S.FourPosition(0.0, 0.0, 0.0, 0.0), k=1.0, nz=64)
+	zi_shifted = S.z_interval(geom_shifted, ray_at_shifted)
+	@test leftendpoint(zi_shifted) ≈ 2.0
+	@test rightendpoint(zi_shifted) ≈ 4.0
+
+	# z_interval: moving ball with nonzero velocity
+	β = SVector(0.0, 0.0, 0.5)
+	u_moving = S.FourVelocity(β)
+	wl_moving = S.Geometries.InertialWorldline(S.FourPosition(0.0, 0.0, 0.0, 0.0), u_moving)
+	geom_moving = S.Geometries.Ball(wl_moving, 1.0)
+	zi_moving = S.z_interval(geom_moving, ray_center)
+	@test !isempty(zi_moving)
+	@test S.four_velocity(geom_moving, S.FourPosition(0,0,0,0)) === u_moving
+
+	# Ball matches Ellipsoid with equal sizes
+	sizes = SVector(1.0, 1.0, 1.0)
+	geom_ellipsoid = S.Geometries.Ellipsoid(wl, sizes)
+	@test S.z_interval(geom, ray_center) ≈ S.z_interval(geom_ellipsoid, ray_center)
+	@test S.z_interval(geom, ray_miss) == S.z_interval(geom_ellipsoid, ray_miss)  # both empty
+
+	geom_ellipsoid_moving = S.Geometries.Ellipsoid(wl_moving, sizes)
+	zi_ball = S.z_interval(geom_moving, ray_center)
+	zi_ell = S.z_interval(geom_ellipsoid_moving, ray_center)
+	@test leftendpoint(zi_ball) ≈ leftendpoint(zi_ell)
+	@test rightendpoint(zi_ball) ≈ rightendpoint(zi_ell)
+end
+
 @testitem "SlowLight/FastLight basics" begin
 	import Synchray as S
 	using Accessors

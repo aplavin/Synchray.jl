@@ -133,7 +133,7 @@ Ray(x0::FourPosition, k::FourFrequency, e1::SVector{3}, e2::SVector{3}, nz::Int,
     Ray(x0, k, e1, e2, nz, light, nothing)
 
 """Unit spatial direction of ray propagation."""
-direction3(ray::Ray) = direction3(ray.k)
+@inline direction3(ray::Ray) = direction3(ray.k)
 
 """
     direction4(ray::Ray) -> FourPosition
@@ -450,7 +450,7 @@ end
 	_integrate_segment(acc, obj, ray, seg)
 end
 
-@inline _integrate_through_clipped(acc, cm::CombinedMedium, ray, clip) =
+@inline _integrate_through_clipped(acc, cm::CombinedMedium{<:Tuple}, ray, clip) =
 	_integrate_clipped_recursive(acc, cm.objects, ray, clip)
 
 @inline _integrate_clipped_recursive(acc, ::Tuple{}, ray, clip) = acc
@@ -459,6 +459,14 @@ end
 	seg = z_interval_clipped(obj, ray) ∩ clip
 	acc = _integrate_segment(acc, obj, ray, seg)
 	_integrate_clipped_recursive(acc, Base.tail(objs), ray, clip)
+end
+
+@inline _integrate_through_clipped(acc, cm::CombinedMedium{<:AbstractVector}, ray, clip) = begin
+	for obj in cm.objects
+		seg = z_interval_clipped(obj, ray) ∩ clip
+		acc = _integrate_segment(acc, obj, ray, seg)
+	end
+	acc
 end
 
 @inline _gr_init_acc(obj::AbstractMedium, ray, what) = begin

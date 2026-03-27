@@ -137,6 +137,22 @@ struct Cylindrical{TR, TRadius, Tz} <: AbstractGeometry
 end
 Cylindrical(; axis::AbstractVector, radius, z) = Cylindrical(SVector{3}(axis), radius, z)
 
+"""
+    Ball{TW, TS} <: AbstractGeometry
+
+Spherical body moving along a worldline. Same as `Ellipsoid` but with a single radius.
+The `z_interval` implementation is significantly faster because it avoids the rest-frame
+Lorentz boost, using Minkowski inner product invariance instead.
+
+# Fields
+- `center::TW`: Worldline of the center (e.g., `InertialWorldline`)
+- `size::TS`: Rest-frame radius (scalar)
+"""
+@kwdef struct Ball{TW, TS} <: AbstractGeometry
+	center::TW
+	size::TS
+end
+
 end # module Geometries
 
 
@@ -155,6 +171,45 @@ prepare_for_computations(g::Geometries.Ellipsoid) = g
 
 @inline four_velocity(g::Geometries.Ellipsoid, x4) = four_velocity(g.center)
 @inline four_velocity(wl::Geometries.InertialWorldline) = wl.u
+
+prepare_for_computations(g::Geometries.Ball) = g
+
+@inline four_velocity(g::Geometries.Ball, x4) = four_velocity(g.center)
+
+@inline function z_interval(g::Geometries.Ball, ray::Ray)
+	# Worldtube of a rigid sphere moving with constant 4-velocity u.
+	# For a sphere (all sizes equal), the quadratic can be solved directly from
+	# Minkowski inner products, without Lorentz-boosting to the rest frame.
+	# Key identity: for V ⊥ u (Minkowski), |v_rest|² = η(V,V).
+	@assert g.center isa Geometries.InertialWorldline
+	u = g.center.u
+	Δ0 = ray.x0 - g.center.x0
+	kdir = direction4(ray)
+
+	a = minkowski_dot(u, kdir)
+	b = minkowski_dot(u, Δ0)
+
+	# η(P0,P0) = η(Δ0,Δ0) + b², η(P1,P1) = η(kdir,kdir) + a², η(P0,P1) = η(Δ0,kdir) + a·b
+	p0_sq = minkowski_dot(Δ0, Δ0) + b^2
+	p1_sq = minkowski_dot(kdir, kdir) + a^2
+	p01   = minkowski_dot(Δ0, kdir) + a * b
+
+	R_sq = g.size^2
+	A = p1_sq / R_sq
+	B = 2 * p01 / R_sq
+	C = p0_sq / R_sq - one(A)
+	D = B^2 - 4 * A * C
+
+	if !(D > 0) || iszero(A)
+		s0 = zero(A)
+		return s0 .. (s0 - eps(oneunit(s0)))
+	end
+
+	sD = √(D)
+	s1 = (-B - sD) / (2 * A)
+	s2 = (-B + sD) / (2 * A)
+	return min(s1, s2) .. max(s1, s2)
+end
 
 function z_interval(g::Geometries.Ellipsoid, ray::Ray)
 	# Worldtube of a rigid axis-aligned ellipsoid moving with constant 4-velocity u.

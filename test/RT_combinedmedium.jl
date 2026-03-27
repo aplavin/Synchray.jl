@@ -119,4 +119,12 @@
         @test isbits(S.CombinedMedium(ell_A, ell_B))
         @test isbits(S.CombinedMedium(ell_A, ell_B, ell_C))
     end
+
+    @testset "vector of objects matches tuple" begin
+        cm_tuple = S.CombinedMedium(ell_A, ell_B, ell_C)
+        cm_vec = S.CombinedMedium([ell_A, ell_B, ell_C])
+
+        @test S.render(cam, cm_vec) ≈ S.render(cam, cm_tuple)
+        @test S.render(cam, cm_vec, S.OpticalDepth()) ≈ S.render(cam, cm_tuple, S.OpticalDepth())
+    end
 end
