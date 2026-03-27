@@ -1,3 +1,30 @@
+@testitem "FixedEmission" begin
+	import Synchray as S
+
+	region = S.EmissionRegion(
+		geometry = S.Geometries.Conical(; axis=SVector(0, 0, 1), φj=0.1, z=0.1..5),
+		velocity = S.VelocitySpec(S.Directions.Axial(), S.beta, S.Profiles.Constant(0)),
+		emission = S.FixedEmission(S=1.0, α=0.01),
+	)
+
+	ray = S.RayZ(; x0=S.FourPosition(0, 0, 0, 0), k=10.0, nz=256)
+
+	I_val = S.render(ray, region)
+	@test I_val > 0
+
+	# frequency-independent: different k gives the same intensity
+	ray2 = S.RayZ(; x0=S.FourPosition(0, 0, 0, 0), k=1.0, nz=256)
+	@test S.render(ray2, region) ≈ I_val rtol=1e-10
+
+	# higher S → higher intensity
+	region_bright = @set region.emission.S = 10.0
+	@test S.render(ray, region_bright) > I_val
+
+	# higher α → more absorption → approaches S in thick limit
+	region_thick = @set region.emission.α = 1e6
+	@test S.render(ray, region_thick) ≈ 1.0 rtol=0.01
+end
+
 @testitem "PeakedEmission" begin
 	import Synchray as S
 

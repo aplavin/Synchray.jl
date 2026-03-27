@@ -1,4 +1,25 @@
 """
+    FixedEmission{TS, Ta}
+
+Frequency-independent emission model with fixed source function and absorption coefficient.
+
+# Fields
+- `S::TS`: Source function (= j/α). Controls brightness in the optically thick limit.
+- `α::Ta`: Absorption coefficient. Controls opacity.
+"""
+@kwdef struct FixedEmission{TS, Ta}
+    S::TS
+    α::Ta
+end
+
+@inline function emissivity_absorption(em::FixedEmission, geom, x4, k′)
+    α_val = em.α
+    j_val = α_val * em.S
+    return (j_val, α_val)
+end
+
+
+"""
     PeakedEmission{TS, Ta, Tν0, Tσ}
 
 Emission model with a bell-shaped spectral profile peaked around a center frequency.
