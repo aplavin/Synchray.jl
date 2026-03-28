@@ -310,8 +310,6 @@ end
 	end
 
 	@testset "CameraPerspective SlowLight" begin
-		using LinearAlgebra: norm
-
 		# Helper: perspective camera looking along +z from a given origin
 		make_persp_cam(; origin, t) = S.CameraPerspective(;
 			photon_direction=SVector(0.0, 0.0, 1.0),

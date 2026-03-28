@@ -2061,9 +2061,10 @@ deps = ["Accessors", "AccessorsExtra", "DataPipes", "DispatchDoctor", "FastPower
 path = "/Users/aplavin/.julia/dev/Synchray"
 uuid = "00000000-0000-4000-b000-202512310000"
 version = "0.1.4"
-weakdeps = ["Krang"]
+weakdeps = ["Adapt", "Krang"]
 
     [deps.Synchray.extensions]
+    AdaptExt = "Adapt"
     KrangExt = "Krang"
 
 [[deps.TOML]]

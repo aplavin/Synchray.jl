@@ -68,7 +68,28 @@ function combined_medium_benchmark(; render_field, log_path, suffix="")
 end
 
 
+_to_mtl(obj::S.CombinedMedium{<:AbstractVector}) = S.CombinedMedium(MtlVector(obj.objects))
+_to_mtl(obj) = obj
+
+function make_render_metal_cm(log_path)
+    function(obj; extent, nz=256, npx=256, ν, t=0.0, what=S.Intensity(), adaptive_supersampling=false)
+        cam = S.CameraZ(; xys=grid(SVector, x=range(0±extent, npx), y=range(0±extent, npx)), nz, ν=Float32(ν), t)
+        obj32 = _to_mtl(S.to_float_type(Float32, obj))
+        cam_gpu = @p cam S.to_float_type(Float32) @modify(MtlArray, AxisKeys.keyless_unname(__.xys))
+        open(log_path, "a") do io
+            redirect_stdout(io) do
+                @modify(Array, AxisKeys.keyless_unname(S.render(cam_gpu, obj32, what)))
+                label = f"{nameof(typeof(obj)):27s}, {nameof(typeof(what)):15s}, {npx}px × {nz}"
+                @time label @modify(Array, AxisKeys.keyless_unname(S.render(cam_gpu, obj32, what)))
+            end
+        end
+    end
+end
+
 function main(; suffix="")
     logs = init_script(@__FILE__)
     combined_medium_benchmark(; render_field=make_render_cpu(logs.log_cpu), log_path=logs.log_cpu, suffix)
+    if HAS_METAL
+        combined_medium_benchmark(; render_field=make_render_metal_cm(logs.log_metal), log_path=logs.log_metal, suffix="_metal")
+    end
 end

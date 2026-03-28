@@ -1,0 +1,4 @@
+combined_medium_benchmark()
+             CombinedMedium,       Intensity, 256px × 256: 0.002694 seconds (305 allocations: 266.289 KiB)
+             CombinedMedium,       Intensity, 256px × 256: 0.003666 seconds (323 allocations: 264.992 KiB)
+             CombinedMedium,       Intensity, 256px × 256: 0.005882 seconds (324 allocations: 265.383 KiB)
