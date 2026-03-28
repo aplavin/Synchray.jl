@@ -61,7 +61,7 @@ function CameraOrtho(; photon_direction::SVector{3}, up=SVector(0, 1, 0), origin
 end
 
 """Convenience constructor for the common Z-direction camera (screen at z=0, photon direction +z)."""
-function CameraZ(; xys, nz, ν, t, light=SlowLight(), mapfunc=map)
+@unstable function CameraZ(; xys, nz, ν, t, light=SlowLight(), mapfunc=map)
 	sample = first(xys)
 	OT = float(eltype(sample))          # coordinate type (may have units)
 	FT = typeof(float(one(OT)))         # dimensionless float type

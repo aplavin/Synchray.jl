@@ -86,5 +86,4 @@ end
 rotation_local_to_lab(region::EmissionRegion) = rotation_local_to_lab(region.geometry)
 rotate_lab_to_local(region::EmissionRegion, r::SVector{3}) = rotate_lab_to_local(region.geometry, r)
 rotate_local_to_lab(region::EmissionRegion, r_local::SVector{3}) = rotate_local_to_lab(region.geometry, r_local)
-ray_in_local_coords(ray, region::EmissionRegion; s_range) = ray_in_local_coords(ray, region.geometry; s_range)
 @unstable camera_fov_in_local_coords(cam, region::EmissionRegion; v=0, s_range) = camera_fov_in_local_coords(cam, region.geometry; v, s_range)
