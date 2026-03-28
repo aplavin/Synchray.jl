@@ -393,6 +393,28 @@ end
     FourPosition(x4.t, r_screen)
 end
 
+"""
+    image_coordinates(cam, r::SVector{3}) -> SVector{2}
+    image_coordinates(cam, x4::FourPosition) -> SVector{2}
+
+Project a spatial position (or spacetime event) onto the camera image plane,
+returning `(u, v)` pixel coordinates in the `(e1, e2)` basis.
+
+For `CameraOrtho`: orthographic projection (drop depth component).
+For `CameraPerspective`: pinhole projection (divide by depth along optical axis).
+"""
+@inline function image_coordinates(cam::CameraOrtho, r::SVector{3})
+    dr = r - cam.origin
+    SA[dot(dr, cam.e1), dot(dr, cam.e2)]
+end
+
+@inline function image_coordinates(cam::CameraPerspective, r::SVector{3})
+    dir = normalize(r - cam.origin)
+    SA[-dot(dir, cam.e1) / dot(dir, cam.n), -dot(dir, cam.e2) / dot(dir, cam.n)]
+end
+
+@inline image_coordinates(cam, x4::FourPosition) = image_coordinates(cam, SVector(@swiz x4.xyz))
+
 
 # ============================================================================
 # GR Camera — gravitational lensing via precomputed deflection map

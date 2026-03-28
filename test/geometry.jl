@@ -430,3 +430,66 @@ end
 		@test S.camera_ray_anchor(cam_fast, S.event_on_camera_ray(cam_fast, r_lab)).t ≈ t_obs
 	end
 end
+
+@testitem "image_coordinates" begin
+	import Synchray as S
+
+	# --- CameraOrtho: roundtrip with camera_ray ---
+	# For arbitrary-angle ortho camera, image_coordinates should invert camera_ray's anchor offset
+	@testset for n̂ in [SVector(0.0, 0.0, 1.0),
+	                    normalize(SVector(1.0, 0.0, 1.0)),
+	                    normalize(SVector(-0.3, 0.7, 0.5))]
+		up = abs(dot(SVector(0.0, 1.0, 0.0), n̂)) < 0.9 ? SVector(0.0, 1.0, 0.0) : SVector(1.0, 0.0, 0.0)
+		cam = S.CameraOrtho(; photon_direction=n̂, up, xys=SVector{2}[(0.0, 0.0)], nz=1, ν=1.0, t=0.0)
+
+		uv = SVector(0.7, -0.4)
+		ray = S.camera_ray(cam, uv)
+		r_anchor = SVector(ray.x0.x, ray.x0.y, ray.x0.z)
+		@test S.image_coordinates(cam, r_anchor) ≈ uv
+
+		# Point displaced along n from the anchor should project to the same uv (ortho: depth is ignored)
+		r_deep = r_anchor + 5.3 * cam.n
+		@test S.image_coordinates(cam, r_deep) ≈ uv
+	end
+
+	# --- CameraOrtho: explicit decomposition for CameraZ ---
+	cam_z = S.CameraZ(; xys=SVector{2}[(0.0, 0.0)], nz=1, ν=1.0, t=0.0)
+	r = SVector(1.5, -2.3, 7.0)
+	uv = S.image_coordinates(cam_z, r)
+	# CameraZ has e1=x̂, e2=ŷ, n=ẑ, origin=0 — so image_coordinates is just (x, y)
+	@test uv ≈ SVector(r[1], r[2])
+
+	# --- CameraPerspective: roundtrip with camera_ray ---
+	# A point along the ray from camera_ray(cam, uv) should project back to uv
+	@testset for n̂ in [SVector(0.0, 0.0, 1.0),
+	                    normalize(SVector(1.0, 0.0, 1.0)),
+	                    normalize(SVector(-0.3, 0.7, 0.5))]
+		up = abs(dot(SVector(0.0, 1.0, 0.0), n̂)) < 0.9 ? SVector(0.0, 1.0, 0.0) : SVector(1.0, 0.0, 0.0)
+		origin = SVector(0.5, -0.25, 1.0)
+		cam_p = S.CameraPerspective(; photon_direction=n̂, up, origin, xys=SVector{2}[(0.0, 0.0)], nz=1, ν=1.0, t=0.0)
+
+		uv = SVector(0.3, -0.15)
+		ray = S.camera_ray(cam_p, uv)
+		dir = S.direction3(ray)
+		# Take a point at distance 10 along the ray
+		r_far = cam_p.origin + 10.0 * dir
+		@test S.image_coordinates(cam_p, r_far) ≈ uv
+		# Different distance, same projected uv
+		r_near = cam_p.origin + 2.0 * dir
+		@test S.image_coordinates(cam_p, r_near) ≈ uv
+	end
+
+	# --- CameraPerspective: known tangent values ---
+	# On-axis point should give (0, 0)
+	cam_p0 = S.CameraPerspective(; photon_direction=SVector(0.0, 0.0, 1.0), origin=SVector(0.0, 0.0, 0.0),
+		xys=SVector{2}[(0.0, 0.0)], nz=1, ν=1.0, t=0.0)
+	@test S.image_coordinates(cam_p0, SVector(0.0, 0.0, 5.0)) ≈ SVector(0.0, 0.0) atol=1e-14
+	# Point at 45° in e1 direction: pinhole inversion gives uv[1] ≈ -1
+	@test S.image_coordinates(cam_p0, SVector(5.0, 0.0, 5.0)) ≈ SVector(-1.0, 0.0) atol=1e-12
+
+	# --- FourPosition overload: ignores time ---
+	cam = S.CameraOrtho(; photon_direction=normalize(SVector(1.0, 1.0, 1.0)), xys=SVector{2}[(0.0, 0.0)], nz=1, ν=1.0, t=0.0)
+	r3 = SVector(1.0, -0.5, 2.0)
+	x4 = S.FourPosition(999.0, r3...)
+	@test S.image_coordinates(cam, x4) ≈ S.image_coordinates(cam, r3)
+end
