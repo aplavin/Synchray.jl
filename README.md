@@ -21,29 +21,33 @@ Fast, suitable for interactive use and parameter exploration.
 ## Minimal use (conical jet)
 
 ```julia
+using Synchray
 import Synchray as S
+using RectiGrids
 
 # Image-plane grid
 xs = range(-1.0, 1.0; length=256)
 ys = range(-1.0, 1.0; length=256)
-cam = S.CameraZ(
-    xys=S.grid(S.SVector, xs, ys),
+cam = S.CameraZ(;
+    xys=grid(S.SVector, xs, ys),
     nz=200, ν=230.0, t=0.0)
 
 jet = S.EmissionRegion(
-    geometry = Geometries.Conical(
+    geometry = S.Geometries.Conical(;
         axis = S.SVector(0.0, 0.0, 1.0),
         φj = 0.03,
         z = 0.1..10.0,
     ),
-    ne = Profiles.Axial(S.PowerLaw(-2; val0=1.0, s0=1.0)),
-    B = S.BFieldSpec(
-        Profiles.Axial(S.PowerLaw(-1; val0=1.0, s0=1.0)),
-        Directions.Scalar(),
-        b -> S.FullyTangled(b)
+    velocity = S.VelocitySpec(S.Directions.Axial(), S.beta, S.Profiles.Constant(0.99)),
+    emission = S.SynchrotronEmission(
+        ne = S.Profiles.Axial(S.PowerLaw(-2; val0=1.0, s0=1.0)),
+        B = S.BFieldSpec(
+            S.Profiles.Axial(S.PowerLaw(-1; val0=1.0, s0=1.0)),
+            S.Directions.Scalar(),
+            b -> S.FullyTangled(b)
+        ),
+        electrons = S.IsotropicPowerLawElectrons(; p=2.5),
     ),
-    velocity = S.VelocitySpec(Directions.Axial(), S.beta, Profiles.Constant(0.99)),
-    model = S.IsotropicPowerLawElectrons(; p=2.5),
 )
 
 Iν = S.render(cam, S.prepare_for_computations(jet), S.Intensity())
