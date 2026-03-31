@@ -189,16 +189,26 @@ prepare_for_computations(g::Geometries.Ball) = g
 	a = minkowski_dot(u, kdir)
 	b = minkowski_dot(u, Δ0)
 
-	# η(P0,P0) = η(Δ0,Δ0) + b², η(P1,P1) = η(kdir,kdir) + a², η(P0,P1) = η(Δ0,kdir) + a·b
-	p0_sq = minkowski_dot(Δ0, Δ0) + b^2
-	p1_sq = minkowski_dot(kdir, kdir) + a^2
-	p01   = minkowski_dot(Δ0, kdir) + a * b
+	e00 = minkowski_dot(Δ0, Δ0)
+	e11 = minkowski_dot(kdir, kdir)
+	e01 = minkowski_dot(Δ0, kdir)
+
+	p1_sq = e11 + a^2
+	p01   = e01 + a * b
 
 	R_sq = g.size^2
 	A = p1_sq / R_sq
 	B = 2 * p01 / R_sq
-	C = p0_sq / R_sq - one(A)
-	D = B^2 - 4 * A * C
+
+	# Numerically stable discriminant.  The naïve B²−4AC loses all Float32
+	# precision when the sphere is far from the camera (B² and 4AC are both
+	# ~O(d⁴/R⁴) while D is only ~O(d²/R²)).
+	# Factor as D = 4/R² · (p1_sq − ΔCS/R²), where ΔCS = gram + quad
+	# splits the Cauchy–Schwarz remainder into moderate-sized pieces.
+	gram = e11 * e00 - e01^2
+	v = a * Δ0 - b * kdir
+	quad = minkowski_dot(v, v)
+	D = 4 / R_sq * (p1_sq - (gram + quad) / R_sq)
 
 	if !(D > 0) || iszero(A)
 		s0 = zero(A)
