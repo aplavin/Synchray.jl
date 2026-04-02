@@ -593,7 +593,7 @@ function z_interval(g::Geometries.Parabolic, ray::Ray)
 	end
 	infseg = FT(-Inf) .. FT(Inf)
 
-	# ── Step A: Axial truncation ──
+	# ── Step A: Bracket from axial truncation ∩ radial bounding ──
 	α0 = dot(axis, r0)
 
 	r0_perp = r0 - α0 * axis
@@ -602,32 +602,31 @@ function z_interval(g::Geometries.Parabolic, ray::Ray)
 	r0n_perp = dot(r0_perp, n̂_perp)
 	r0_perp_sq = dot(r0_perp, r0_perp)
 
-	# Special case: ray perpendicular to axis (a_n ≈ 0).
-	# z is constant → R(z) is constant → reduces to cylinder intersection.
-	if iszero(a_n)
+	# Axial truncation: z(s) ∈ [z_min, z_max] (may be ±Inf when a_n ≈ 0)
+	s_lo, s_hi = if iszero(a_n)
 		(α0 ∈ g.z) || return emptyseg
-		R_at_z = _envelope_radius(g, α0)
-		R_sq = R_at_z^2
-		# Solve ρ²(s) ≤ R² : quadratic in s
-		A = n_perp_sq
-		B = 2 * r0n_perp
-		C = r0_perp_sq - R_sq
-		if iszero(A)
-			return (C ≤ 0) ? infseg : emptyseg
-		end
-		D = B^2 - 4 * A * C
-		(!(D > 0)) && return emptyseg
-		sD = √(D)
-		s1 = (-B - sD) / (2 * A)
-		s2 = (-B + sD) / (2 * A)
-		return min(s1, s2) .. max(s1, s2)
+		FT(-Inf), FT(Inf)
+	else
+		zmin, zmax = endpoints(g.z)
+		s1 = (zmin - α0) / a_n
+		s2 = (zmax - α0) / a_n
+		min(s1, s2), max(s1, s2)
 	end
 
-	zmin, zmax = endpoints(g.z)
-	s1 = (zmin - α0) / a_n
-	s2 = (zmax - α0) / a_n
-	s_lo = min(s1, s2)
-	s_hi = max(s1, s2)
+	# Radial bounding: ρ(s) ≤ R_max (always finite, clips ±Inf)
+	R_max = _envelope_radius(g, maximum(g.z))
+	D_rad = r0n_perp^2 - n_perp_sq * (r0_perp_sq - R_max^2)
+	D_rad < 0 && return emptyseg
+	if n_perp_sq > 0
+		sD = √D_rad / n_perp_sq
+		s_c = -r0n_perp / n_perp_sq
+		s_lo = max(s_lo, s_c - sD)
+		s_hi = min(s_hi, s_c + sD)
+	elseif r0_perp_sq > R_max^2
+		return emptyseg
+	end
+
+	s_lo > s_hi && return emptyseg
 
 	# ── Step B: Boundary function f(s) = ρ²(s) - R(z(s))² ──
 
@@ -685,12 +684,12 @@ function z_interval(g::Geometries.Parabolic, ray::Ray)
 end
 
 """
-Conservative bisection: ~10 iterations, returns the boundary on the "inside" side
+Conservative bisection: ~16 iterations, returns the boundary on the "inside" side
 so the interval is slightly larger than the true intersection.
 """
 @inline function _bisect_conservative(f, a, b)
 	fa_pos = f(a) > 0
-	for _ in 1:10
+	for _ in 1:16
 		m = (a + b) / 2
 		if (f(m) > 0) == fa_pos
 			a = m
