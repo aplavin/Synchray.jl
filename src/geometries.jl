@@ -153,6 +153,51 @@ Lorentz boost, using Minkowski inner product invariance instead.
 	size::TS
 end
 
+"""
+    Parabolic{TR, TR_ref, Tz_ref, Ta, Tz} <: AbstractGeometry
+
+Generalized power-law envelope geometry: `R(z) = R_ref · (z / z_ref)^a`.
+
+Interpolates between cylindrical (`a → 0`), parabolic (`a = 1/2`),
+and conical (`a = 1`) shapes. For self-consistent jet models,
+conservation laws dictate profile scalings that depend on `a`:
+- Poloidal B: `B_p ∝ z^(-2a)` (magnetic flux conservation)
+- Toroidal B: `B_φ ∝ z^(-a)` (flux freezing)
+- Density:    `n_e ∝ z^(-2a)` (particle flux conservation, constant Γ)
+
+# Fields
+- `R_local_to_lab::TR`: 3×3 rotation matrix (local jet frame → lab frame)
+- `R_ref::TR_ref`: Envelope radius at `z = z_ref`
+- `z_ref::Tz_ref`: Reference axial distance
+- `a::Ta`: Shape exponent (must satisfy `0 < a ≤ 1`)
+- `z::Tz`: Axial extent interval
+
+# Constructor
+Use `Parabolic(; axis, R_ref, z_ref, a, z)` where `axis` is a unit vector.
+
+A `Conical` with half-angle `φj` is equivalent to
+`Parabolic(; axis, R_ref = z_ref * tan(φj), z_ref = <any>, a = 1, z)`.
+"""
+struct Parabolic{TR, TR_ref, Tz_ref, Ta, Tz} <: AbstractGeometry
+	R_local_to_lab::TR
+	R_ref::TR_ref
+	z_ref::Tz_ref
+	a::Ta
+	z::Tz
+
+	function Parabolic(R_local_to_lab::SMatrix{3,3}, R_ref, z_ref, a, z)
+		@assert 0 < a ≤ 1 "shape exponent a must satisfy 0 < a ≤ 1, got a=$a"
+		return new{typeof(R_local_to_lab), typeof(R_ref), typeof(z_ref), typeof(a), typeof(z)}(R_local_to_lab, R_ref, z_ref, a, z)
+	end
+
+	function Parabolic(axis::SVector{3}, R_ref, z_ref, a, z)
+		@assert isapprox(norm(axis), 1; atol=√eps(float(eltype(axis))))
+		R = S._axis_to_rotation(axis)
+		return Parabolic(R, R_ref, z_ref, a, z)
+	end
+end
+Parabolic(; axis::AbstractVector, R_ref, z_ref, a, z) = Parabolic(SVector{3}(axis), R_ref, z_ref, a, z)
+
 end # module Geometries
 
 
@@ -165,6 +210,14 @@ ustrip(g::Geometries.Cylindrical) = @p let
 	g
 	@modify(_u_to_code(_, UCTX.L0), __.z)
 	@modify(_u_to_code(_, UCTX.L0), __.radius)
+end
+
+prepare_for_computations(g::Geometries.Parabolic) = @modify(FixedExponent, g.a)
+ustrip(g::Geometries.Parabolic) = @p let
+	g
+	@modify(_u_to_code(_, UCTX.L0), __.z)
+	@modify(_u_to_code(_, UCTX.L0), __.R_ref)
+	@modify(_u_to_code(_, UCTX.L0), __.z_ref)
 end
 
 prepare_for_computations(g::Geometries.Ellipsoid) = g
@@ -264,6 +317,9 @@ Accessors.set(g::Geometries.Conical, ::typeof(geometry_axis), v::SVector{3}) = G
 
 @inline geometry_axis(g::Geometries.Cylindrical) = g.R_local_to_lab[:,3]
 Accessors.set(g::Geometries.Cylindrical, ::typeof(geometry_axis), v::SVector{3}) = Geometries.Cylindrical(v, g.radius, g.z)
+
+@inline geometry_axis(g::Geometries.Parabolic) = g.R_local_to_lab[:,3]
+Accessors.set(g::Geometries.Parabolic, ::typeof(geometry_axis), v::SVector{3}) = Geometries.Parabolic(v, g.R_ref, g.z_ref, g.a, g.z)
 
 """
 Compute cylindrical coordinates from rotation matrix.
@@ -492,6 +548,161 @@ function z_interval(g::Geometries.Cylindrical, ray::Ray)
 end
 
 rotation_local_to_lab(geom::Geometries.Cylindrical) = geom.R_local_to_lab
+
+# ============================================================================
+# Parabolic geometry methods
+# ============================================================================
+
+"""Envelope radius at axial distance z: R(z) = R_ref · (z / z_ref)^a"""
+@inline _envelope_radius(g::Geometries.Parabolic, z) = g.R_ref * (z / g.z_ref)^g.a
+
+@inline function natural_coords(g::Geometries.Parabolic, x4)
+	(; z, ρ) = _cylindrical_coords(g.R_local_to_lab, x4)
+	R_at_z = _envelope_radius(g, z)
+	η = ρ / R_at_z
+	return (; z, ρ, η)
+end
+
+@inline natural_coords(g::Geometries.Parabolic, x4, ::Val{:z}) =
+	dot(geometry_axis(g), @swiz x4.xyz)
+
+@inline function is_inside(g::Geometries.Parabolic, x4)
+	(; z, ρ) = _cylindrical_coords(g.R_local_to_lab, x4)
+	return (z ∈ g.z) && ρ ≤ _envelope_radius(g, z)
+end
+
+"""
+    z_interval(g::Parabolic, ray) -> Interval
+
+Compute ray-envelope intersection interval in the ray parameter `s`.
+
+Uses 3-point bracketing (at truncation endpoints and closest-approach to axis)
+followed by conservative bisection (~10 iterations per root).
+"""
+function z_interval(g::Geometries.Parabolic, ray::Ray)
+	@boundscheck @assert 0 ≤ leftendpoint(g.z) ≤ rightendpoint(g.z)
+	r0 = @swiz ray.x0.xyz
+	n̂ = direction3(ray)
+	axis = geometry_axis(g)
+	a_n = dot(axis, n̂)    # projection of ray direction onto axis
+
+	FT = eltype(ray.x0) |> float
+	emptyseg = let
+		sref = FT(0)
+		sref .. (sref - eps(oneunit(sref)))
+	end
+	infseg = FT(-Inf) .. FT(Inf)
+
+	# ── Step A: Axial truncation ──
+	α0 = dot(axis, r0)
+
+	r0_perp = r0 - α0 * axis
+	n̂_perp = n̂ - a_n * axis
+	n_perp_sq = dot(n̂_perp, n̂_perp)
+	r0n_perp = dot(r0_perp, n̂_perp)
+	r0_perp_sq = dot(r0_perp, r0_perp)
+
+	# Special case: ray perpendicular to axis (a_n ≈ 0).
+	# z is constant → R(z) is constant → reduces to cylinder intersection.
+	if iszero(a_n)
+		(α0 ∈ g.z) || return emptyseg
+		R_at_z = _envelope_radius(g, α0)
+		R_sq = R_at_z^2
+		# Solve ρ²(s) ≤ R² : quadratic in s
+		A = n_perp_sq
+		B = 2 * r0n_perp
+		C = r0_perp_sq - R_sq
+		if iszero(A)
+			return (C ≤ 0) ? infseg : emptyseg
+		end
+		D = B^2 - 4 * A * C
+		(!(D > 0)) && return emptyseg
+		sD = √(D)
+		s1 = (-B - sD) / (2 * A)
+		s2 = (-B + sD) / (2 * A)
+		return min(s1, s2) .. max(s1, s2)
+	end
+
+	zmin, zmax = endpoints(g.z)
+	s1 = (zmin - α0) / a_n
+	s2 = (zmax - α0) / a_n
+	s_lo = min(s1, s2)
+	s_hi = max(s1, s2)
+
+	# ── Step B: Boundary function f(s) = ρ²(s) - R(z(s))² ──
+
+	R_ref_sq = g.R_ref^2
+	z_ref = g.z_ref
+	two_a = 2 * g.a
+
+	@inline _f(s) = begin
+		ρ_sq = r0_perp_sq + 2 * r0n_perp * s + n_perp_sq * s^2
+		z_s = α0 + a_n * s
+		R_sq = R_ref_sq * (z_s / z_ref)^two_a
+		ρ_sq - R_sq
+	end
+
+	# ── Step C: Splitting point s★ (closest approach to axis) ──
+	s_star = if iszero(n_perp_sq)
+		(s_lo + s_hi) / 2
+	else
+		clamp(-r0n_perp / n_perp_sq, s_lo, s_hi)
+	end
+
+	# ── Step D: Evaluate f at 3 points, classify sign pattern ──
+	f_lo = _f(s_lo)
+	f_star = _f(s_star)
+	f_hi = _f(s_hi)
+
+	left_sign_change  = (f_lo > 0) != (f_star > 0)
+	right_sign_change = (f_star > 0) != (f_hi > 0)
+	left_is_entry  = left_sign_change && f_lo > 0      # + → -
+	left_is_exit   = left_sign_change && !(f_lo > 0)    # - → +
+	right_is_entry = right_sign_change && f_star > 0     # + → -
+	right_is_exit  = right_sign_change && !(f_star > 0)  # - → +
+
+	s_entry = if left_is_entry
+		_bisect_conservative(_f, s_lo, s_star)
+	elseif !(f_lo > 0)
+		s_lo
+	elseif right_is_entry
+		_bisect_conservative(_f, s_star, s_hi)
+	else
+		return emptyseg
+	end
+
+	s_exit = if right_is_exit
+		_bisect_conservative(_f, s_star, s_hi)
+	elseif !(f_hi > 0)
+		s_hi
+	elseif left_is_exit
+		_bisect_conservative(_f, s_lo, s_star)
+	else
+		return emptyseg
+	end
+
+	return s_entry .. s_exit
+end
+
+"""
+Conservative bisection: ~10 iterations, returns the boundary on the "inside" side
+so the interval is slightly larger than the true intersection.
+"""
+@inline function _bisect_conservative(f, a, b)
+	fa_pos = f(a) > 0
+	for _ in 1:10
+		m = (a + b) / 2
+		if (f(m) > 0) == fa_pos
+			a = m
+		else
+			b = m
+		end
+	end
+	# Return the side that's on the outside (f > 0) for a conservative (wider) interval
+	return fa_pos ? a : b
+end
+
+rotation_local_to_lab(geom::Geometries.Parabolic) = geom.R_local_to_lab
 
 # ============================================================================
 # Coordinate transformation helpers
