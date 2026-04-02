@@ -186,7 +186,7 @@ struct Parabolic{TR, TR_ref, Tz_ref, Ta, Tz} <: AbstractGeometry
 	z::Tz
 
 	function Parabolic(R_local_to_lab::SMatrix{3,3}, R_ref, z_ref, a, z)
-		@assert 0 < a ≤ 1 "shape exponent a must satisfy 0 < a ≤ 1, got a=$a"
+		@assert 0 < S._value(a) ≤ 1 "shape exponent a must satisfy 0 < a ≤ 1, got a=$a"
 		return new{typeof(R_local_to_lab), typeof(R_ref), typeof(z_ref), typeof(a), typeof(z)}(R_local_to_lab, R_ref, z_ref, a, z)
 	end
 
@@ -632,7 +632,7 @@ function z_interval(g::Geometries.Parabolic, ray::Ray)
 
 	R_ref_sq = g.R_ref^2
 	z_ref = g.z_ref
-	two_a = 2 * g.a
+	two_a = g.a * StaticNum{2}()
 
 	@inline _f(s) = begin
 		ρ_sq = r0_perp_sq + 2 * r0n_perp * s + n_perp_sq * s^2
