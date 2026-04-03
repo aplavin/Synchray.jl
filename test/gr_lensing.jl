@@ -417,6 +417,258 @@
 
 end
 
+@testitem "GR frequency: p^t and gravitational redshift" begin
+	import Synchray as S
+	using Krang
+	using Krang: Kerr, emission_coordinates, p_bl_d, metric_uu
+
+	KE = Base.get_extension(S, :KrangExt)
+
+	@testset "p^t → 1 at large r" begin
+		# For any geodesic, the photon energy p^t should approach 1 at r → ∞
+		# (Krang normalizes energy to 1 at infinity)
+		for (a, α, β) in [(0.5, 8.0, 1.0), (0.9, 10.0, 0.5), (0.01, 10.0, 1.0)]
+			local metric = Kerr(a)
+			local pix = KE._krang_pixel(metric, α, β, π/4)
+			@assert pix.total_mino_time > 0
+
+			# Sample at early τ (large r, near observer)
+			local τ = 0.001 * pix.total_mino_time
+			local t, r, θ, φ, νr, νθ, ok = emission_coordinates(pix, τ)
+			@assert ok && r > 100
+
+			local p_d = p_bl_d(metric, r, θ, pix.η, pix.λ, νr, νθ)
+			local p_u = metric_uu(metric, r, θ) * p_d
+			@test p_u[1] ≈ 1.0 atol=0.02
+		end
+	end
+
+	@testset "p^t matches Schwarzschild analytic r/(r-2)" begin
+		# For near-Schwarzschild (a≈0), p^t = -g^{tt}·(-1) + g^{tφ}·λ ≈ r/(r-2)
+		metric = Kerr(0.01)
+		pix = KE._krang_pixel(metric, 10.0, 1.0, π/4)
+		@assert pix.total_mino_time > 0
+
+		for τ_frac in [0.01, 0.1, 0.3, 0.5]
+			local τ = τ_frac * pix.total_mino_time
+			local t, r, θ, φ, νr, νθ, ok = emission_coordinates(pix, τ)
+			@assert ok
+
+			local p_d = p_bl_d(metric, r, θ, pix.η, pix.λ, νr, νθ)
+			local p_u = metric_uu(metric, r, θ) * p_d
+
+			# Schwarzschild: p^t = r/(r-2) for p_t = -1, a=0
+			analytic_pt = r / (r - 2)
+			@test p_u[1] ≈ analytic_pt rtol=0.001
+		end
+	end
+
+	@testset "GR frequency changes rendered intensity vs flat approximation" begin
+		# Render with FixedEmission at moderate r. The GR frequency correction (p^t > 1
+		# near BH) changes the local frequency seen by the medium, which affects the
+		# invariant emissivity j/ν² and absorption α·ν. For FixedEmission with α > 0,
+		# the intensity approaches the source function S in the optically thick limit
+		# regardless of frequency. So we use small α (optically thin) where the
+		# frequency effect shows up via the ν³ postprocessing factor.
+		#
+		# Test: intensity with GR frequency (current) is LOWER than what we'd get
+		# with ν_obs everywhere, because p^t > 1 increases local ν, making j_inv = j/ν² smaller.
+		# We verify this by comparing corner vs near-center: the near-center pixel
+		# passes through stronger gravity (smaller r, larger p^t), so the GR frequency
+		# effect is larger there. The ratio near-center/corner should be < 1 and smaller
+		# than the pure geometric (path-length) ratio.
+
+		u_rest = S.FourVelocity(1.0, 0.0, 0.0, 0.0)
+		ball = S.EmissionRegion(
+			geometry = Geometries.Ball(
+				center = Geometries.InertialWorldline(x0 = S.FourPosition(0.0, 0.0, 0.0, 0.0), u = u_rest),
+				size = 30.0),
+			velocity = nothing,
+			emission = S.FixedEmission(S=1.0, α=1e-3)
+		) |> S.prepare_for_computations
+
+		cam = S.CameraOrtho(;
+			photon_direction = S.SVector(1.0, 0.0, 0.0),
+			origin = S.SVector(-100.0, 0.0, 0.0),
+			xys = S.grid(S.SVector, range(-15, 15, length=7), range(-15, 15, length=7)),
+			nz = 200, ν = 1.0, t = 0.0)
+
+		cam_gr = S.CameraKerrGR(; camera=cam, metric_spin=0.9,
+			bh_position=S.SVector(0.0,0.0,0.0), bh_rg=1.0, nτ=300, τ_range=(0.01, 0.99))
+		img = S.render(cam_gr, ball)
+
+		# Corner pixel (b ≈ 21, r_min ≈ 20): weak gravity, p^t ≈ 1.05
+		# Near-center pixel (b ≈ 7, r_min ≈ 6): strong gravity, p^t ≈ 1.4
+		# The ratio should reflect both geometry AND GR frequency effects
+		corner = img[1, 1]
+		near_center = img[3, 3]
+
+		@test corner ≈ 0.756 rtol=0.01
+		@test near_center ≈ 0.320 rtol=0.02
+
+		# The ratio near_center/corner is ~0.42, much less than what pure path-length
+		# differences would give, because GR frequency suppression is stronger at smaller r
+		@test near_center / corner ≈ 0.423 rtol=0.02
+	end
+end
+
+@testitem "BL momentum → Cartesian direction vs finite differences" begin
+	import Synchray as S
+	using Krang
+	using Krang: Kerr, SlowLightIntensityPixel, emission_coordinates
+
+	KE = Base.get_extension(S, :KrangExt)
+
+	# Test for several spins and impact parameters (all non-captured with valid geodesics)
+	for (a, α, β) in [(0.5, 8.0, 2.0), (0.9, 10.0, 0.5), (0.99, 7.0, 3.0), (0.1, 20.0, 5.0)]
+		metric = Kerr(a)
+		pix = KE._krang_pixel(metric, α, β, π/4)
+		@assert pix.total_mino_time > 0
+
+		τ_total = pix.total_mino_time
+
+		for τ_frac in [0.2, 0.4, 0.6, 0.8]
+			τ = τ_frac * τ_total
+			t1, r1, θ1, φ1, νr1, νθ1, ok1 = emission_coordinates(pix, τ)
+			@assert ok1 "emission_coordinates failed at τ_frac=$τ_frac for a=$a"
+
+			# Jacobian-based direction
+			p_d = Krang.p_bl_d(metric, r1, θ1, pix.η, pix.λ, νr1, νθ1)
+			g_uu = Krang.metric_uu(metric, r1, θ1)
+			p_u = g_uu * p_d
+			n_jac = KE._bl_upper_to_cartesian_direction(metric, p_u[2], p_u[3], p_u[4], r1, θ1, φ1)
+
+			# Finite-difference direction from two nearby geodesic points
+			δτ = 1e-6 * τ_total
+			t_a, r_a, θ_a, φ_a, _, _, ok_a = emission_coordinates(pix, τ - δτ)
+			t_b, r_b, θ_b, φ_b, _, _, ok_b = emission_coordinates(pix, τ + δτ)
+			@assert ok_a && ok_b "FD emission_coordinates failed at τ_frac=$τ_frac for a=$a"
+
+			x_a = SVector(Krang.boyer_lindquist_to_quasi_cartesian_kerr_schild_fast_light(metric, r_a, θ_a, φ_a)...)
+			x_b = SVector(Krang.boyer_lindquist_to_quasi_cartesian_kerr_schild_fast_light(metric, r_b, θ_b, φ_b)...)
+			n_fd = S.normalize(x_b - x_a)
+
+			# Directions should agree (up to sign — both parameterize the same null ray)
+			# Use abs(dot) to handle sign ambiguity
+			@test abs(S.dot(n_jac, n_fd)) ≈ 1.0 atol=1e-4
+		end
+	end
+end
+
+@testitem "CameraKerrGR geodesic integration" begin
+	import Synchray as S
+	using Krang
+
+	# Shared setup: spinning BH and a large spherical emitter
+	spin = 0.9
+	bh_rg = 1.0
+	bh_pos = S.SVector(0.0, 0.0, 0.0)
+
+	u_rest = S.FourVelocity(1.0, 0.0, 0.0, 0.0)
+	ball = S.EmissionRegion(
+		geometry = Geometries.Ball(
+			center = Geometries.InertialWorldline(x0 = S.FourPosition(0.0, bh_pos...), u = u_rest),
+			size = 30.0
+		),
+		velocity = nothing,
+		emission = S.FixedEmission(S=1.0, α=1e-3)
+	) |> S.prepare_for_computations
+
+	cam = S.CameraOrtho(;
+		photon_direction = S.SVector(1.0, 0.0, 0.0),
+		origin = S.SVector(-100.0, 0.0, 0.0),
+		xys = S.grid(S.SVector, range(-15, 15, length=7), range(-15, 15, length=7)),
+		nz = 200,
+		ν = 1.0,
+		t = 0.0,
+	)
+
+	@testset "basic rendering produces expected intensities" begin
+		cam_gr = S.CameraKerrGR(; camera=cam, metric_spin=spin, bh_position=bh_pos, bh_rg, nτ=300, τ_range=(0.01, 0.99))
+		img = S.render(cam_gr, ball)
+
+		# Hardcoded reference values (FixedEmission S=1, α=1e-3, Ball size=30, spin=0.9)
+		# With proper GR frequency: p^t > 1 near BH increases local ν, reducing I via ν³ postprocessing
+		@test img[1, 1] ≈ 0.756 rtol=0.01   # corner: long path through ball
+		@test img[7, 7] ≈ 0.752 rtol=0.01   # opposite corner (slightly different from frame-dragging)
+		@test img[3, 3] ≈ 0.320 rtol=0.02   # near-center: shorter path, stronger GR redshift effect
+
+		# Equatorial row (y=0) is zero due to Krang β≈0 degeneracy
+		@test img[4, 4] ≈ 0.0 atol=1e-30
+	end
+
+	@testset "image z-reflection symmetry (outer pixels)" begin
+		cam_gr = S.CameraKerrGR(; camera=cam, metric_spin=spin, bh_position=bh_pos, bh_rg, nτ=300, τ_range=(0.01, 0.99))
+		img = S.render(cam_gr, ball)
+
+		# Viewing along x (θ_obs = π/2), spin along z:
+		# Kerr has a θ → π-θ reflection symmetry → z → -z → image y-symmetric.
+		# Test at large impact parameter (corner pixels) where approximation is best.
+		@test img[1, 1] ≈ img[1, 7] rtol=0.02
+		@test img[7, 1] ≈ img[7, 7] rtol=0.02
+		@test img[1, 2] ≈ img[1, 6] rtol=0.02
+	end
+
+	@testset "nτ convergence" begin
+		# Render at three resolutions; verify convergence toward stable value.
+		cam_gr_100 = S.CameraKerrGR(; camera=cam, metric_spin=spin, bh_position=bh_pos, bh_rg, nτ=100, τ_range=(0.01, 0.99))
+		cam_gr_200 = S.CameraKerrGR(; camera=cam, metric_spin=spin, bh_position=bh_pos, bh_rg, nτ=200, τ_range=(0.01, 0.99))
+		cam_gr_400 = S.CameraKerrGR(; camera=cam, metric_spin=spin, bh_position=bh_pos, bh_rg, nτ=400, τ_range=(0.01, 0.99))
+
+		img_100 = S.render(cam_gr_100, ball)
+		img_200 = S.render(cam_gr_200, ball)
+		img_400 = S.render(cam_gr_400, ball)
+
+		# Corner pixel values at each resolution
+		i, j = 1, 1
+		@test img_100[i,j] ≈ 0.856 rtol=0.01
+		@test img_200[i,j] ≈ 0.784 rtol=0.01
+		@test img_400[i,j] ≈ 0.741 rtol=0.01
+
+		# Error ratio: err_200/err_100 ≈ 0.37 (convergence rate)
+		err_100 = abs(img_100[i,j] - img_400[i,j])
+		err_200 = abs(img_200[i,j] - img_400[i,j])
+		@test err_200 / err_100 ≈ 0.370 rtol=0.1
+	end
+
+	@testset "captured ray still accumulates foreground emission" begin
+		# A captured ray (small impact parameter) falls into the BH, but along the
+		# incoming path (camera → horizon) it passes through the emitting ball.
+		# It should accumulate nonzero intensity from the foreground part.
+		cam_captured = S.CameraOrtho(;
+			photon_direction = S.SVector(1.0, 0.0, 0.0),
+			origin = S.SVector(-100.0, 0.0, 0.0),
+			xys = [S.SVector(3.0, 0.5)],  # small impact parameter, captured
+			nz = 200, ν = 1.0, t = 0.0,
+		)
+		cam_gr_captured = S.CameraKerrGR(; camera=cam_captured, metric_spin=spin, bh_position=bh_pos, bh_rg, nτ=300, τ_range=(0.01, 0.99))
+		img_captured = S.render(cam_gr_captured, ball)
+
+		# The ball extends to radius 30. A captured ray with b≈3 enters the ball at
+		# r≈30, accumulates emission along the infall to the horizon.
+		@test only(img_captured) ≈ 0.139 rtol=0.02
+	end
+
+	@testset "different spin gives different image" begin
+		# Same geometry, different spin — images should differ due to frame-dragging
+		cam_gr_low = S.CameraKerrGR(; camera=cam, metric_spin=0.1, bh_position=bh_pos, bh_rg, nτ=200, τ_range=(0.01, 0.99))
+		cam_gr_high = S.CameraKerrGR(; camera=cam, metric_spin=0.99, bh_position=bh_pos, bh_rg, nτ=200, τ_range=(0.01, 0.99))
+
+		img_low = S.render(cam_gr_low, ball)
+		img_high = S.render(cam_gr_high, ball)
+
+		# Hardcoded reference values for corner pixel
+		@test img_low[1, 1] ≈ 0.782 rtol=0.01
+		@test img_high[1, 1] ≈ 0.784 rtol=0.01
+
+		# At small impact parameter, spin changes geodesic path through the medium.
+		# The difference is small (~1.5%) but real and detectable.
+		@test img_low[3, 2] ≈ 0.521 rtol=0.01
+		@test img_high[3, 2] ≈ 0.529 rtol=0.01
+		@test !isapprox(img_low[3, 2], img_high[3, 2]; rtol=0.001)
+	end
+end
+
 @testitem "ray_in_local_coords for RayGR2" begin
 	import Synchray as S
 	using Krang

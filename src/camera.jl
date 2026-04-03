@@ -181,6 +181,59 @@ Black-hole lens specification for GR ray construction and deflection-map generat
 	τ_frac::NTuple{2,Float64} = (0.97, 0.99)
 end
 
+"""
+    BLCoords(t, r, θ, φ, νr, νθ)
+
+Boyer-Lindquist coordinates on a Kerr geodesic, including time and radial/polar direction flags.
+Used internally by the geodesic integration machinery.
+"""
+struct BLCoords{T}
+    t::T
+    r::T
+    θ::T
+    φ::T
+    νr::Bool   # radial direction: true = increasing r
+    νθ::Bool   # polar direction: true = increasing θ
+end
+
+"""
+    GeodesicRayState(k, e1, e2)
+
+Local photon state at a point on a Kerr geodesic.
+Duck-types as a `Ray` for `_integrate_ray_step`: provides `.k` (FourFrequency),
+`.e1` and `.e2` (polarization basis vectors).
+"""
+struct GeodesicRayState{TK<:FourFrequency, TE<:SVector{3}}
+    k::TK
+    e1::TE
+    e2::TE
+end
+
+"""
+    CameraKerrGR(; camera, metric_spin, bh_position, bh_rg, nτ, τ_range)
+
+Proper GR camera that integrates radiative transfer along Kerr geodesics.
+
+Unlike `CameraGR` (deflection-map approximation), this traces the full curved photon
+path through the medium using Krang's analytic geodesic solutions.
+
+- `camera`: underlying flat-space camera (defines pixel grid, ν, t, mapfunc).
+- `metric_spin`: Kerr spin parameter a ∈ (-1, 1).
+- `bh_position`: BH location in lab frame.
+- `bh_rg`: gravitational radius (sets length scale).
+- `nτ`: number of Mino time steps per geodesic.
+- `τ_range`: (min, max) as fraction of total Mino time to integrate.
+"""
+@kwdef struct CameraKerrGR{Tcam, T}
+    camera::Tcam
+    metric_spin::T = 0.0
+    bh_position::SVector{3,Float64} = zero(SVector{3,Float64})
+    bh_rg::Float64 = 1.0
+    nτ::Int = 100
+    τ_range::NTuple{2,Float64} = (0.01, 0.99)
+end
+
+
 """True if the ray is a NaN-sentinel representing a photon captured by the BH."""
 @inline is_captured_ray(ray::Ray) = isnan(ray.x0.t)
 
