@@ -17,7 +17,7 @@ MakieExtra.show_gl_icon_in_dock()
 jet = let
 	axis = SVector(0.0, 0.0, 1.0)
 	S.EmissionRegion(;
-		geometry = S.Geometries.Conical(; axis, φj=deg2rad(15), z=5.0..200.0),
+		geometry = S.Geometries.Conical(; axis, φj=deg2rad(15), z=5.0..1000.0),
 		velocity = S.VelocitySpec(S.Directions.Axial(), S.gamma, S.Profiles.Constant(20.0)),
 		emission = S.SynchrotronEmission(
 			ne = S.Profiles.Axial(S.PowerLaw(-2; val0=100.0, s0=1.0)),
@@ -178,6 +178,7 @@ ax3d = Axis3(fig[2, 2:3];
 	limits=((-vol_extent, vol_extent), (-vol_extent, vol_extent), (-vol_extent, vol_extent)),
 	xlabel="x", ylabel="y", zlabel="z (jet axis)",
 	aspect=:data,
+	viewmode=:fit,
 	title="GR ray path (local coords)")
 
 volume!(ax3d, (-vol_extent, vol_extent), (-vol_extent, vol_extent), (-vol_extent, vol_extent), vol_data;
