@@ -1,5 +1,8 @@
 include("helpers.jl")
 using Krang
+using OhMyThreads: tmap
+
+_tmap(f, X::KeyedArray) = @set AxisKeys.keyless_unname(X) = tmap(f, X)
 
 
 function accretion_disk_image(; log_path, suffix="")
@@ -32,6 +35,7 @@ function accretion_disk_image(; log_path, suffix="")
 				x = range(-camera_extent, camera_extent, length=npx) |> LinRange,
 				y = range(-camera_extent, camera_extent, length=npx) |> LinRange),
 			nz = 1, ν = 1.0, t = 0.0,
+			mapfunc = _tmap,
 		)
 		cam = S.CameraKerrGR(; camera=cam_flat, metric_spin=spin, nτ=800, τ_range=(0.01, 0.99))
 		img = open(log_path, "a") do io

@@ -328,15 +328,15 @@ function integrate_geodesic(obj::AbstractMedium, path::KerrGeodesicPath, nτ::In
 		# Convert to Cartesian FourPosition
 		x4 = four_position_lab(path, bl)
 
+		# Skip points outside the medium geometry (before expensive geodesic_ray_state)
+		Synchray.is_inside(obj, x4) || continue
+
 		# Affine parameter step: dλ = Σ dτ, scaled by bh_rg for physical units
 		Σ = bl.r^2 + a^2 * cos(bl.θ)^2
 		Δλ = Σ * Δτ * path.bh_rg
 
 		# Build local photon state
 		state = geodesic_ray_state(path, bl)
-
-		# Skip points outside the medium geometry
-		Synchray.is_inside(obj, x4) || continue
 
 		# Reuse existing RT step — medium sees FourPosition + duck-typed ray
 		acc = _integrate_ray_step(acc, obj, x4, state, Δλ)
@@ -372,6 +372,10 @@ function integrate_geodesic(cm::CombinedMedium, path::KerrGeodesicPath, nτ::Int
 		bl = BLCoords(t_em, r, θ, φ, νr, νθ)
 
 		x4 = four_position_lab(path, bl)
+
+		# Check if any sub-object contains this point before expensive state computation
+		any(obj -> Synchray.is_inside(obj, x4), cm.objects) || continue
+
 		Σ = bl.r^2 + a^2 * cos(bl.θ)^2
 		Δλ = Σ * Δτ * path.bh_rg
 		state = geodesic_ray_state(path, bl)
