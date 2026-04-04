@@ -198,6 +198,33 @@ struct Parabolic{TR, TR_ref, Tz_ref, Ta, Tz} <: AbstractGeometry
 end
 Parabolic(; axis::AbstractVector, R_ref, z_ref, a, z) = Parabolic(SVector{3}(axis), R_ref, z_ref, a, z)
 
+
+"""
+    PowerLawDisk{Tr, Th, Tref, Ta} <: AbstractGeometry
+
+Accretion disk with power-law half-thickness profile `h(r) = h_ref · (r / r_ref)^a`.
+
+The disk is centered at the origin with spin axis along +z. Contains points where
+`r ∈ r_range` and `|z| ≤ h(r)`.
+
+# Shape exponents
+- `a = 0`: constant thickness (slab)
+- `a = 1/2`: parabolic flaring
+- `a = 1`: conical (h/r = const)
+
+# Fields
+- `r_range`: radial extent (e.g., `r_isco .. 50.0`)
+- `h_ref`: half-thickness at the reference radius
+- `r_ref`: reference radius for the thickness profile
+- `a`: power-law exponent
+"""
+@kwdef struct PowerLawDisk{Tr, Th, Tref, Ta} <: AbstractGeometry
+	r_range::Tr
+	h_ref::Th
+	r_ref::Tref
+	a::Ta
+end
+
 end # module Geometries
 
 
@@ -228,6 +255,16 @@ prepare_for_computations(g::Geometries.Ellipsoid) = g
 prepare_for_computations(g::Geometries.Ball) = g
 
 @inline four_velocity(g::Geometries.Ball, x4) = four_velocity(g.center)
+
+@inline function is_inside(g::Geometries.Ball, x4)
+	u = g.center.u
+	Δ = x4 - g.center.x0
+	# Project out the worldline direction: Δ_perp = Δ + (η(Δ,u)) u
+	τ_offset = -minkowski_dot(Δ, u)
+	Δ_perp = Δ + τ_offset * u
+	# Rest-frame spatial distance²
+	return minkowski_dot(Δ_perp, Δ_perp) ≤ g.size^2
+end
 
 @inline function z_interval(g::Geometries.Ball, ray::Ray)
 	# Worldtube of a rigid sphere moving with constant 4-velocity u.
@@ -867,4 +904,19 @@ ordered `(umin,s1), (umax,s1), (umax,s2), (umin,s2)`.
 	map(corners_lab) do r_lab
 		rotate_lab_to_local(geom, r_lab)
 	end
+end
+
+
+# ============================================================================
+# PowerLawDisk geometry methods
+# ============================================================================
+
+"""Half-thickness at radius r: h(r) = h_ref · (r / r_ref)^a"""
+@inline _disk_half_thickness(g::Geometries.PowerLawDisk, r) = g.h_ref * (r / g.r_ref)^g.a
+
+@inline function is_inside(g::Geometries.PowerLawDisk, x4)
+	r_xyz = @swiz x4.xyz
+	r = norm(r_xyz)
+	z = r_xyz[3]  # disk spin axis is always +z
+	return (r ∈ g.r_range) && abs(z) ≤ _disk_half_thickness(g, r)
 end

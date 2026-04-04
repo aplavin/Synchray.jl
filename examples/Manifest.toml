@@ -2058,7 +2058,7 @@ weakdeps = ["StaticArrays", "StructArrays"]
 
 [[deps.Synchray]]
 deps = ["Accessors", "AccessorsExtra", "DataPipes", "DispatchDoctor", "FastPower", "ForwardDiff", "IntervalSets", "LinearAlgebra", "QuadGK", "RectiGrids", "Reexport", "Skipper", "SpecialFunctions", "StaticArrays", "Statistics", "StructArrays", "Swizzling", "Unitful"]
-path = "/Users/aplavin/.julia/dev/Synchray"
+path = ".."
 uuid = "00000000-0000-4000-b000-202512310000"
 version = "0.1.4"
 weakdeps = ["Adapt", "Krang"]

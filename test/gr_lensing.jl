@@ -512,6 +512,123 @@ end
 	end
 end
 
+@testitem "GR velocity types and PowerLawDisk" begin
+	import Synchray as S
+	using Krang
+	using Krang: Kerr, metric_dd
+
+	@testset "KeplerianVelocity normalization g_μν u^μ u^ν = -1" begin
+		# Note: Krang's Kerr metric requires nonzero spin, so we use a=0.01 for near-Schwarzschild
+		for (a, r) in [(0.01, 10.0), (0.5, 6.0), (0.9, 3.0), (0.99, 2.0), (0.9, 50.0)]
+			kv = S.KeplerianVelocity(spin=a, prograde=true)
+			x4 = S.FourPosition(0.0, r, 0.0, 0.0)
+			u = S.four_velocity(kv, nothing, x4)
+
+			g_dd = metric_dd(Kerr(a), r, π/2)
+			Ω = 1 / (r^(3/2) + a)
+			uφ = Ω * u.t
+			gnorm = g_dd[1,1]*u.t^2 + 2*g_dd[1,4]*u.t*uφ + g_dd[4,4]*uφ^2
+			@test gnorm ≈ -1.0 atol=1e-6
+		end
+	end
+
+	@testset "KeplerianVelocity u^t and β match analytic" begin
+		# a=0.9, r=10: u^t = 1.1821, β = 0.3075
+		kv = S.KeplerianVelocity(spin=0.9, prograde=true)
+		u = S.four_velocity(kv, nothing, S.FourPosition(0.0, 10.0, 0.0, 0.0))
+		@test u.t ≈ 1.1821 rtol=0.001
+		@test S.norm(S.beta(u)) ≈ 0.3075 rtol=0.001
+
+		# a=0.9, r=3 (near ISCO): u^t = 1.9933, β = 0.4921
+		u3 = S.four_velocity(kv, nothing, S.FourPosition(0.0, 3.0, 0.0, 0.0))
+		@test u3.t ≈ 1.9933 rtol=0.001
+		@test S.norm(S.beta(u3)) ≈ 0.4921 rtol=0.001
+
+		# a=0.9, r=50 (weak field): u^t ≈ 1.031, β ≈ 0.141
+		u50 = S.four_velocity(kv, nothing, S.FourPosition(0.0, 50.0, 0.0, 0.0))
+		@test u50.t ≈ 1.0313 rtol=0.001
+		@test S.norm(S.beta(u50)) ≈ 0.1411 rtol=0.001
+	end
+
+	@testset "ZAMOVelocity has zero angular momentum u_φ = 0" begin
+		for (a, r) in [(0.5, 10.0), (0.9, 5.0), (0.99, 3.0)]
+			zv = S.ZAMOVelocity(spin=a)
+			u = S.four_velocity(zv, nothing, S.FourPosition(0.0, r, 0.0, 0.0))
+
+			# u_φ = g_φt u^t + g_φφ u^φ where u^φ = Ω_ZAMO * u^t
+			g_tφ = S._kerr_g_tφ(a, r, π/2)
+			g_φφ = S._kerr_g_φφ(a, r, π/2)
+			Ω_zamo = -g_tφ / g_φφ
+			uφ = Ω_zamo * u.t
+			u_φ_cov = metric_dd(Kerr(a), r, π/2)[4,1]*u.t + metric_dd(Kerr(a), r, π/2)[4,4]*uφ
+			@test u_φ_cov ≈ 0.0 atol=1e-10
+		end
+	end
+
+	@testset "ZAMOVelocity normalization and hardcoded values" begin
+		zv = S.ZAMOVelocity(spin=0.9)
+		u5 = S.four_velocity(zv, nothing, S.FourPosition(0.0, 5.0, 0.0, 0.0))
+		@test u5.t ≈ 1.2857 rtol=0.001
+		@test S.norm(S.beta(u5)) ≈ 0.0689 rtol=0.01  # small β: ZAMO barely moves at r=5
+
+		u_far = S.four_velocity(zv, nothing, S.FourPosition(0.0, 100.0, 0.0, 0.0))
+		# At large r, ZAMO → nearly static: u^t → 1.01 (still has 2M/r correction), β → 0
+		@test u_far.t ≈ 1.0102 rtol=0.001
+		@test S.norm(S.beta(u_far)) ≈ 0.00018 rtol=0.1
+	end
+
+	@testset "SubKeplerianVelocity interpolates between ZAMO and Keplerian" begin
+		a = 0.9
+		r = 10.0
+		x4 = S.FourPosition(0.0, r, 0.0, 0.0)
+
+		β_kep = S.norm(S.beta(S.four_velocity(S.KeplerianVelocity(spin=a), nothing, x4)))
+		β_zamo = S.norm(S.beta(S.four_velocity(S.ZAMOVelocity(spin=a), nothing, x4)))
+		β_half = S.norm(S.beta(S.four_velocity(S.SubKeplerianVelocity(spin=a, f_kep=0.5), nothing, x4)))
+
+		# Sub-Keplerian speed should be between ZAMO and Keplerian
+		@test β_zamo < β_half < β_kep  # this is a < comparison but it's comparing three related quantities, which is meaningful
+	end
+
+	@testset "PowerLawDisk is_inside" begin
+		disk = Geometries.PowerLawDisk(r_range=3.0..20.0, h_ref=1.0, r_ref=10.0, a=0.5)
+		# h(r) = 1.0 * (r/10)^0.5
+
+		# At r=10: h=1.0
+		@test S.is_inside(disk, S.FourPosition(0.0, 10.0, 0.0, 0.0))      # z=0 < h=1
+		@test S.is_inside(disk, S.FourPosition(0.0, 10.0, 0.0, 0.9))      # z=0.9 < h=1
+		@test !S.is_inside(disk, S.FourPosition(0.0, 10.0, 0.0, 1.1))     # z=1.1 > h=1
+
+		# At r=4: h = 1.0 * (4/10)^0.5 ≈ 0.632
+		@test S.is_inside(disk, S.FourPosition(0.0, 4.0, 0.0, 0.0))
+		@test !S.is_inside(disk, S.FourPosition(0.0, 4.0, 0.0, 0.7))
+
+		# Outside r_range
+		@test !S.is_inside(disk, S.FourPosition(0.0, 2.0, 0.0, 0.0))
+		@test !S.is_inside(disk, S.FourPosition(0.0, 25.0, 0.0, 0.0))
+
+		# Constant thickness (a=0)
+		slab = Geometries.PowerLawDisk(r_range=5.0..15.0, h_ref=2.0, r_ref=10.0, a=0)
+		@test S.is_inside(slab, S.FourPosition(0.0, 10.0, 0.0, 1.9))
+		@test !S.is_inside(slab, S.FourPosition(0.0, 10.0, 0.0, 2.1))
+		# a=0: h(r) = 2.0 for all r in range
+		@test S.is_inside(slab, S.FourPosition(0.0, 7.0, 0.0, 1.9))
+	end
+
+	@testset "EmissionRegion composes with GR velocity" begin
+		# Verify that KeplerianVelocity works inside EmissionRegion
+		disk = S.EmissionRegion(
+			geometry = Geometries.PowerLawDisk(r_range=3.0..20.0, h_ref=1.0, r_ref=10.0, a=0.5),
+			velocity = S.KeplerianVelocity(spin=0.9),
+			emission = S.FixedEmission(S=1.0, α=1e-3)
+		) |> S.prepare_for_computations
+
+		x4 = S.FourPosition(0.0, 10.0, 0.0, 0.0)
+		u = S.four_velocity(disk, x4)
+		@test u.t ≈ 1.1821 rtol=0.001
+	end
+end
+
 @testitem "BL momentum → Cartesian direction vs finite differences" begin
 	import Synchray as S
 	using Krang

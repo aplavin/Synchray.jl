@@ -335,6 +335,9 @@ function integrate_geodesic(obj::AbstractMedium, path::KerrGeodesicPath, nτ::In
 		# Build local photon state
 		state = geodesic_ray_state(path, bl)
 
+		# Skip points outside the medium geometry
+		Synchray.is_inside(obj, x4) || continue
+
 		# Reuse existing RT step — medium sees FourPosition + duck-typed ray
 		acc = _integrate_ray_step(acc, obj, x4, state, Δλ)
 	end
@@ -374,6 +377,7 @@ function integrate_geodesic(cm::CombinedMedium, path::KerrGeodesicPath, nτ::Int
 		state = geodesic_ray_state(path, bl)
 
 		for obj in cm.objects
+			Synchray.is_inside(obj, x4) || continue
 			acc = _integrate_ray_step(acc, obj, x4, state, Δλ)
 		end
 	end

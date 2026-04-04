@@ -67,6 +67,35 @@ end
     return FourVelocity(βv_total)
 end
 
+# For GR velocity types: compute BL 4-velocity from Kerr metric, convert to Cartesian
+@inline function four_velocity(vel::KeplerianVelocity, geom, x4)
+    r, θ, φ = _cartesian_to_spherical(@swiz x4.xyz)
+    a = vel.spin
+    Ω = vel.prograde ? 1 / (r^(3/2) + a) : -1 / (r^(3/2) - a)
+    ut, uφ = _circular_orbit_ut_uφ(a, r, θ, Ω)
+    return _bl_circular_to_cartesian_four_velocity(a, r, θ, φ, ut, uφ)
+end
+
+@inline function four_velocity(vel::ZAMOVelocity, geom, x4)
+    r, θ, φ = _cartesian_to_spherical(@swiz x4.xyz)
+    a = vel.spin
+    # ZAMO: Ω = ω = -g_tφ/g_φφ (frame-dragging angular velocity)
+    g_tφ = _kerr_g_tφ(a, r, θ)
+    g_φφ = _kerr_g_φφ(a, r, θ)
+    Ω = -g_tφ / g_φφ
+    ut, uφ = _circular_orbit_ut_uφ(a, r, θ, Ω)
+    return _bl_circular_to_cartesian_four_velocity(a, r, θ, φ, ut, uφ)
+end
+
+@inline function four_velocity(vel::SubKeplerianVelocity, geom, x4)
+    r, θ, φ = _cartesian_to_spherical(@swiz x4.xyz)
+    a = vel.spin
+    Ω_kep = vel.prograde ? 1 / (r^(3/2) + a) : -1 / (r^(3/2) - a)
+    Ω = vel.f_kep * Ω_kep
+    ut, uφ = _circular_orbit_ut_uφ(a, r, θ, Ω)
+    return _bl_circular_to_cartesian_four_velocity(a, r, θ, φ, ut, uφ)
+end
+
 # Delegate to emission model
 @inline emissivity_absorption(region::EmissionRegion, x4, k′) = emissivity_absorption(region.emission, region.geometry, x4, k′)
 @inline emissivity_absorption_polarized(region::EmissionRegion, x4, k′) = emissivity_absorption_polarized(region.emission, region.geometry, x4, k′)
