@@ -249,7 +249,6 @@ struct CameraKerrGRCached{Tcam, T, TGeo}
     bh_position::SVector{3,Float64}
     bh_rg::Float64
     nτ::Int
-    τ_range::NTuple{2,Float64}
     geodesics::TGeo
 end
 

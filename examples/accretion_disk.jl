@@ -101,7 +101,7 @@ function accretion_disk_image_cached(; log_path, suffix="")
 			nz = 1, ν = 1.0, t = 0.0,
 			mapfunc = _tmap,
 		)
-		cam = S.CameraKerrGRCached(; camera=cam_flat, metric_spin=spin, nτ=800, τ_range=(0.01, 0.99), R=camera_extent)
+		cam = S.CameraKerrGRCached(; camera=cam_flat, metric_spin=spin, nτ=400, R=20.0)
 		img = open(log_path, "a") do io
 			redirect_stdout(io) do
 				S.render(cam, disk)

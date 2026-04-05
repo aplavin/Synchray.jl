@@ -1,6 +1,7 @@
 @testitem "GR lensing" begin
 	import Synchray as S
 	using Krang
+	using FastChebInterp
 
 	spin = 0.5
 	θ_view = π / 3  # 60° inclination from the +z spin axis
@@ -420,6 +421,7 @@ end
 @testitem "GR frequency: p^t and gravitational redshift" begin
 	import Synchray as S
 	using Krang
+	using FastChebInterp
 	using Krang: Kerr, emission_coordinates, p_bl_d, metric_uu
 
 	KE = Base.get_extension(S, :KrangExt)
@@ -515,6 +517,7 @@ end
 @testitem "GR velocity types and PowerLawDisk" begin
 	import Synchray as S
 	using Krang
+	using FastChebInterp
 	using Krang: Kerr, metric_dd
 
 	@testset "KeplerianVelocity normalization g_μν u^μ u^ν = -1" begin
@@ -632,6 +635,7 @@ end
 @testitem "BL momentum → Cartesian direction vs finite differences" begin
 	import Synchray as S
 	using Krang
+	using FastChebInterp
 	using Krang: Kerr, SlowLightIntensityPixel, emission_coordinates
 
 	KE = Base.get_extension(S, :KrangExt)
@@ -675,6 +679,7 @@ end
 @testitem "CameraKerrGR geodesic integration" begin
 	import Synchray as S
 	using Krang
+	using FastChebInterp
 
 	# Shared setup: spinning BH and a large spherical emitter
 	spin = 0.9
@@ -789,6 +794,7 @@ end
 @testitem "ray_in_local_coords for RayGR2" begin
 	import Synchray as S
 	using Krang
+	using FastChebInterp
 
 	spin = 0.5
 	θ_view = π / 3

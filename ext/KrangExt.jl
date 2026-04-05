@@ -212,13 +212,14 @@ Evaluates BL coordinates at any Mino time τ via Krang's analytic solution.
 struct KerrGeodesicPath{T, TPix<:SlowLightIntensityPixel}
 	frame::KerrFrameData{T}
 	pixel::TPix
+	τ_range::NTuple{2,Float64}
 end
 
 function KerrGeodesicPath(metric::Kerr, pix::SlowLightIntensityPixel, ν_obs,
-		R_krang_to_lab, bh_position, bh_rg)
+		R_krang_to_lab, bh_position, bh_rg, τ_range)
 	frame = KerrFrameData(metric, pix.η, pix.λ, Float64(ν_obs),
 		pix.total_mino_time, R_krang_to_lab, bh_position, bh_rg)
-	KerrGeodesicPath(frame, pix)
+	KerrGeodesicPath(frame, pix, τ_range)
 end
 
 """Evaluate BL coordinates at Mino time τ. Returns BLCoords or nothing."""
@@ -414,16 +415,28 @@ end
 # ============================================================================
 
 """
-    integrate_geodesic(obj, path, nτ, τ_range, what)
+    _τ_grid(path, nτ)
+
+Return the Mino-time integration grid for a geodesic path.
+Dispatches on path type: exact paths use `τ_range * τ_total`, cached paths use the Chebyshev domain.
+"""
+_τ_grid(path::KerrGeodesicPath, nτ) =
+	range(path.τ_range[1] * path.frame.total_mino_time, path.τ_range[2] * path.frame.total_mino_time, length=nτ)
+_τ_grid(path::KerrGeodesicPathCached, nτ) =
+	range(path.cheb.lb[1], path.cheb.ub[1], length=nτ)
+
+"""
+    integrate_geodesic(obj, path, nτ, what)
 
 Integrate radiative transfer along a Kerr geodesic.
 
 Steps in Mino time τ, evaluates BL coordinates via `bl_coords(path, τ)`,
 converts BL→Cartesian, and calls the standard `_integrate_ray_step`.
-Works with any path type that implements `bl_coords(path, τ)` and has a `.frame` field.
+Works with any path type that implements `bl_coords(path, τ)`, `_τ_grid(path, nτ)`,
+and has a `.frame` field.
 """
 function integrate_geodesic(obj::AbstractMedium, path, nτ::Int,
-		τ_range::NTuple{2,Float64}, what=Synchray.Intensity())
+		what=Synchray.Intensity())
 	frame = path.frame
 	ν = frame.ν_obs
 	a = frame.metric.spin
@@ -433,9 +446,7 @@ function integrate_geodesic(obj::AbstractMedium, path, nτ::Int,
 		return _postprocess_acc(_init_acc(typeof(what), ν), ν, what)
 	end
 
-	τ_min = τ_range[1] * τ_total
-	τ_max = τ_range[2] * τ_total
-	τs = range(τ_min, τ_max, length=nτ)
+	τs = _τ_grid(path, nτ)
 	Δτ = step(τs)
 
 	acc = _init_acc(typeof(what), ν)
@@ -458,7 +469,7 @@ end
 
 # CombinedMedium: evaluate all sub-media at each geodesic point
 function integrate_geodesic(cm::CombinedMedium, path, nτ::Int,
-		τ_range::NTuple{2,Float64}, what=Synchray.Intensity())
+		what=Synchray.Intensity())
 	frame = path.frame
 	ν = frame.ν_obs
 	a = frame.metric.spin
@@ -468,9 +479,7 @@ function integrate_geodesic(cm::CombinedMedium, path, nτ::Int,
 		return _postprocess_acc(_init_acc(typeof(what), ν), ν, what)
 	end
 
-	τ_min = τ_range[1] * τ_total
-	τ_max = τ_range[2] * τ_total
-	τs = range(τ_min, τ_max, length=nτ)
+	τs = _τ_grid(path, nτ)
 	Δτ = step(τs)
 
 	acc = _init_acc(typeof(what), ν)
@@ -526,44 +535,45 @@ Synchray.render(cam::CameraKerrGR, obj::AbstractMedium, what=Synchray.Intensity(
 
 	camera.mapfunc(camera.xys) do uv
 		(; ray_in, pix, R_rot) = _pixel_setup(metric, camera, bh_position, bh_rg, uv)
-		path = KerrGeodesicPath(metric, pix, frequency(ray_in), R_rot, bh_position, bh_rg)
-		integrate_geodesic(obj, path, nτ, τ_range, what)
+		path = KerrGeodesicPath(metric, pix, frequency(ray_in), R_rot, bh_position, bh_rg, τ_range)
+		integrate_geodesic(obj, path, nτ, what)
 	end
 end
 
 """
-    CameraKerrGRCached(; camera, metric_spin, bh_position, bh_rg, nτ, τ_range, R, N=16)
+    CameraKerrGRCached(; camera, metric_spin, bh_position, bh_rg, nτ, R, N=16)
 
 Construct a cached GR camera by precomputing Chebyshev-interpolated geodesics for all pixels.
 
-- `R`: containment radius — geodesics are cached within the sphere r ≤ R.
+- `R`: containment radius — all emission must be within r ≤ R. The integration loop
+  covers exactly this domain (no wasted iterations outside R).
 - `N`: Chebyshev polynomial order (default 16).
 
 Requires `using Krang, FastChebInterp`.
 """
 function Synchray.CameraKerrGRCached(; camera, metric_spin=0.0,
 		bh_position=zero(SVector{3,Float64}), bh_rg=1.0,
-		nτ=100, τ_range=(0.01, 0.99), R, N=16)
+		nτ=100, R, N=16)
 	metric = Kerr(metric_spin)
 
 	geodesics = camera.mapfunc(camera.xys) do uv
 		(; ray_in, pix, R_rot) = _pixel_setup(metric, camera, bh_position, bh_rg, uv)
-		exact = KerrGeodesicPath(metric, pix, frequency(ray_in), R_rot, bh_position, bh_rg)
+		exact = KerrGeodesicPath(metric, pix, frequency(ray_in), R_rot, bh_position, bh_rg, (0.0, 1.0))
 		KerrGeodesicPathCached(exact; R, N)
 	end
 
-	CameraKerrGRCached(camera, metric_spin, bh_position, bh_rg, nτ, τ_range, geodesics)
+	CameraKerrGRCached(camera, metric_spin, bh_position, bh_rg, nτ, geodesics)
 end
 
 Synchray.render(cam::CameraKerrGRCached, obj::AbstractMedium, what=Synchray.Intensity()) = let
-	(; camera, nτ, τ_range) = cam
+	(; camera, nτ) = cam
 	ν_zero = frequency(camera_ray(camera, first(camera.xys)))
 
 	camera.mapfunc(cam.geodesics) do cached_path
 		if cached_path === nothing
 			_postprocess_acc(_init_acc(typeof(what), Float64(ν_zero)), Float64(ν_zero), what)
 		else
-			integrate_geodesic(obj, cached_path, nτ, τ_range, what)
+			integrate_geodesic(obj, cached_path, nτ, what)
 		end
 	end
 end
