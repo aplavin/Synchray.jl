@@ -160,6 +160,8 @@ The normalization `g_μν u^μ u^ν = -1` is enforced.
 	g_φφ = _kerr_g_φφ(a, r, θ)
 	# g_tt (u^t)² + 2 g_tφ u^t (Ω u^t) + g_φφ (Ω u^t)² = -1
 	denom = g_tt + 2g_tφ * Ω + g_φφ * Ω^2
+	# denom > 0 means no valid circular orbit (inside ISCO/photon sphere); fall back to rest frame
+	-denom ≤ 0 && return (one(Ω), zero(Ω))
 	ut = 1 / √(-denom)
 	uφ = Ω * ut
 	return (ut, uφ)

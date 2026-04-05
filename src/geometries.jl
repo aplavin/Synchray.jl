@@ -920,3 +920,104 @@ end
 	z = r_xyz[3]  # disk spin axis is always +z
 	return (r ∈ g.r_range) && abs(z) ≤ _disk_half_thickness(g, r)
 end
+
+prepare_for_computations(g::Geometries.PowerLawDisk) = @modify(FixedExponent, g.a)
+
+@inline four_velocity(::Geometries.PowerLawDisk, x4) = FourVelocity(one(eltype(x4)), zero(@swiz x4.xyz))
+
+function z_interval(g::Geometries.PowerLawDisk, ray::Ray)
+	r0 = @swiz ray.x0.xyz
+	n̂ = direction3(ray)
+	z0 = r0[3]       # disk spin axis is +z
+	nz = n̂[3]
+
+	FT = eltype(ray.x0) |> float
+	emptyseg = let
+		sref = FT(0)
+		sref .. (sref - eps(oneunit(sref)))
+	end
+
+	r_min, r_max = endpoints(g.r_range)
+
+	# ── Step A: Conservative bracket from spherical shell ∩ z-slab ──
+
+	# Outer sphere: ||r0 + s·n̂||² ≤ r_max²
+	d0 = dot(r0, n̂)
+	r0_sq = dot(r0, r0)
+	D_out = d0^2 - r0_sq + r_max^2
+	D_out < 0 && return emptyseg
+	sD_out = √D_out
+	s_lo = -d0 - sD_out
+	s_hi = -d0 + sD_out
+
+	# Z-slab: |z0 + nz·s| ≤ h_max
+	h_max = max(_disk_half_thickness(g, r_min), _disk_half_thickness(g, r_max))
+	if !iszero(nz)
+		s1 = (-h_max - z0) / nz
+		s2 = (h_max - z0) / nz
+		s_lo = max(s_lo, min(s1, s2))
+		s_hi = min(s_hi, max(s1, s2))
+	elseif abs(z0) > h_max
+		return emptyseg
+	end
+
+	s_lo > s_hi && return emptyseg
+
+	# ── Step B: Boundary function f(s) = z² - h(r)² ──
+	# f < 0 inside the disk (and r ∈ r_range); f > 0 outside
+
+	h_ref_sq = g.h_ref^2
+	r_ref = g.r_ref
+	two_a = g.a * StaticNum{2}()
+
+	@inline _f(s) = begin
+		z_s = z0 + nz * s
+		r_sq = max(r0_sq + 2 * d0 * s + s^2, zero(r0_sq))
+		r_s = √r_sq
+		# Outside radial range → positive (outside)
+		(r_s < r_min || r_s > r_max) && return oneunit(z_s^2)
+		h_sq = h_ref_sq * (r_s / r_ref)^two_a
+		z_s^2 - h_sq
+	end
+
+	# ── Step C: Splitting point (closest to equatorial plane z=0) ──
+	s_star = if iszero(nz)
+		(s_lo + s_hi) / 2
+	else
+		clamp(-z0 / nz, s_lo, s_hi)
+	end
+
+	# ── Step D: Evaluate f at 3 points, classify sign pattern ──
+	f_lo = _f(s_lo)
+	f_star = _f(s_star)
+	f_hi = _f(s_hi)
+
+	left_sign_change  = (f_lo > 0) != (f_star > 0)
+	right_sign_change = (f_star > 0) != (f_hi > 0)
+	left_is_entry  = left_sign_change && f_lo > 0
+	left_is_exit   = left_sign_change && !(f_lo > 0)
+	right_is_entry = right_sign_change && f_star > 0
+	right_is_exit  = right_sign_change && !(f_star > 0)
+
+	s_entry = if left_is_entry
+		_bisect_conservative(_f, s_lo, s_star)
+	elseif !(f_lo > 0)
+		s_lo
+	elseif right_is_entry
+		_bisect_conservative(_f, s_star, s_hi)
+	else
+		return emptyseg
+	end
+
+	s_exit = if right_is_exit
+		_bisect_conservative(_f, s_star, s_hi)
+	elseif !(f_hi > 0)
+		s_hi
+	elseif left_is_exit
+		_bisect_conservative(_f, s_lo, s_star)
+	else
+		return emptyseg
+	end
+
+	return s_entry .. s_exit
+end
