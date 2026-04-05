@@ -180,7 +180,7 @@ end
 	)
 
 	# Default Z-camera for tests
-	cam_z = S.CameraZ(; xys=grid(SVector, x=[0.0], y=[0.0]), nz=1, ν=1.0, t=0.0)
+	cam_z = S.CameraZ(; xys=grid(SVector, x=[0.0], y=[0.0]), nz=4, ν=1.0, t=0.0)
 
 	@testset "worldline method" begin
 		x0 = S.FourPosition(0.0, 1.0, 0.5, 3.0)
@@ -238,7 +238,7 @@ end
 	end
 
 	@testset "FastLight mode" begin
-		cam_fast_z = S.CameraZ(; xys=grid(SVector, x=[0.0], y=[0.0]), nz=1, ν=1.0, t=0.0, light=S.FastLight())
+		cam_fast_z = S.CameraZ(; xys=grid(SVector, x=[0.0], y=[0.0]), nz=4, ν=1.0, t=0.0, light=S.FastLight())
 
 		# FastLight worldline: simultaneity condition t = t_obs
 		@testset "worldline simultaneity" begin
@@ -292,7 +292,7 @@ end
 		@testset "arbitrary camera direction" begin
 			n̂ = normalize(SVector(1.0, 0.0, 1.0))
 			cam_arb = S.CameraOrtho(;
-				photon_direction=n̂, xys=SVector{2}[(0.0, 0.0)], nz=1, ν=1.0, t=3.0,
+				photon_direction=n̂, xys=SVector{2}[(0.0, 0.0)], nz=4, ν=1.0, t=3.0,
 				light=S.FastLight(),
 			)
 			x0 = S.FourPosition(0.0, 1.0, 0.5, 3.0)
@@ -313,7 +313,7 @@ end
 		# Helper: perspective camera looking along +z from a given origin
 		make_persp_cam(; origin, t) = S.CameraPerspective(;
 			photon_direction=SVector(0.0, 0.0, 1.0),
-			origin, xys=SVector{2}[(0.0, 0.0)], nz=1, ν=1.0, t,
+			origin, xys=SVector{2}[(0.0, 0.0)], nz=4, ν=1.0, t,
 		)
 
 		@testset "stationary source — analytic check" begin
@@ -363,7 +363,7 @@ end
 			n̂ = normalize(SVector(1.0, 0.0, 1.0))
 			cam = S.CameraPerspective(;
 				photon_direction=n̂, origin=SVector(0.0, 0.0, -10.0),
-				xys=SVector{2}[(0.0, 0.0)], nz=1, ν=1.0, t=15.0,
+				xys=SVector{2}[(0.0, 0.0)], nz=4, ν=1.0, t=15.0,
 			)
 			x0 = S.FourPosition(0.0, 1.0, 0.5, 3.0)
 			u = construct(S.FourVelocity, S.gamma => 5, S.direction3 => normalize(SVector(0.2, 0.1, 0.97)))
@@ -383,7 +383,7 @@ end
 			wl = S.Geometries.InertialWorldline(x0, u)
 
 			t_obs_ortho = 20.0
-			cam_ortho = S.CameraZ(; xys=grid(SVector, x=[0.0], y=[0.0]), nz=1, ν=1.0, t=t_obs_ortho)
+			cam_ortho = S.CameraZ(; xys=grid(SVector, x=[0.0], y=[0.0]), nz=4, ν=1.0, t=t_obs_ortho)
 			ret_ortho = S.retarded_event(wl, cam_ortho)
 
 			# Perspective camera at z=-D, t shifted by D (light travel from screen to pinhole)

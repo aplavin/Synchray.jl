@@ -347,8 +347,8 @@ end
 
 	# Constructors default to SlowLight
 	@test ray_slow.light === S.SlowLight()
-	@test S.CameraZ(; xys=grid(SVector, x=[0.0], y=[0.0]), nz=1, ν=1.0, t=0.0).light === S.SlowLight()
-	@test S.CameraOrtho(; photon_direction=SVector(1.0, 0.0, 1.0), xys=SVector{2}[(0.0, 0.0)], nz=1, ν=1.0, t=0.0).light === S.SlowLight()
+	@test S.CameraZ(; xys=grid(SVector, x=[0.0], y=[0.0]), nz=4, ν=1.0, t=0.0).light === S.SlowLight()
+	@test S.CameraOrtho(; photon_direction=SVector(1.0, 0.0, 1.0), xys=SVector{2}[(0.0, 0.0)], nz=4, ν=1.0, t=0.0).light === S.SlowLight()
 	k = S.photon_k(2.0, SVector(0.0, 0.0, 1.0))
 	@test S.Ray(x0, k, SVector(1.0, 0.0, 0.0), SVector(0.0, 1.0, 0.0), 64).light === S.SlowLight()
 
@@ -384,8 +384,8 @@ end
 	                    normalize(SVector(1.0, 1.0, 1.0)),
 	                    normalize(SVector(-0.3, 0.7, 0.5))]
 		up = abs(dot(SVector(0.0, 1.0, 0.0), n̂)) < 0.9 ? SVector(0.0, 1.0, 0.0) : SVector(1.0, 0.0, 0.0)
-		cam_slow = S.CameraOrtho(; photon_direction=n̂, up, xys=SVector{2}[(0.0, 0.0)], nz=1, ν=1.0, t=t_obs)
-		cam_fast = S.CameraOrtho(; photon_direction=n̂, up, xys=SVector{2}[(0.0, 0.0)], nz=1, ν=1.0, t=t_obs, light=S.FastLight())
+		cam_slow = S.CameraOrtho(; photon_direction=n̂, up, xys=SVector{2}[(0.0, 0.0)], nz=4, ν=1.0, t=t_obs)
+		cam_fast = S.CameraOrtho(; photon_direction=n̂, up, xys=SVector{2}[(0.0, 0.0)], nz=4, ν=1.0, t=t_obs, light=S.FastLight())
 
 		s = dot(r - cam_slow.origin, cam_slow.n)
 
@@ -407,8 +407,8 @@ end
 	                    SVector(1.0, 0.0, 0.0),
 	                    normalize(SVector(1.0, 1.0, 1.0))]
 		up = abs(dot(SVector(0.0, 1.0, 0.0), n̂)) < 0.9 ? SVector(0.0, 1.0, 0.0) : SVector(1.0, 0.0, 0.0)
-		cam_slow = S.CameraOrtho(; photon_direction=n̂, up, xys=SVector{2}[(0.0, 0.0)], nz=1, ν=1.0, t=t_obs)
-		cam_fast = S.CameraOrtho(; photon_direction=n̂, up, xys=SVector{2}[(0.0, 0.0)], nz=1, ν=1.0, t=t_obs, light=S.FastLight())
+		cam_slow = S.CameraOrtho(; photon_direction=n̂, up, xys=SVector{2}[(0.0, 0.0)], nz=4, ν=1.0, t=t_obs)
+		cam_fast = S.CameraOrtho(; photon_direction=n̂, up, xys=SVector{2}[(0.0, 0.0)], nz=4, ν=1.0, t=t_obs, light=S.FastLight())
 
 		r_lab = SVector(x4.x, x4.y, x4.z)
 		s = dot(r_lab - cam_slow.origin, cam_slow.n)
@@ -440,7 +440,7 @@ end
 	                    normalize(SVector(1.0, 0.0, 1.0)),
 	                    normalize(SVector(-0.3, 0.7, 0.5))]
 		up = abs(dot(SVector(0.0, 1.0, 0.0), n̂)) < 0.9 ? SVector(0.0, 1.0, 0.0) : SVector(1.0, 0.0, 0.0)
-		cam = S.CameraOrtho(; photon_direction=n̂, up, xys=SVector{2}[(0.0, 0.0)], nz=1, ν=1.0, t=0.0)
+		cam = S.CameraOrtho(; photon_direction=n̂, up, xys=SVector{2}[(0.0, 0.0)], nz=4, ν=1.0, t=0.0)
 
 		uv = SVector(0.7, -0.4)
 		ray = S.camera_ray(cam, uv)
@@ -453,7 +453,7 @@ end
 	end
 
 	# --- CameraOrtho: explicit decomposition for CameraZ ---
-	cam_z = S.CameraZ(; xys=SVector{2}[(0.0, 0.0)], nz=1, ν=1.0, t=0.0)
+	cam_z = S.CameraZ(; xys=SVector{2}[(0.0, 0.0)], nz=4, ν=1.0, t=0.0)
 	r = SVector(1.5, -2.3, 7.0)
 	uv = S.image_coordinates(cam_z, r)
 	# CameraZ has e1=x̂, e2=ŷ, n=ẑ, origin=0 — so image_coordinates is just (x, y)
@@ -466,7 +466,7 @@ end
 	                    normalize(SVector(-0.3, 0.7, 0.5))]
 		up = abs(dot(SVector(0.0, 1.0, 0.0), n̂)) < 0.9 ? SVector(0.0, 1.0, 0.0) : SVector(1.0, 0.0, 0.0)
 		origin = SVector(0.5, -0.25, 1.0)
-		cam_p = S.CameraPerspective(; photon_direction=n̂, up, origin, xys=SVector{2}[(0.0, 0.0)], nz=1, ν=1.0, t=0.0)
+		cam_p = S.CameraPerspective(; photon_direction=n̂, up, origin, xys=SVector{2}[(0.0, 0.0)], nz=4, ν=1.0, t=0.0)
 
 		uv = SVector(0.3, -0.15)
 		ray = S.camera_ray(cam_p, uv)
@@ -482,13 +482,13 @@ end
 	# --- CameraPerspective: known tangent values ---
 	# On-axis point should give (0, 0)
 	cam_p0 = S.CameraPerspective(; photon_direction=SVector(0.0, 0.0, 1.0), origin=SVector(0.0, 0.0, 0.0),
-		xys=SVector{2}[(0.0, 0.0)], nz=1, ν=1.0, t=0.0)
+		xys=SVector{2}[(0.0, 0.0)], nz=4, ν=1.0, t=0.0)
 	@test S.image_coordinates(cam_p0, SVector(0.0, 0.0, 5.0)) ≈ SVector(0.0, 0.0) atol=1e-14
 	# Point at 45° in e1 direction: pinhole inversion gives uv[1] ≈ -1
 	@test S.image_coordinates(cam_p0, SVector(5.0, 0.0, 5.0)) ≈ SVector(-1.0, 0.0) atol=1e-12
 
 	# --- FourPosition overload: ignores time ---
-	cam = S.CameraOrtho(; photon_direction=normalize(SVector(1.0, 1.0, 1.0)), xys=SVector{2}[(0.0, 0.0)], nz=1, ν=1.0, t=0.0)
+	cam = S.CameraOrtho(; photon_direction=normalize(SVector(1.0, 1.0, 1.0)), xys=SVector{2}[(0.0, 0.0)], nz=4, ν=1.0, t=0.0)
 	r3 = SVector(1.0, -0.5, 2.0)
 	x4 = S.FourPosition(999.0, r3...)
 	@test S.image_coordinates(cam, x4) ≈ S.image_coordinates(cam, r3)

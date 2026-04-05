@@ -186,8 +186,7 @@ integrate_ray(obj::AbstractMedium, ray::Ray, what=Intensity()) = begin
 		s = leftendpoint(seg)
 		_integrate_ray_step(_init_acc(typeof(what), frequency(ray)), obj, ray.x0 + s * k1, ray, zero(float(s)))
 	else
-		# zs = range(seg, ray.nz)  # using StepRangeLen constructor directly is faster
-		@boundscheck @assert ray.nz ≥ 0  # to convince compiler that StepRangeLen won't error, necessary for running in Metal
+		@boundscheck @assert ray.nz ≥ 2  "nz must be ≥ 2 for meaningful integration"
 		ss = StepRangeLen(leftendpoint(seg), width(seg) / (ray.nz - 1), ray.nz)
 		Δs = step(ss)
 		Δλ = Δs / ν
@@ -209,7 +208,7 @@ end
 	isempty(seg) && return acc
 	ν = frequency(ray)
 	k1 = direction4(ray)
-	@boundscheck @assert ray.nz ≥ 0
+	@boundscheck @assert ray.nz ≥ 2  "nz must be ≥ 2 for meaningful integration"
 	ss = StepRangeLen(leftendpoint(seg), width(seg) / (ray.nz - 1), ray.nz)
 	Δs = step(ss)
 	Δλ = Δs / ν

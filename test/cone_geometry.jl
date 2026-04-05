@@ -206,7 +206,7 @@ end
 	import Synchray as S
 	using RectiGrids
 
-	cam = S.CameraZ(; xys=grid(SVector, x=[0.0], y=[0.0]), nz=1, ν=1.0, t=0.0)
+	cam = S.CameraZ(; xys=grid(SVector, x=[0.0], y=[0.0]), nz=4, ν=1.0, t=0.0)
 	x4 = S.FourPosition(7.5, -0.2, 1.1, 3.0)
 	x0 = S.camera_ray_anchor(cam, x4)
 	@test x0.z ≈ 0 atol=1e-14
