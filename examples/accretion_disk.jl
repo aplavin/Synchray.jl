@@ -170,7 +170,7 @@ function conical_jet_image(; log_path, suffix="")
 		S.EmissionRegion(;
 			geometry = S.Geometries.Conical(axis=SVector(0, 0, 1), φj=deg2rad(60), z=1.0..20.0),
 			velocity = S.VelocitySpec(S.Directions.Axial(), S.Profiles.Constant(10.0)),
-			emission = S.FixedEmission(S=1.0, α=0.5),
+			emission = S.FixedEmission(S=1.0, α=0.005),
 		) |> S.prepare_for_computations
 	end
 
