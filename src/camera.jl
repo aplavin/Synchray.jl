@@ -233,6 +233,26 @@ path through the medium using Krang's analytic geodesic solutions.
     τ_range::NTuple{2,Float64} = (0.01, 0.99)
 end
 
+"""
+    CameraKerrGRCached
+
+GR camera with precomputed Chebyshev-interpolated geodesics.
+
+Constructed via `CameraKerrGRCached(; camera, metric_spin, ..., R, N=16)` in KrangExt
+(requires `using Krang, FastChebInterp`).  Each pixel's geodesic is approximated by a
+Chebyshev polynomial on the Mino-time interval within a sphere of radius `R`.
+Subsequent `render` calls reuse the precomputed geodesics — no Krang calls per scene.
+"""
+struct CameraKerrGRCached{Tcam, T, TGeo}
+    camera::Tcam
+    metric_spin::T
+    bh_position::SVector{3,Float64}
+    bh_rg::Float64
+    nτ::Int
+    τ_range::NTuple{2,Float64}
+    geodesics::TGeo
+end
+
 
 """True if the ray is a NaN-sentinel representing a photon captured by the BH."""
 @inline is_captured_ray(ray::Ray) = isnan(ray.x0.t)

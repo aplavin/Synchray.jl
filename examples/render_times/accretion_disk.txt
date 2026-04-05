@@ -1,1 +1,4 @@
-accretion_disk_image()
+accretion_disk_image_cached()
+Accretion disk cached, θ=15°, 512px: 4.197892 seconds (77 allocations: 3.701 MiB, 1.30% gc time)
+Accretion disk cached, θ=75°, 512px: 4.042093 seconds (77 allocations: 3.701 MiB)
+Accretion disk cached, θ=85°, 512px: 4.045672 seconds (77 allocations: 3.701 MiB)

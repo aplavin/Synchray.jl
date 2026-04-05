@@ -1,7 +1,7 @@
 module KrangExt
 
 using Synchray
-using Synchray: GRLens, Ray, RayGR2, BLCoords, GeodesicRayState, CameraKerrGR,
+using Synchray: GRLens, Ray, RayGR2, BLCoords, GeodesicRayState, CameraKerrGR, CameraKerrGRCached,
 	FourPosition, FourFrequency, FourVelocity,
 	photon_k, _perpendicular_basis_vector, _captured_ray, camera_ray, direction3, frequency,
 	_init_acc, _integrate_ray_step, _postprocess_acc, _rt_step_scalar,
@@ -9,6 +9,7 @@ using Synchray: GRLens, Ray, RayGR2, BLCoords, GeodesicRayState, CameraKerrGR,
 	AbstractMedium, CombinedMedium,
 	@swiz
 using Krang: Krang, Kerr, SlowLightIntensityPixel, emission_coordinates, p_bl_d, metric_uu
+using FastChebInterp: FastChebInterp, chebinterp, chebjacobian
 using LinearAlgebra: cross, dot, norm
 using StaticArrays: SVector, SMatrix
 
@@ -151,10 +152,18 @@ function _outgoing_ray_from_pixel(pix, ray_in, R, bh_position, bh_rg, τ_frac)
 		ray_in.nz, ray_in.light, ray_in.s_max)
 end
 
-"""Check if a photon is captured by the BH: complex roots in the radial potential mean no turning point exists."""
+"""Check if a photon is captured by the BH.
+A ray is captured when either:
+- the radial potential has complex roots (no turning point exists), or
+- all roots are real but the turning point (max real root) is inside the horizon
+  (Krang's "case 2": the ray plunges without turning around).
+"""
 function _is_captured(pix)
 	roots = pix.roots
-	any(abs(imag(r)) > 1e-6 for r in roots)
+	any(abs(imag(r)) > 1e-6 for r in roots) && return true
+	# All roots real — check if turning point is outside horizon
+	r_turn = maximum(real(r) for r in roots)
+	r_turn < Krang.horizon(pix.metric)
 end
 
 """Boyer-Lindquist (r, θ, φ) → Cartesian (x, y, z) in Krang's frame.
@@ -168,18 +177,18 @@ _bl_to_cartesian(r, θ, φ) = SVector(
 
 
 # ============================================================================
-# Proper GR geodesic integration
+# Shared frame data for GR geodesic integration
 # ============================================================================
 
 """
-    KerrGeodesicPath
+    KerrFrameData
 
-Wraps a Krang SlowLightIntensityPixel with coordinate transformation data.
-Provides methods to step along the geodesic and convert BL → lab Cartesian.
+Per-pixel data that is independent of whether the geodesic is evaluated exactly
+or via Chebyshev interpolation: metric, constants of motion, observer frequency,
+coordinate-frame rotation, BH position and scale.
 """
-struct KerrGeodesicPath{T, TPix<:SlowLightIntensityPixel}
+struct KerrFrameData{T}
 	metric::Kerr{T}
-	pixel::TPix
 	η::T                                    # reduced Carter constant
 	λ::T                                    # reduced angular momentum
 	ν_obs::T                                # observer frequency
@@ -189,11 +198,120 @@ struct KerrGeodesicPath{T, TPix<:SlowLightIntensityPixel}
 	bh_rg::Float64
 end
 
+
+# ============================================================================
+# Exact geodesic path (wraps Krang pixel)
+# ============================================================================
+
+"""
+    KerrGeodesicPath
+
+Wraps a Krang SlowLightIntensityPixel with coordinate transformation data.
+Evaluates BL coordinates at any Mino time τ via Krang's analytic solution.
+"""
+struct KerrGeodesicPath{T, TPix<:SlowLightIntensityPixel}
+	frame::KerrFrameData{T}
+	pixel::TPix
+end
+
 function KerrGeodesicPath(metric::Kerr, pix::SlowLightIntensityPixel, ν_obs,
 		R_krang_to_lab, bh_position, bh_rg)
-	KerrGeodesicPath(metric, pix, pix.η, pix.λ, Float64(ν_obs),
+	frame = KerrFrameData(metric, pix.η, pix.λ, Float64(ν_obs),
 		pix.total_mino_time, R_krang_to_lab, bh_position, bh_rg)
+	KerrGeodesicPath(frame, pix)
 end
+
+"""Evaluate BL coordinates at Mino time τ. Returns BLCoords or nothing."""
+function bl_coords(path::KerrGeodesicPath, τ)
+	t_em, r, θ, φ, νr, νθ, ok = emission_coordinates(path.pixel, τ)
+	!ok && return nothing
+	r ≤ Krang.horizon(path.frame.metric) && return nothing
+	isnan(θ) && return nothing
+	BLCoords(t_em, r, θ, φ, νr, νθ)
+end
+
+
+# ============================================================================
+# Cached geodesic path (Chebyshev interpolant)
+# ============================================================================
+
+"""
+    KerrGeodesicPathCached
+
+Chebyshev-interpolated geodesic: stores a FastChebInterp.ChebPoly mapping
+Mino time τ → (t, 1/r, cos(θ), φ) within a bounded domain [τ_lo, τ_hi].
+Evaluates in ~64ns (vs 2170ns for exact emission_coordinates).
+
+The 1/r and cos(θ) transforms ensure exponential Chebyshev convergence
+even near the radial turning point and polar bounces.
+"""
+struct KerrGeodesicPathCached{T, TC<:FastChebInterp.ChebPoly}
+	frame::KerrFrameData{T}
+	cheb::TC
+end
+
+"""
+    KerrGeodesicPathCached(exact::KerrGeodesicPath; R, N=16)
+
+Build a Chebyshev-cached path from an exact path.
+- `R`: containment radius — the Chebyshev domain covers τ where the geodesic is within r ≤ R.
+- `N`: Chebyshev polynomial order (default 16; higher for near-critical rays).
+
+Returns `nothing` for invalid geodesics or geodesics that never enter the sphere of radius R.
+"""
+function KerrGeodesicPathCached(exact::KerrGeodesicPath; R, N=16)
+	frame = exact.frame
+	pix = exact.pixel
+	τ_total = frame.total_mino_time
+	(isnan(τ_total) || τ_total ≤ 0) && return nothing
+
+	# Skip near-equatorial geodesics where Krang's emission_inclination degenerates.
+	# |η| < 1e-10 means θ oscillation < ~0.00001° from the equator — negligible.
+	abs(frame.η) < 1e-10 && return nothing
+
+	captured = _is_captured(pix)
+	if !captured
+		r_turn = maximum(real.(Krang.get_radial_roots(frame.metric, frame.η, frame.λ)))
+		r_turn > R && return nothing
+	end
+
+	τ_lo = Krang.Ir(pix, true, R)
+
+	if captured
+		r_horizon = Krang.horizon(frame.metric)
+		τ_hi = Krang.Ir(pix, true, r_horizon + 0.2)
+	else
+		τ_hi = τ_total - τ_lo
+	end
+	τ_lo ≥ τ_hi && return nothing
+
+	cheb = chebinterp(N, τ_lo, τ_hi) do τ
+		ec = emission_coordinates(pix, τ)
+		SVector(ec[1], 1.0 / ec[2], cos(ec[3]), ec[4])
+	end
+	KerrGeodesicPathCached(frame, cheb)
+end
+
+"""Evaluate BL coordinates at Mino time τ from Chebyshev interpolant. Returns BLCoords or nothing."""
+function bl_coords(path::KerrGeodesicPathCached, τ)
+	c = path.cheb
+	(τ < c.lb[1] || τ > c.ub[1]) && return nothing
+	vals, jac = chebjacobian(c, τ)
+	r = 1.0 / vals[2]
+	θ = acos(clamp(vals[3], -1.0, 1.0))
+	νr = jac[2, 1] > 0   # d(1/r)/dτ > 0 ↔ r decreasing (infalling) ↔ νr=true
+	νθ = jac[3, 1] > 0   # d(cosθ)/dτ > 0 ↔ θ decreasing (toward pole) ↔ νθ=true
+	BLCoords(vals[1], r, θ, vals[4], νr, νθ)
+end
+
+# Dispatch shared helpers on cached path
+@inline four_position_lab(path::KerrGeodesicPathCached, bl::BLCoords) = four_position_lab(path.frame, bl)
+@inline geodesic_ray_state(path::KerrGeodesicPathCached, bl::BLCoords) = geodesic_ray_state(path.frame, bl)
+
+
+# ============================================================================
+# Shared helpers dispatching on KerrFrameData
+# ============================================================================
 
 """
 Convert BLCoords to lab-frame FourPosition.
@@ -213,11 +331,14 @@ different emission points.  Multiplied by bh_rg to convert to lab time units.
 For `FastLight` models the time component is ignored; for `SlowLight` time-dependent models
 this regularized time correctly captures relative delays between emission events.
 """
-@inline function four_position_lab(path::KerrGeodesicPath, bl::BLCoords)
-	x_ks = Krang.boyer_lindquist_to_quasi_cartesian_kerr_schild_fast_light(path.metric, bl.r, bl.θ, bl.φ)
+@inline function four_position_lab(frame::KerrFrameData, bl::BLCoords)
+	x_ks = Krang.boyer_lindquist_to_quasi_cartesian_kerr_schild_fast_light(frame.metric, bl.r, bl.θ, bl.φ)
 	x_krang = SVector(x_ks...)
-	FourPosition(bl.t * path.bh_rg, path.bh_position + path.bh_rg * (path.R_krang_to_lab * x_krang))
+	FourPosition(bl.t * frame.bh_rg, frame.bh_position + frame.bh_rg * (frame.R_krang_to_lab * x_krang))
 end
+
+# Backward compatibility: dispatch on path types
+@inline four_position_lab(path::KerrGeodesicPath, bl::BLCoords) = four_position_lab(path.frame, bl)
 
 """
 Convert BL contravariant spatial momentum to a Cartesian direction in Krang frame.
@@ -258,24 +379,24 @@ end
 Build a GeodesicRayState at a point on the geodesic.
 Computes the local photon FourFrequency in lab Cartesian from BL momentum.
 """
-@inline function geodesic_ray_state(path::KerrGeodesicPath, bl::BLCoords)
+@inline function geodesic_ray_state(frame::KerrFrameData, bl::BLCoords)
 	# 1. BL photon momentum covector
-	p_d = p_bl_d(path.metric, bl.r, bl.θ, path.η, path.λ, bl.νr, bl.νθ)
+	p_d = p_bl_d(frame.metric, bl.r, bl.θ, frame.η, frame.λ, bl.νr, bl.νθ)
 
 	# 2. Raise indices: p^μ = g^{μν} p_ν
-	g_uu = metric_uu(path.metric, bl.r, bl.θ)
+	g_uu = metric_uu(frame.metric, bl.r, bl.θ)
 	p_u = g_uu * p_d
 
 	# 3. BL contravariant spatial → KS Cartesian direction → lab frame
-	n_krang = _bl_upper_to_cartesian_direction(path.metric, p_u[2], p_u[3], p_u[4], bl.r, bl.θ, bl.φ)
-	n_lab = path.R_krang_to_lab * n_krang
+	n_krang = _bl_upper_to_cartesian_direction(frame.metric, p_u[2], p_u[3], p_u[4], bl.r, bl.θ, bl.φ)
+	n_lab = frame.R_krang_to_lab * n_krang
 
 	# 4. FourFrequency in lab Cartesian, with correct GR local energy.
 	#    p_u[1] = p^t is the local photon energy per unit energy-at-infinity.
 	#    Equals 1 at r→∞, grows near BH (gravitational blueshift for infalling photon).
 	#    Embedding it into k ensures that lorentz_unboost gives the correct comoving
 	#    frequency including gravitational redshift, not just SR Doppler.
-	k = photon_k(path.ν_obs * p_u[1], n_lab)
+	k = photon_k(frame.ν_obs * p_u[1], n_lab)
 
 	# 5. Polarization basis: placeholder (proper Walker-Penrose transport is Phase 3)
 	e1 = _perpendicular_basis_vector(n_lab, SVector(0.0, 1.0, 0.0))
@@ -284,29 +405,34 @@ Computes the local photon FourFrequency in lab Cartesian from BL momentum.
 	GeodesicRayState(k, e1, e2)
 end
 
+# Backward compatibility
+@inline geodesic_ray_state(path::KerrGeodesicPath, bl::BLCoords) = geodesic_ray_state(path.frame, bl)
+
+
+# ============================================================================
+# Geodesic integration (generic over path type)
+# ============================================================================
+
 """
     integrate_geodesic(obj, path, nτ, τ_range, what)
 
 Integrate radiative transfer along a Kerr geodesic.
 
-Steps in Mino time τ, converts BL→Cartesian at each step, and calls
-the standard `_integrate_ray_step` with a duck-typed `GeodesicRayState`.
+Steps in Mino time τ, evaluates BL coordinates via `bl_coords(path, τ)`,
+converts BL→Cartesian, and calls the standard `_integrate_ray_step`.
+Works with any path type that implements `bl_coords(path, τ)` and has a `.frame` field.
 """
-function integrate_geodesic(obj::AbstractMedium, path::KerrGeodesicPath, nτ::Int,
+function integrate_geodesic(obj::AbstractMedium, path, nτ::Int,
 		τ_range::NTuple{2,Float64}, what=Synchray.Intensity())
-	ν = path.ν_obs
-	a = path.metric.spin
-	τ_total = path.total_mino_time
+	frame = path.frame
+	ν = frame.ν_obs
+	a = frame.metric.spin
+	τ_total = frame.total_mino_time
 
-	# Handle fully invalid geodesics (no usable data at all)
 	if isnan(τ_total) || τ_total ≤ 0
 		return _postprocess_acc(_init_acc(typeof(what), ν), ν, what)
 	end
 
-	# Captured rays still have valid geodesic data along the incoming path
-	# (camera → horizon). Krang's total_mino_time covers the full infall;
-	# emission_coordinates returns ok=false once the ray hits the horizon,
-	# so we naturally stop accumulating there.
 	τ_min = τ_range[1] * τ_total
 	τ_max = τ_range[2] * τ_total
 	τs = range(τ_min, τ_max, length=nτ)
@@ -314,31 +440,16 @@ function integrate_geodesic(obj::AbstractMedium, path::KerrGeodesicPath, nτ::In
 
 	acc = _init_acc(typeof(what), ν)
 
-	r_horizon = Krang.horizon(path.metric)
-
 	for τ in τs
-		t_em, r, θ, φ, νr, νθ, ok = emission_coordinates(path.pixel, τ)
-		!ok && continue
-		# Skip points at or below the horizon — physics is unobservable there
-		r ≤ r_horizon && continue
-		# Skip numerically degenerate points (NaN θ from Krang β≈0 degeneracy)
-		isnan(θ) && continue
-		bl = BLCoords(t_em, r, θ, φ, νr, νθ)
+		bl = bl_coords(path, τ)
+		bl === nothing && continue
 
-		# Convert to Cartesian FourPosition
-		x4 = four_position_lab(path, bl)
-
-		# Skip points outside the medium geometry (before expensive geodesic_ray_state)
+		x4 = four_position_lab(frame, bl)
 		Synchray.is_inside(obj, x4) || continue
 
-		# Affine parameter step: dλ = Σ dτ, scaled by bh_rg for physical units
 		Σ = bl.r^2 + a^2 * cos(bl.θ)^2
-		Δλ = Σ * Δτ * path.bh_rg
-
-		# Build local photon state
-		state = geodesic_ray_state(path, bl)
-
-		# Reuse existing RT step — medium sees FourPosition + duck-typed ray
+		Δλ = Σ * Δτ * frame.bh_rg
+		state = geodesic_ray_state(frame, bl)
 		acc = _integrate_ray_step(acc, obj, x4, state, Δλ)
 	end
 
@@ -346,11 +457,12 @@ function integrate_geodesic(obj::AbstractMedium, path::KerrGeodesicPath, nτ::In
 end
 
 # CombinedMedium: evaluate all sub-media at each geodesic point
-function integrate_geodesic(cm::CombinedMedium, path::KerrGeodesicPath, nτ::Int,
+function integrate_geodesic(cm::CombinedMedium, path, nτ::Int,
 		τ_range::NTuple{2,Float64}, what=Synchray.Intensity())
-	ν = path.ν_obs
-	a = path.metric.spin
-	τ_total = path.total_mino_time
+	frame = path.frame
+	ν = frame.ν_obs
+	a = frame.metric.spin
+	τ_total = frame.total_mino_time
 
 	if isnan(τ_total) || τ_total ≤ 0
 		return _postprocess_acc(_init_acc(typeof(what), ν), ν, what)
@@ -362,23 +474,17 @@ function integrate_geodesic(cm::CombinedMedium, path::KerrGeodesicPath, nτ::Int
 	Δτ = step(τs)
 
 	acc = _init_acc(typeof(what), ν)
-	r_horizon = Krang.horizon(path.metric)
 
 	for τ in τs
-		t_em, r, θ, φ, νr, νθ, ok = emission_coordinates(path.pixel, τ)
-		!ok && continue
-		r ≤ r_horizon && continue
-		isnan(θ) && continue
-		bl = BLCoords(t_em, r, θ, φ, νr, νθ)
+		bl = bl_coords(path, τ)
+		bl === nothing && continue
 
-		x4 = four_position_lab(path, bl)
-
-		# Check if any sub-object contains this point before expensive state computation
+		x4 = four_position_lab(frame, bl)
 		any(obj -> Synchray.is_inside(obj, x4), cm.objects) || continue
 
 		Σ = bl.r^2 + a^2 * cos(bl.θ)^2
-		Δλ = Σ * Δτ * path.bh_rg
-		state = geodesic_ray_state(path, bl)
+		Δλ = Σ * Δτ * frame.bh_rg
+		state = geodesic_ray_state(frame, bl)
 
 		for obj in cm.objects
 			Synchray.is_inside(obj, x4) || continue
@@ -389,6 +495,23 @@ function integrate_geodesic(cm::CombinedMedium, path::KerrGeodesicPath, nτ::Int
 	_postprocess_acc(acc, ν, what)
 end
 
+
+# ============================================================================
+# Render methods
+# ============================================================================
+
+# Helper: build per-pixel Krang data (shared between exact and cached camera constructors)
+function _pixel_setup(metric, camera, bh_position, bh_rg, uv)
+	ray_in = camera_ray(camera, uv)
+	n = direction3(ray_in)
+	impact = _impact_vector(ray_in, bh_position)
+	αhat, βhat, θ_obs = _observer_screen_basis(n)
+	α = dot(impact, αhat) / bh_rg
+	β = dot(impact, βhat) / bh_rg
+	R_rot = _krang_to_lab_rotation(αhat, βhat, n, θ_obs)
+	pix = _krang_pixel(metric, α, β, θ_obs)
+	(; ray_in, pix, R_rot)
+end
 
 """
     render(cam::CameraKerrGR, obj, what)
@@ -402,24 +525,46 @@ Synchray.render(cam::CameraKerrGR, obj::AbstractMedium, what=Synchray.Intensity(
 	(; camera, bh_position, bh_rg, nτ, τ_range) = cam
 
 	camera.mapfunc(camera.xys) do uv
-		ray_in = camera_ray(camera, uv)
-
-		# Per-pixel: direction, impact parameter, screen basis, inclination
-		n = direction3(ray_in)
-		impact = _impact_vector(ray_in, bh_position)
-		αhat, βhat, θ_obs = _observer_screen_basis(n)
-		α = dot(impact, αhat) / bh_rg
-		β = dot(impact, βhat) / bh_rg
-		R = _krang_to_lab_rotation(αhat, βhat, n, θ_obs)
-
-		# Create Krang pixel (caches elliptic integrals)
-		pix = _krang_pixel(metric, α, β, θ_obs)
-
-		# Build geodesic path
-		path = KerrGeodesicPath(metric, pix, frequency(ray_in), R, bh_position, bh_rg)
-
-		# Integrate RT along geodesic
+		(; ray_in, pix, R_rot) = _pixel_setup(metric, camera, bh_position, bh_rg, uv)
+		path = KerrGeodesicPath(metric, pix, frequency(ray_in), R_rot, bh_position, bh_rg)
 		integrate_geodesic(obj, path, nτ, τ_range, what)
+	end
+end
+
+"""
+    CameraKerrGRCached(; camera, metric_spin, bh_position, bh_rg, nτ, τ_range, R, N=16)
+
+Construct a cached GR camera by precomputing Chebyshev-interpolated geodesics for all pixels.
+
+- `R`: containment radius — geodesics are cached within the sphere r ≤ R.
+- `N`: Chebyshev polynomial order (default 16).
+
+Requires `using Krang, FastChebInterp`.
+"""
+function Synchray.CameraKerrGRCached(; camera, metric_spin=0.0,
+		bh_position=zero(SVector{3,Float64}), bh_rg=1.0,
+		nτ=100, τ_range=(0.01, 0.99), R, N=16)
+	metric = Kerr(metric_spin)
+
+	geodesics = camera.mapfunc(camera.xys) do uv
+		(; ray_in, pix, R_rot) = _pixel_setup(metric, camera, bh_position, bh_rg, uv)
+		exact = KerrGeodesicPath(metric, pix, frequency(ray_in), R_rot, bh_position, bh_rg)
+		KerrGeodesicPathCached(exact; R, N)
+	end
+
+	CameraKerrGRCached(camera, metric_spin, bh_position, bh_rg, nτ, τ_range, geodesics)
+end
+
+Synchray.render(cam::CameraKerrGRCached, obj::AbstractMedium, what=Synchray.Intensity()) = let
+	(; camera, nτ, τ_range) = cam
+	ν_zero = frequency(camera_ray(camera, first(camera.xys)))
+
+	camera.mapfunc(cam.geodesics) do cached_path
+		if cached_path === nothing
+			_postprocess_acc(_init_acc(typeof(what), Float64(ν_zero)), Float64(ν_zero), what)
+		else
+			integrate_geodesic(obj, cached_path, nτ, τ_range, what)
+		end
 	end
 end
 
