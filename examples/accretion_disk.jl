@@ -19,7 +19,7 @@ function accretion_disk_image(; log_path, suffix="")
 		) |> S.prepare_for_computations
 	end
 
-	npx = 512
+	npx = 256
 	camera_extent = 25.0
 
 	views = [
@@ -82,7 +82,7 @@ function accretion_disk_image_cached(; log_path, suffix="")
 		) |> S.prepare_for_computations
 	end
 
-	npx = 512
+	npx = 256
 	camera_extent = 25.0
 
 	views = [
