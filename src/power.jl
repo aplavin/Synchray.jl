@@ -7,9 +7,10 @@ struct FixedExponent{P} end
 
 @inline @generated Base.:^(x::Number, ::FixedExponent{P}) where {P} = let
 	P == 1.25 && return :(x * √√x)
-	isinteger(P) ?
-		:(Base.literal_pow(^, x, $(Val(Int(P))))) :
-		:(FastPower.fastpower(x, $P))
+	isinteger(P) && return :(Base.literal_pow(^, x, $(Val(Int(P)))))
+	# Half-integer: x^n * √x  (e.g. P=1.5 → x*√x, P=2.5 → x^2*√x, P=0.5 → √x)
+	isinteger(2P) && return :(Base.literal_pow(^, x, $(Val(Int(P - 1//2)))) * √x)
+	:(FastPower.fastpower(x, $P))
 end
 
 Base.:-(a::FixedExponent{P}) where {P} = FixedExponent{-P}()

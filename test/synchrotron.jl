@@ -266,6 +266,40 @@ end
 	@test_throws ErrorException S._synchrotron_coeffs(model_k2, n_e, S.FullyTangled(5), k′)
 end
 
+@testitem "FixedExponent half-integer powers" begin
+	import Synchray as S
+
+	xs = [0.1, 0.5, 1.0, 2.3, 7.0, 100.0]
+
+	# Half-integer exponents that arise from synchrotron physics:
+	# p=3 → p/2=1.5, (p+1)/2=2, (p+2)/2=2.5
+	# p=2.5 → p/2=1.25 (already special-cased), (p+1)/2=1.75, (p+2)/2=2.25
+	half_int_exponents = [0.5, 1.5, 2.5, 3.5, -0.5, -1.5]
+
+	@testset "P=$P" for P in half_int_exponents
+		fe = S.FixedExponent{P}()
+		@testset "x=$x" for x in xs
+			@test x^fe ≈ x^P rtol=1e-15
+		end
+	end
+
+	# Verify non-half-integer still works (fastpower is approximate)
+	@testset "non-half-integer P=$P" for P in [1.3, 2.7]
+		fe = S.FixedExponent{P}()
+		for x in xs
+			@test x^fe ≈ x^P rtol=2e-4
+		end
+	end
+
+	# Verify integer exponents
+	@testset "integer P=$P" for P in [0, 1, 2, 3]
+		fe = S.FixedExponent{P}()
+		for x in xs
+			@test x^fe == x^P
+		end
+	end
+end
+
 @testitem "prepare_for_computations preserves synchrotron coeffs" begin
 	import Synchray as S
 	using Test
