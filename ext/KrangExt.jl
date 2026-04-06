@@ -9,7 +9,7 @@ using Synchray: GRLens, Ray, RayGR2, BLCoords, GeodesicRayState, CameraKerrGR, C
 	AbstractMedium, CombinedMedium,
 	@swiz
 using Krang: Krang, Kerr, SlowLightIntensityPixel, emission_coordinates, p_bl_d, metric_uu
-using FastChebInterp: FastChebInterp, chebinterp, chebjacobian
+using FastChebInterp: FastChebInterp, chebinterp
 using LinearAlgebra: cross, dot, norm
 using StaticArrays: SVector, SMatrix
 
@@ -233,41 +233,46 @@ end
 
 
 # ============================================================================
-# Cached geodesic path (Chebyshev interpolant)
+# Precomputed geodesic path (lab-frame Chebyshev)
 # ============================================================================
 
 """
-    KerrGeodesicPathCached
+    KerrGeodesicPathPrecomputed
 
-Chebyshev-interpolated geodesic: stores a FastChebInterp.ChebPoly mapping
-Mino time τ → (t, 1/r, cos(θ), φ) within a bounded domain [τ_lo, τ_hi].
-Evaluates in ~64ns (vs 2170ns for exact emission_coordinates).
+Chebyshev-interpolated geodesic storing lab-frame quantities directly:
+τ → (x4.t, x4.x, x4.y, x4.z, n_lab.x, n_lab.y, n_lab.z, 1/p^t, Σ·bh_rg)
 
-The 1/r and cos(θ) transforms ensure exponential Chebyshev convergence
-even near the radial turning point and polar bounces.
+where `n_lab` is the photon spatial direction and `p^t` is the contravariant time
+component of the photon momentum (gravitational blueshift factor).
+The decomposition `k = ν_obs·p^t·(1, n_lab)` avoids caching the divergent `p^t`
+directly — `1/p^t` is bounded in (0, 1], well-suited for Chebyshev approximation.
+
+Eliminates all BL→lab coordinate transforms from the render loop — per-step
+cost is just a single value-only Chebyshev evaluation (~28ns for 9 components)
+instead of the BL approach (chebjacobian + four_position_lab + geodesic_ray_state, ~140ns).
+
+Also more accurate than BL Chebyshev for near-critical rays (orbiting photons),
+where BL coordinates oscillate rapidly but lab-frame Cartesian traces smooth spirals.
 """
-struct KerrGeodesicPathCached{T, TC<:FastChebInterp.ChebPoly}
-	frame::KerrFrameData{T}
-	cheb::TC
+struct KerrGeodesicPathPrecomputed{T, TC<:FastChebInterp.ChebPoly}
+	ν_obs::T
+	cheb::TC  # τ → (x4.t, x4.x, x4.y, x4.z, n_lab.x, n_lab.y, n_lab.z, 1/p^t, Σ·bh_rg)
 end
 
 """
-    KerrGeodesicPathCached(exact::KerrGeodesicPath; R, N=16)
+    KerrGeodesicPathPrecomputed(exact::KerrGeodesicPath; R, N=16)
 
-Build a Chebyshev-cached path from an exact path.
-- `R`: containment radius — the Chebyshev domain covers τ where the geodesic is within r ≤ R.
-- `N`: Chebyshev polynomial order (default 16; higher for near-critical rays).
+Build a precomputed lab-frame path from an exact geodesic path.
+Computes lab-frame position, photon four-frequency, and Σ·bh_rg at Chebyshev nodes.
 
 Returns `nothing` for invalid geodesics or geodesics that never enter the sphere of radius R.
 """
-function KerrGeodesicPathCached(exact::KerrGeodesicPath; R, N=16)
+function KerrGeodesicPathPrecomputed(exact::KerrGeodesicPath; R, N=16)
 	frame = exact.frame
 	pix = exact.pixel
 	τ_total = frame.total_mino_time
 	(isnan(τ_total) || τ_total ≤ 0) && return nothing
 
-	# Skip near-equatorial geodesics where Krang's emission_inclination degenerates.
-	# |η| < 1e-10 means θ oscillation < ~0.00001° from the equator — negligible.
 	abs(frame.η) < 1e-10 && return nothing
 
 	captured = _is_captured(pix)
@@ -286,28 +291,25 @@ function KerrGeodesicPathCached(exact::KerrGeodesicPath; R, N=16)
 	end
 	τ_lo ≥ τ_hi && return nothing
 
+	a = frame.metric.spin
+
 	cheb = chebinterp(N, τ_lo, τ_hi) do τ
-		ec = emission_coordinates(pix, τ)
-		SVector(ec[1], 1.0 / ec[2], cos(ec[3]), ec[4])
+		t_bl, r, θ, φ, νr, νθ, ok = emission_coordinates(pix, τ)
+
+		bl = BLCoords(t_bl, r, θ, φ, νr, νθ)
+		x4 = four_position_lab(frame, bl)
+		state = geodesic_ray_state(frame, bl)
+		Σ_val = r^2 + a^2 * cos(θ)^2
+
+		# Decompose k = ν_obs·p^t·(1, n_lab): cache n_lab (smooth) and 1/p^t (bounded)
+		n_lab = (@swiz state.k.xyz) / state.k.t
+		inv_pt = frame.ν_obs / state.k.t  # 1/p^t = ν_obs / k.t
+
+		SVector(x4.t, (@swiz x4.xyz)..., n_lab..., inv_pt, Σ_val * frame.bh_rg)
 	end
-	KerrGeodesicPathCached(frame, cheb)
-end
 
-"""Evaluate BL coordinates at Mino time τ from Chebyshev interpolant. Returns BLCoords or nothing."""
-function bl_coords(path::KerrGeodesicPathCached, τ)
-	c = path.cheb
-	(τ < c.lb[1] || τ > c.ub[1]) && return nothing
-	vals, jac = chebjacobian(c, τ)
-	r = 1.0 / vals[2]
-	θ = acos(clamp(vals[3], -1.0, 1.0))
-	νr = jac[2, 1] > 0   # d(1/r)/dτ > 0 ↔ r decreasing (infalling) ↔ νr=true
-	νθ = jac[3, 1] > 0   # d(cosθ)/dτ > 0 ↔ θ decreasing (toward pole) ↔ νθ=true
-	BLCoords(vals[1], r, θ, vals[4], νr, νθ)
+	KerrGeodesicPathPrecomputed(frame.ν_obs, cheb)
 end
-
-# Dispatch shared helpers on cached path
-@inline four_position_lab(path::KerrGeodesicPathCached, bl::BLCoords) = four_position_lab(path.frame, bl)
-@inline geodesic_ray_state(path::KerrGeodesicPathCached, bl::BLCoords) = geodesic_ray_state(path.frame, bl)
 
 
 # ============================================================================
@@ -422,8 +424,6 @@ Dispatches on path type: exact paths use `τ_range * τ_total`, cached paths use
 """
 _τ_grid(path::KerrGeodesicPath, nτ) =
 	range(path.τ_range[1] * path.frame.total_mino_time, path.τ_range[2] * path.frame.total_mino_time, length=nτ)
-_τ_grid(path::KerrGeodesicPathCached, nτ) =
-	range(path.cheb.lb[1], path.cheb.ub[1], length=nτ)
 
 """
     integrate_geodesic(obj, path, nτ, what)
@@ -505,6 +505,65 @@ function integrate_geodesic(cm::CombinedMedium, path, nτ::Int,
 end
 
 
+# --- Precomputed path integration (lab-frame Chebyshev, no BL transforms) ---
+
+function integrate_geodesic(obj::AbstractMedium, path::KerrGeodesicPathPrecomputed, nτ::Int,
+		what=Synchray.Intensity())
+	ν = path.ν_obs
+	c = path.cheb
+	τs = range(c.lb[1], c.ub[1], length=nτ)
+	Δτ = step(τs)
+
+	acc = _init_acc(typeof(what), ν)
+
+	for τ in τs
+		vals = c(τ)
+		x4 = FourPosition(vals[1], vals[2], vals[3], vals[4])
+		Synchray.is_inside(obj, x4) || continue
+
+		n_lab = SVector(vals[5], vals[6], vals[7])
+		k = photon_k(ν / vals[8], n_lab)  # k = ν_obs/inv_pt * (1, n_lab) = ν_obs*p^t * (1, n_lab)
+		Δλ = max(0, vals[9]) * Δτ
+		e1 = _perpendicular_basis_vector(n_lab, SVector(0.0, 1.0, 0.0))
+		e2 = cross(n_lab, e1)
+		state = GeodesicRayState(k, e1, e2)
+		acc = _integrate_ray_step(acc, obj, x4, state, Δλ)
+	end
+
+	_postprocess_acc(acc, ν, what)
+end
+
+function integrate_geodesic(cm::CombinedMedium, path::KerrGeodesicPathPrecomputed, nτ::Int,
+		what=Synchray.Intensity())
+	ν = path.ν_obs
+	c = path.cheb
+	τs = range(c.lb[1], c.ub[1], length=nτ)
+	Δτ = step(τs)
+
+	acc = _init_acc(typeof(what), ν)
+
+	for τ in τs
+		vals = c(τ)
+		x4 = FourPosition(vals[1], vals[2], vals[3], vals[4])
+		any(obj -> Synchray.is_inside(obj, x4), cm.objects) || continue
+
+		n_lab = SVector(vals[5], vals[6], vals[7])
+		k = photon_k(ν / vals[8], n_lab)
+		Δλ = max(0, vals[9]) * Δτ
+		e1 = _perpendicular_basis_vector(n_lab, SVector(0.0, 1.0, 0.0))
+		e2 = cross(n_lab, e1)
+		state = GeodesicRayState(k, e1, e2)
+
+		for obj in cm.objects
+			Synchray.is_inside(obj, x4) || continue
+			acc = _integrate_ray_step(acc, obj, x4, state, Δλ)
+		end
+	end
+
+	_postprocess_acc(acc, ν, what)
+end
+
+
 # ============================================================================
 # Render methods
 # ============================================================================
@@ -559,7 +618,7 @@ function Synchray.CameraKerrGRCached(; camera, metric_spin=0.0,
 	geodesics = camera.mapfunc(camera.xys) do uv
 		(; ray_in, pix, R_rot) = _pixel_setup(metric, camera, bh_position, bh_rg, uv)
 		exact = KerrGeodesicPath(metric, pix, frequency(ray_in), R_rot, bh_position, bh_rg, (0.0, 1.0))
-		KerrGeodesicPathCached(exact; R, N)
+		KerrGeodesicPathPrecomputed(exact; R, N)
 	end
 
 	CameraKerrGRCached(camera, metric_spin, bh_position, bh_rg, nτ, geodesics)
