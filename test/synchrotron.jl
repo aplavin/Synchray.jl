@@ -1,0 +1,487 @@
+@testitem "Synchrotron slab scalings" begin
+	import Synchray as S
+	using Accessors
+
+	L = 2
+	ν = 2.0
+	electrons = S.IsotropicPowerLawElectrons(; p=3.2, Cj=0.7, Ca=0.0)
+	ne0 = 1.3
+	B0 = 0.9
+	ray = S.RayZ(; x0=S.FourPosition(0, 0, 0, 0), k=ν, nz=4_000)
+
+	cases = (
+		S.FourVelocity(SVector(0, 0, 0)),
+		S.FourVelocity(SVector(0, 0, 0.3)),
+		S.FourVelocity(SVector(0.3, 0, 0.5)),
+	)
+
+	@testset for u0 in cases
+		δ = S.doppler_factor(u0, SVector(0, 0, 1))
+		ν′ = ν / δ
+
+		slab = S.UniformSynchrotronSlab(; z=0..L, u0, ne0, B0=S.FullyTangled(B0), electrons)
+
+		@testset "optically thin" begin
+			I_num = S.render(ray, slab)
+			@test I_num > 0
+			@test S.render(ray, slab, S.OpticalDepth()) ≈ 0
+
+			k′ = S.photon_k(ν′, SVector(0, 0, 1))
+			(j0, _) = S._synchrotron_coeffs(electrons, ne0, slab.B0, k′)
+			I_exact = j0 * L * (δ^2)
+			@test I_num ≈ I_exact rtol=2e-3
+
+			@test S.render(ray, @set slab.ne0 *= 2) ≈ 2I_num rtol=2e-3
+			@test S.render(ray, @set slab.B0 *= 2) ≈ I_num * (2^((electrons.p + 1) / 2)) rtol=2e-3
+			@test S.render((@set S.frequency(ray) *= 2), slab) ≈ I_num * (2^(-(electrons.p - 1) / 2)) rtol=2e-3
+
+			αobs = S.render(ray, slab, S.SpectralIndex())
+			@test αobs ≈ (-(electrons.p - 1) / 2) atol=2e-4
+		end
+
+		@testset "very optically thick" begin
+			electrons_thick = @set electrons.Ca_ordered = 5e6
+			slab_thick = @set slab.electrons = electrons_thick
+			k′ = S.photon_k(ν′, SVector(0, 0, 1))
+			(j_thick, α_thick) = S._synchrotron_coeffs(electrons_thick, ne0, slab.B0, k′)
+
+			I_num_thick = S.render(ray, slab_thick)
+			I_exact_thick = (j_thick / α_thick) * (δ^3)
+			@test I_num_thick ≈ I_exact_thick rtol=2e-3
+			@test S.render(ray, slab_thick, S.OpticalDepth()) ≈ (α_thick * (L / δ)) rtol=2e-3
+			@test S.render(ray, slab_thick, S.SpectralIndex()) ≈ 5/2 atol=2e-4
+			@test S.render((@set S.frequency(ray) *= 2), slab_thick) ≈ I_num_thick * (2^(5/2)) rtol=2e-3
+
+			@test S.render(ray, @set slab_thick.ne0 *= 2) ≈ I_num_thick rtol=1e-3
+		end
+	end
+end
+
+
+@testitem "Ordered-field synchrotron (minimal)" begin
+	import Synchray as S
+	using Accessors
+
+	L = 2
+	ν = 2.0
+	p = 3.2
+	electrons = S.IsotropicPowerLawElectrons(; p, Cj=0.7, Ca=0)
+	ne0 = 1.3
+	B0 = 0.9
+
+	ray = S.RayZ(; x0=S.FourPosition(0, 0, 0, 0), k=ν, nz=4_000)
+	u0 = S.FourVelocity(SVector(0, 0, 0))
+	k′ = S.photon_k(ν, SVector(0, 0, 1))
+
+	@testset "B parallel to photon => zero emissivity" begin
+		slab = S.UniformSynchrotronSlab(; z=0..L, u0, ne0, B0=SVector(0, 0, B0), electrons)
+		I = S.render(ray, slab)
+		@test I ≈ 0
+		(j, α) = S._synchrotron_coeffs(electrons, ne0, slab.B0, k′)
+		@test j ≈ 0
+		@test α ≈ 0
+	end
+
+	@testset "B ⟂ photon => thin-slab analytic limit" begin
+		slab = S.UniformSynchrotronSlab(; z=0..L, u0, ne0, B0=SVector(B0, 0, 0), electrons)
+		I_num = S.render(ray, slab)
+		(j, _) = S._synchrotron_coeffs(electrons, ne0, slab.B0, k′)
+		I_exact = j * L
+		@test I_num ≈ I_exact  rtol=1e-3
+	end
+
+	@testset "sin(theta) scaling" begin
+		slab_perp = S.UniformSynchrotronSlab(; z=0..L, u0, ne0, B0=SVector(B0, 0, 0), electrons)
+		I_perp = S.render(ray, slab_perp)
+
+		slab_45 = @set slab_perp.B0 = B0 * normalize(SVector(1, 0, 1))
+
+		expected = (1 / √2)^((p + 1) / 2)
+		@test (S.render(ray, slab_45) / I_perp) ≈ expected
+	end
+end
+
+
+@testitem "TangledOrderedMixture magnetic field" begin
+	import Synchray as S
+
+	p = 3.2
+	ne0 = 1.3
+	B0 = 0.9
+	ν = 2.0
+	k′ = S.photon_k(ν, SVector(0.0, 0.0, 1.0))
+
+	electrons = S.IsotropicPowerLawElectrons(; p)
+
+	# A generic non-perpendicular field direction.
+	b = B0 .* normalize(SVector(1.0, 0.0, 2.0))
+	@testset "limits" begin
+		(j_t, α_t) = S._synchrotron_coeffs(electrons, ne0, S.FullyTangled(B0), k′)
+		(j_0, α_0) = S._synchrotron_coeffs(electrons, ne0, S.TangledOrderedMixture(b; kappa=0.0), k′)
+		(j_inf, α_inf) = S._synchrotron_coeffs(electrons, ne0, S.TangledOrderedMixture(b; kappa=Inf), k′)
+		(j_ord, α_ord) = S._synchrotron_coeffs(electrons, ne0, b, k′)
+
+		@test j_0 ≈ j_t
+		@test α_0 ≈ α_t
+		@test j_inf ≈ j_ord
+		@test α_inf ≈ α_ord
+	end
+
+	@testset "intermediate kappa matches interpolation" begin
+		κ = 2.0
+		f = κ / (1 + κ)
+		(j_mid, α_mid) = S._synchrotron_coeffs(electrons, ne0, S.TangledOrderedMixture(b; kappa=κ), k′)
+
+		B = norm(b)
+		(j_perp, α_perp) = S._synchrotron_coeffs(electrons, ne0, SVector(B, 0.0, 0.0), k′)
+
+		μ = b.z / B
+		sinθ2 = clamp(1 - μ^2, 0, 1)
+		qj = (p + 1) / 2
+		qa = (p + 2) / 2
+		sinpow_j = sinθ2^(qj / 2)
+		sinpow_a = sinθ2^(qa / 2)
+		Aj = (1 - f) * electrons.sinavg_j + f * sinpow_j
+		Aa = (1 - f) * electrons.sinavg_a + f * sinpow_a
+
+		@test j_mid ≈ j_perp * Aj
+		@test α_mid ≈ α_perp * Aa
+
+		(j_0, α_0) = S._synchrotron_coeffs(electrons, ne0, S.TangledOrderedMixture(b; kappa=0.0), k′)
+		(j_inf, α_inf) = S._synchrotron_coeffs(electrons, ne0, S.TangledOrderedMixture(b; kappa=Inf), k′)
+		@test min(j_0, j_inf) ≤ j_mid ≤ max(j_0, j_inf)
+		@test min(α_0, α_inf) ≤ α_mid ≤ max(α_0, α_inf)
+	end
+end
+
+
+@testitem "Ordered vs tangled consistency" begin
+	import Synchray as S
+
+	avg_sin_pow(q) = √pi * S.SpecialFunctions.gamma((q + 2) / 2) / (2 * S.SpecialFunctions.gamma((q + 3) / 2))
+
+	p = 3.2
+	ne0 = 1.3
+	B0 = 0.9
+	ν = 2.0
+	k′ = S.photon_k(ν, SVector(0.0, 0.0, 1.0))
+
+	electrons = S.IsotropicPowerLawElectrons(; p)
+
+	(j_t, α_t) = S._synchrotron_coeffs(electrons, ne0, S.FullyTangled(B0), k′)
+	(j_o_perp, α_o_perp) = S._synchrotron_coeffs(electrons, ne0, SVector(B0, 0.0, 0.0), k′)
+
+	@testset "analytic ratio vs orthogonal field" begin
+		qj = (p + 1) / 2
+		qa = (p + 2) / 2
+		@test (j_t / j_o_perp) ≈ avg_sin_pow(qj) rtol=2e-12
+		@test (α_t / α_o_perp) ≈ avg_sin_pow(qa) rtol=2e-12
+	end
+
+	@testset "numerical angle average matches tangled" begin
+		θs = range(0.0, pi; length=100)
+		ws = sin.(θs)
+
+		js = map(θ -> begin
+			b = B0 .* SVector(sin(θ), 0.0, cos(θ))
+			first(S._synchrotron_coeffs(electrons, ne0, b, k′))
+		end, θs)
+		αs = map(θ -> begin
+			b = B0 .* SVector(sin(θ), 0.0, cos(θ))
+			last(S._synchrotron_coeffs(electrons, ne0, b, k′))
+		end, θs)
+
+		j_avg = sum(js .* ws) / sum(ws)
+		α_avg = sum(αs .* ws) / sum(ws)
+
+		@test j_avg ≈ j_t rtol=2e-3
+		@test α_avg ≈ α_t rtol=2e-3
+	end
+end
+
+@testitem "AnisotropicPowerLawElectrons: φ(θ) scaling" begin
+	import Synchray as S
+	using Test
+
+	p = 2.5
+	ν = 2
+	n_e = 3
+	b = SVector(0, 0, 5)
+
+	θ = acos(0.5) # cosθ = 1/2
+	n̂ = SVector(sin(θ), 0, cos(θ))
+	k′ = S.FourFrequency(ν, (ν .* n̂)...)
+
+	model_iso = S.IsotropicPowerLawElectrons(; p, Cj=1, Ca=1)
+	model_an1 = S.AnisotropicPowerLawElectrons(; p, η=1, Cj=1, Ca=1)
+	model_an = S.AnisotropicPowerLawElectrons(; p, η=0.5, Cj=1, Ca=1)
+
+	(j_iso, α_iso) = S._synchrotron_coeffs(model_iso, n_e, b, k′)
+	@test j_iso > 0 && α_iso > 0
+
+	(j_an1, α_an1) = S._synchrotron_coeffs(model_an1, n_e, b, k′)
+	@test j_an1 ≈ j_iso
+	@test α_an1 ≈ α_iso
+
+	(j_an, α_an) = S._synchrotron_coeffs(model_an, n_e, b, k′)
+	cosθ = 0.5
+	φ = (1 + (model_an.η - 1) * cosθ^2)^(-model_an.p / 2) / model_an.Pnorm
+	@test j_an ≈ φ * j_iso
+	@test α_an ≈ φ * α_iso
+end
+
+@testitem "PitchyPowerLawElectrons: sin(θ)^k scaling" begin
+	import Synchray as S
+	using Test
+
+	p = 2.5
+	ν = 2
+	n_e = 3
+	b = SVector(0, 0, 5)
+
+	θ = acos(0.5)
+	n̂ = SVector(sin(θ), 0, cos(θ))
+	k′ = S.FourFrequency(ν, (ν .* n̂)...)
+
+	model_iso = S.IsotropicPowerLawElectrons(; p, Cj=1, Ca=1)
+	model_k0 = S.PitchyPowerLawElectrons(; p, k=0, Cj=1, Ca=1)
+	model_k2 = S.PitchyPowerLawElectrons(; p, k=2.0, Cj=1, Ca=1)
+
+	(j_iso, α_iso) = S._synchrotron_coeffs(model_iso, n_e, b, k′)
+	@test j_iso > 0 && α_iso > 0
+
+	# k=0 recovers isotropic
+	(j_k0, α_k0) = S._synchrotron_coeffs(model_k0, n_e, b, k′)
+	@test j_k0 ≈ j_iso
+	@test α_k0 ≈ α_iso
+
+	# k=2: verify explicit φ formula
+	(j_k2, α_k2) = S._synchrotron_coeffs(model_k2, n_e, b, k′)
+	cosθ = 0.5
+	φ = (1 - cosθ^2)^(model_k2.k / 2) / model_k2.Pnorm
+	@test j_k2 ≈ φ * j_iso
+	@test α_k2 ≈ φ * α_iso
+
+	# FullyTangled rejected
+	@test_throws ErrorException S._synchrotron_coeffs(model_k2, n_e, S.FullyTangled(5), k′)
+end
+
+@testitem "FixedExponent half-integer powers" begin
+	import Synchray as S
+
+	xs = [0.1, 0.5, 1.0, 2.3, 7.0, 100.0]
+
+	# Half-integer exponents that arise from synchrotron physics:
+	# p=3 → p/2=1.5, (p+1)/2=2, (p+2)/2=2.5
+	# p=2.5 → p/2=1.25 (already special-cased), (p+1)/2=1.75, (p+2)/2=2.25
+	half_int_exponents = [0.5, 1.5, 2.5, 3.5, -0.5, -1.5]
+
+	@testset "P=$P" for P in half_int_exponents
+		fe = S.FixedExponent{P}()
+		@testset "x=$x" for x in xs
+			@test x^fe ≈ x^P rtol=1e-15
+		end
+	end
+
+	# Verify non-half-integer still works (fastpower is approximate)
+	@testset "non-half-integer P=$P" for P in [1.3, 2.7]
+		fe = S.FixedExponent{P}()
+		for x in xs
+			@test x^fe ≈ x^P rtol=2e-4
+		end
+	end
+
+	# Verify integer exponents
+	@testset "integer P=$P" for P in [0, 1, 2, 3]
+		fe = S.FixedExponent{P}()
+		for x in xs
+			@test x^fe == x^P
+		end
+	end
+end
+
+@testitem "BrokenPowerLaw" begin
+	import Synchray as S
+	using Test
+
+	ne0 = 1.3
+	B0 = 0.9
+	ν = 2.0
+	k′ = S.photon_k(ν, SVector(0, 0, 1))
+
+	@testset "p_low = p_high recovers simple power law" begin
+		for p in [2.0, 2.5, 3.0]
+			simple = S.IsotropicPowerLawElectrons(; p)
+			broken = S.BrokenPowerLaw(S.IsotropicPowerLawElectrons; p_low=p, p_high=p, γ_break=S.Profiles.Constant(1e4))
+			broken_prep = S.prepare_for_computations(broken)
+
+			for B in (S.FullyTangled(B0), SVector(B0, 0, 0), S.TangledOrderedMixture(SVector(B0, 0, 0); kappa=2))
+				(j_s, α_s) = S._synchrotron_coeffs(simple, ne0, B, k′)
+				# BrokenPowerLaw needs geom and x4 — use nothing since γ_break is constant
+				(j_b, α_b) = S._synchrotron_coeffs(broken_prep, ne0, B, k′, nothing, nothing)
+				@test j_b ≈ j_s rtol=1e-10
+				@test α_b ≈ α_s rtol=1e-10
+			end
+		end
+	end
+
+	@testset "below break matches p_low" begin
+		p_lo, p_hi = 2.0, 3.0
+		γ_b = 1e4
+		bpl = S.prepare_for_computations(
+			S.BrokenPowerLaw(S.IsotropicPowerLawElectrons; p_low=p_lo, p_high=p_hi, γ_break=S.Profiles.Constant(γ_b)))
+		simple_lo = S.IsotropicPowerLawElectrons(; p=p_lo)
+
+		B = S.FullyTangled(B0)
+		# break frequency: (3e/4πm_e c) × B0 × γ_b²
+		ν_break = 3.779e14
+
+		# Well below break: should match p_low
+		for ν_test in [1.0, 100.0, ν_break / 100]
+			k_test = S.photon_k(ν_test, SVector(0, 0, 1))
+			(j_b, α_b) = S._synchrotron_coeffs(bpl, ne0, B, k_test, nothing, nothing)
+			(j_s, α_s) = S._synchrotron_coeffs(simple_lo, ne0, B, k_test)
+			@test j_b ≈ j_s rtol=0.01
+			@test α_b ≈ α_s rtol=0.01
+		end
+	end
+
+	@testset "continuity at break" begin
+		p_lo, p_hi = 2.0, 3.0
+		γ_b = 1e4
+		bpl = S.prepare_for_computations(
+			S.BrokenPowerLaw(S.IsotropicPowerLawElectrons; p_low=p_lo, p_high=p_hi, γ_break=S.Profiles.Constant(γ_b)))
+
+		B = S.FullyTangled(B0)
+		ν_break = 3.779e14
+
+		k_below = S.photon_k(0.999 * ν_break, SVector(0, 0, 1))
+		k_above = S.photon_k(1.001 * ν_break, SVector(0, 0, 1))
+		(j_below, α_below) = S._synchrotron_coeffs(bpl, ne0, B, k_below, nothing, nothing)
+		(j_above, α_above) = S._synchrotron_coeffs(bpl, ne0, B, k_above, nothing, nothing)
+		@test j_below ≈ j_above rtol=0.01
+		@test α_below ≈ α_above rtol=0.01
+	end
+
+	@testset "spectral index below and above break" begin
+		p_lo, p_hi = 2.0, 3.5
+		γ_b = 1e4
+		bpl = S.prepare_for_computations(
+			S.BrokenPowerLaw(S.IsotropicPowerLawElectrons; p_low=p_lo, p_high=p_hi, γ_break=S.Profiles.Constant(γ_b)))
+
+		B = S.FullyTangled(B0)
+		ν_break = 3.779e14
+
+		# Spectral index below break: α = -(p_lo-1)/2
+		ν1, ν2 = ν_break / 1e4, ν_break / 1e3
+		k1 = S.photon_k(ν1, SVector(0, 0, 1))
+		k2 = S.photon_k(ν2, SVector(0, 0, 1))
+		(j1, _) = S._synchrotron_coeffs(bpl, ne0, B, k1, nothing, nothing)
+		(j2, _) = S._synchrotron_coeffs(bpl, ne0, B, k2, nothing, nothing)
+		α_below = log(j2 / j1) / log(ν2 / ν1)
+		@test α_below ≈ -(p_lo - 1) / 2  atol=0.01
+
+		# Spectral index above break: α = -(p_hi-1)/2
+		ν3, ν4 = ν_break * 1e3, ν_break * 1e4
+		k3 = S.photon_k(ν3, SVector(0, 0, 1))
+		k4 = S.photon_k(ν4, SVector(0, 0, 1))
+		(j3, _) = S._synchrotron_coeffs(bpl, ne0, B, k3, nothing, nothing)
+		(j4, _) = S._synchrotron_coeffs(bpl, ne0, B, k4, nothing, nothing)
+		α_above = log(j4 / j3) / log(ν4 / ν3)
+		@test α_above ≈ -(p_hi - 1) / 2  atol=0.01
+	end
+
+	@testset "works with anisotropic electrons" begin
+		bpl = S.prepare_for_computations(
+			S.BrokenPowerLaw(S.AnisotropicPowerLawElectrons; p_low=2.0, p_high=3.0, γ_break=S.Profiles.Constant(1e4), η=0.5))
+		B = SVector(B0, 0, 0)
+		(j, α) = S._synchrotron_coeffs(bpl, ne0, B, k′, nothing, nothing)
+		@test j > 0
+		@test α > 0
+		@test isfinite(j)
+	end
+
+	@testset "works with pitchy electrons" begin
+		bpl = S.prepare_for_computations(
+			S.BrokenPowerLaw(S.PitchyPowerLawElectrons; p_low=2.0, p_high=3.0, γ_break=S.Profiles.Constant(1e4), k=2.0))
+		B = SVector(B0, 0, 0)
+		(j, α) = S._synchrotron_coeffs(bpl, ne0, B, k′, nothing, nothing)
+		@test j > 0
+		@test α > 0
+		@test isfinite(j)
+	end
+
+	@testset "slab ray: spectral index and frequency scaling" begin
+		using Accessors
+
+		L = 2
+		p_lo, p_hi = 2.0, 3.0
+		γ_b = 1e4
+		bpl = S.BrokenPowerLaw(S.IsotropicPowerLawElectrons; p_low=p_lo, p_high=p_hi,
+			γ_break=S.Profiles.Constant(γ_b), Cj=0.7, Ca=0.0)
+		u0 = S.FourVelocity(SVector(0, 0, 0))
+		slab = S.UniformSynchrotronSlab(; z=0..L, u0, ne0, B0=S.FullyTangled(B0), electrons=bpl)
+
+		ν_break = 3.779e14
+
+		# Below break: spectral index = -(p_lo-1)/2
+		ν_below = ν_break / 1000
+		ray_below = S.RayZ(; x0=S.FourPosition(0, 0, 0, 0), k=ν_below, nz=4_000)
+		α_below = S.render(ray_below, slab, S.SpectralIndex())
+		@test α_below ≈ -(p_lo - 1) / 2 atol=1e-3
+
+		# Above break: spectral index = -(p_hi-1)/2
+		ν_above = ν_break * 1000
+		ray_above = S.RayZ(; x0=S.FourPosition(0, 0, 0, 0), k=ν_above, nz=4_000)
+		α_above = S.render(ray_above, slab, S.SpectralIndex())
+		@test α_above ≈ -(p_hi - 1) / 2 atol=1e-3
+
+		# Frequency scaling below break: I(2ν)/I(ν) = 2^(-(p_lo-1)/2)
+		I1 = S.render(ray_below, slab)
+		I2 = S.render((@set S.frequency(ray_below) *= 2), slab)
+		@test I2 / I1 ≈ 2.0^(-(p_lo - 1) / 2) rtol=2e-3
+
+		# Frequency scaling above break: I(2ν)/I(ν) = 2^(-(p_hi-1)/2)
+		I3 = S.render(ray_above, slab)
+		I4 = S.render((@set S.frequency(ray_above) *= 2), slab)
+		@test I4 / I3 ≈ 2.0^(-(p_hi - 1) / 2) rtol=2e-3
+	end
+end
+
+@testitem "prepare_for_computations preserves synchrotron coeffs" begin
+	import Synchray as S
+	using Test
+
+	ne0 = 1.3
+	ν = 2
+	k′ = S.photon_k(ν, SVector(0, 0, 1))
+
+	models = (
+		S.IsotropicPowerLawElectrons(; p=3.2, Cj=0.7, Ca=0.3),
+		S.AnisotropicPowerLawElectrons(; p=2.5, η=0.5, Cj=1, Ca=1),
+		S.PitchyPowerLawElectrons(; p=2.5, k=2.0, Cj=1, Ca=1),
+	)
+
+	b = SVector(1, 0, 2)
+	B_ordered = (SVector(3, 0, 0), SVector(0, 0, 3))
+	B_tangled = (
+		S.FullyTangled(3),
+		S.TangledOrderedMixture(b; kappa=0),
+		S.TangledOrderedMixture(b; kappa=2),
+		S.TangledOrderedMixture(b; kappa=Inf),
+	)
+
+	@testset for electrons in models
+		prepared = S.prepare_for_computations(electrons)
+		Bs = electrons isa S.IsotropicPowerLawElectrons ? (B_ordered..., B_tangled...) : B_ordered
+
+		@testset for B in Bs
+			(j1, α1) = S._synchrotron_coeffs(electrons, ne0, B, k′)
+			(j2, α2) = S._synchrotron_coeffs(prepared, ne0, B, k′)
+
+			B == SVector(0,0,3) || @test j1 > 0 && α1 > 0
+			@test j1 ≈ j2 rtol=0.5e-3
+			@test α1 ≈ α2 rtol=0.5e-3
+		end
+	end
+end

@@ -1,0 +1,731 @@
+@testitem "Polarized synchrotron coeffs - basic" begin
+	import Synchray as S
+	using Test
+
+	ν = 2.0
+	x4 = S.FourPosition(0.0, 0.0, 0.0, 0.0)
+	k′ = S.photon_k(ν, SVector(0.0, 0.0, 1.0))
+	u0 = S.FourVelocity(SVector(0.0, 0.0, 0.0))
+	ne0 = 1.3
+	B0 = 0.9
+	z = 0.0..1.0
+
+	cases = (
+		S.IsotropicPowerLawElectrons(; p=3.2, Cj=0.7, Ca=0.3),
+		S.AnisotropicPowerLawElectrons(; p=2.5, η=0.5, Cj=0.7, Ca=0.3),
+	)
+
+	@testset for electrons in cases
+		slab = S.UniformSynchrotronSlab(; z, u0, ne0, B0=SVector(B0, 0.0, 0.0), electrons)
+		(j, a) = S.emissivity_absorption_polarized(slab, x4, k′)
+		(jI, αI) = S.emissivity_absorption(slab, x4, k′)
+
+		@test isfinite(j.perp) && isfinite(j.par)
+		@test isfinite(a.perp) && isfinite(a.par)
+		@test j.perp ≥ 0 && j.par ≥ 0
+		@test a.perp ≥ 0 && a.par ≥ 0
+		@test (j.perp + j.par) ≈ jI rtol=5e-15 atol=0
+		@test (a.perp + a.par)/2 ≈ αI rtol=5e-15 atol=0
+	end
+end
+
+
+@testitem "Polarized synchrotron coeffs - FullyTangled" begin
+	import Synchray as S
+	using Test
+
+	ν = 2.0
+	x4 = S.FourPosition(0.0, 0.0, 0.0, 0.0)
+	k′ = S.photon_k(ν, SVector(0.0, 0.0, 1.0))
+	u0 = S.FourVelocity(SVector(0.0, 0.0, 0.0))
+	ne0 = 1.3
+	B0 = 0.9
+	z = 0.0..1.0
+
+	electrons = S.IsotropicPowerLawElectrons(; p=3.2, Cj=0.7, Ca=0.3)
+	slab = S.UniformSynchrotronSlab(; z, u0, ne0, B0=S.FullyTangled(B0), electrons)
+	(j, a) = S.emissivity_absorption_polarized(slab, x4, k′)
+	@test j.perp ≈ j.par
+	@test a.perp ≈ a.par
+	(jI, αI) = S.emissivity_absorption(slab, x4, k′)
+	@test (j.perp + j.par) ≈ jI rtol=5e-15 atol=0
+	@test (a.perp + a.par)/2 ≈ αI rtol=5e-15 atol=0
+end
+
+
+@testitem "Polarized synchrotron coeffs - TangledOrderedMixture" begin
+	import Synchray as S
+	using Test
+
+	ν = 2.0
+	x4 = S.FourPosition(0.0, 0.0, 0.0, 0.0)
+	k′ = S.photon_k(ν, SVector(0.0, 0.0, 1.0))
+	u0 = S.FourVelocity(SVector(0.0, 0.0, 0.0))
+	ne0 = 1.3
+	B0 = 0.9
+	z = 0.0..1.0
+	electrons = S.IsotropicPowerLawElectrons(; p=3.2, Cj=0.7, Ca=0.3)
+	b = SVector(B0, 0.0, 0.0)
+
+	@testset "κ=0 depolarized" begin
+		field = S.TangledOrderedMixture(b, 0.0)
+		slab = S.UniformSynchrotronSlab(; z, u0, ne0, B0=field, electrons)
+		(j, a) = S.emissivity_absorption_polarized(slab, x4, k′)
+		(jI, αI) = S.emissivity_absorption(slab, x4, k′)
+
+		@test j.perp ≈ j.par rtol=1e-14
+		@test a.perp ≈ a.par rtol=1e-14
+		@test (j.perp + j.par) ≈ jI rtol=5e-15 atol=0
+		@test (a.perp + a.par)/2 ≈ αI rtol=5e-15 atol=0
+	end
+
+	@testset "κ→∞ ordered" begin
+		field_mixed = S.TangledOrderedMixture(b, Inf)
+		slab_mixed = S.UniformSynchrotronSlab(; z, u0, ne0, B0=field_mixed, electrons)
+		(j_mixed, a_mixed) = S.emissivity_absorption_polarized(slab_mixed, x4, k′)
+
+		slab_ordered = S.UniformSynchrotronSlab(; z, u0, ne0, B0=b, electrons)
+		(j_ordered, a_ordered) = S.emissivity_absorption_polarized(slab_ordered, x4, k′)
+
+		@test j_mixed.perp ≈ j_ordered.perp rtol=1e-14
+		@test j_mixed.par ≈ j_ordered.par rtol=1e-14
+		@test a_mixed.perp ≈ a_ordered.perp rtol=1e-14
+		@test a_mixed.par ≈ a_ordered.par rtol=1e-14
+	end
+
+	@testset "κ=2 intermediate" begin
+		field = S.TangledOrderedMixture(b, 2.0)
+		slab = S.UniformSynchrotronSlab(; z, u0, ne0, B0=field, electrons)
+		(j, a) = S.emissivity_absorption_polarized(slab, x4, k′)
+		(jI, αI) = S.emissivity_absorption(slab, x4, k′)
+
+		@test j.perp > 1.2j.par
+		@test 0.1 < (j.perp - j.par) / (j.perp + j.par) < 0.6
+		@test (j.perp + j.par) ≈ jI rtol=5e-15 atol=0
+		@test (a.perp + a.par)/2 ≈ αI rtol=5e-15 atol=0
+
+		slab_ordered = S.UniformSynchrotronSlab(; z, u0, ne0, B0=b, electrons)
+		(j_ord, _) = S.emissivity_absorption_polarized(slab_ordered, x4, k′)
+		pol_frac = (j.perp - j.par) / (j.perp + j.par)
+		pol_frac_ord = (j_ord.perp - j_ord.par) / (j_ord.perp + j_ord.par)
+
+		@test 0.1 < pol_frac < 0.9pol_frac_ord
+	end
+
+	@testset "Viewing angle dependence" begin
+		field = S.TangledOrderedMixture(b, 2.0)
+		slab = S.UniformSynchrotronSlab(; z, u0, ne0, B0=field, electrons)
+
+		k_perp = S.photon_k(ν, SVector(0.0, 0.0, 1.0))
+		(j_perp, _) = S.emissivity_absorption_polarized(slab, x4, k_perp)
+		pol_frac_perp = (j_perp.perp - j_perp.par) / (j_perp.perp + j_perp.par)
+
+		k_oblique = S.photon_k(ν, normalize(SVector(1.0, 0.0, 1.0)))
+		(j_oblique, _) = S.emissivity_absorption_polarized(slab, x4, k_oblique)
+		pol_frac_oblique = (j_oblique.perp - j_oblique.par) / (j_oblique.perp + j_oblique.par)
+
+		@test pol_frac_perp > 0
+		@test pol_frac_oblique > 0
+		@test 0.1 < pol_frac_perp < 0.6
+		@test 0.1 < pol_frac_oblique < 0.6
+	end
+
+	@testset "EVPA matches ordered field" begin
+		χ = 0.42
+		b_oblique = SVector(B0 * cos(χ), B0 * sin(χ), 0.0)
+
+		slab_ordered = S.UniformSynchrotronSlab(; z, u0, ne0, B0=b_oblique, electrons)
+		ray = S.RayZ(; x0=x4, k=k′, nz=40)
+		S_ordered = S.render(ray, slab_ordered, S.IntensityIQU())
+		evpa_ordered = S.evpa(S_ordered)
+
+		@testset for κ_test in [0.5, 2.0, 10.0]
+			field_mixed = S.TangledOrderedMixture(b_oblique, κ_test)
+			slab_mixed = S.UniformSynchrotronSlab(; z, u0, ne0, B0=field_mixed, electrons)
+			S_mixed = S.render(ray, slab_mixed, S.IntensityIQU())
+			evpa_mixed = S.evpa(S_mixed)
+
+			@test evpa_mixed ≈ evpa_ordered rtol=1e-12
+
+			pol_deg_ordered = √(S_ordered.Q^2 + S_ordered.U^2) / S_ordered.I
+			pol_deg_mixed = √(S_mixed.Q^2 + S_mixed.U^2) / S_mixed.I
+			@test 0.1 < pol_deg_mixed < 0.95pol_deg_ordered
+		end
+
+		field_depol = S.TangledOrderedMixture(b_oblique, 0.0)
+		slab_depol = S.UniformSynchrotronSlab(; z, u0, ne0, B0=field_depol, electrons)
+		S_depol = S.render(ray, slab_depol, S.IntensityIQU())
+		pol_deg_depol = √(S_depol.Q^2 + S_depol.U^2) / S_depol.I
+		@test pol_deg_depol < 1e-10
+	end
+end
+
+@testitem "Polarized synchrotron coeffs - AnisotropicPowerLawElectrons + TangledOrderedMixture" begin
+	import Synchray as S
+	using Test
+
+	ν = 2.0
+	x4 = S.FourPosition(0.0, 0.0, 0.0, 0.0)
+	k′ = S.photon_k(ν, SVector(0.0, 0.0, 1.0))
+	u0 = S.FourVelocity(SVector(0.0, 0.0, 0.0))
+	ne0 = 1.3
+	B0 = 0.9
+	z = 0.0..1.0
+	b = SVector(B0, 0.0, 0.0)
+
+	@testset "η=1 matches IsotropicPowerLawElectrons" begin
+		p = 3.2
+		# Create both models with same parameters
+		electrons_iso = S.IsotropicPowerLawElectrons(; p, Cj=0.7, Ca=0.3)
+		electrons_aniso = S.AnisotropicPowerLawElectrons(; p, η=1.0, Cj=0.7, Ca=0.3)
+
+		for κ in [0.0, 2.0, Inf]
+			field = S.TangledOrderedMixture(b, κ)
+
+			# Test Stokes-I coefficients
+			slab_iso = S.UniformSynchrotronSlab(; z, u0, ne0, B0=field, electrons=electrons_iso)
+			slab_aniso = S.UniformSynchrotronSlab(; z, u0, ne0, B0=field, electrons=electrons_aniso)
+
+			(jI_iso, αI_iso) = S.emissivity_absorption(slab_iso, x4, k′)
+			(jI_aniso, αI_aniso) = S.emissivity_absorption(slab_aniso, x4, k′)
+
+			@test jI_aniso ≈ jI_iso rtol=1e-12
+			@test αI_aniso ≈ αI_iso rtol=1e-12
+
+			# Test polarized coefficients
+			(j_iso, a_iso) = S.emissivity_absorption_polarized(slab_iso, x4, k′)
+			(j_aniso, a_aniso) = S.emissivity_absorption_polarized(slab_aniso, x4, k′)
+
+			@test j_aniso.perp ≈ j_iso.perp rtol=1e-12
+			@test j_aniso.par ≈ j_iso.par rtol=1e-12
+			@test a_aniso.perp ≈ a_iso.perp rtol=1e-12
+			@test a_aniso.par ≈ a_iso.par rtol=1e-12
+		end
+	end
+
+	@testset "κ=0 depolarized for anisotropic electrons" begin
+		electrons = S.AnisotropicPowerLawElectrons(; p=2.5, η=0.5, Cj=0.7, Ca=0.3)
+		field = S.TangledOrderedMixture(b, 0.0)
+		slab = S.UniformSynchrotronSlab(; z, u0, ne0, B0=field, electrons)
+
+		(j, a) = S.emissivity_absorption_polarized(slab, x4, k′)
+		(jI, αI) = S.emissivity_absorption(slab, x4, k′)
+
+		# Should be depolarized
+		@test j.perp ≈ j.par rtol=1e-14
+		@test a.perp ≈ a.par rtol=1e-14
+		@test (j.perp + j.par) ≈ jI rtol=5e-15 atol=0
+		@test (a.perp + a.par)/2 ≈ αI rtol=5e-15 atol=0
+	end
+
+	@testset "κ→∞ matches ordered anisotropic field" begin
+		electrons = S.AnisotropicPowerLawElectrons(; p=2.5, η=0.5, Cj=0.7, Ca=0.3)
+
+		field_mixed = S.TangledOrderedMixture(b, Inf)
+		slab_mixed = S.UniformSynchrotronSlab(; z, u0, ne0, B0=field_mixed, electrons)
+		(j_mixed, a_mixed) = S.emissivity_absorption_polarized(slab_mixed, x4, k′)
+
+		slab_ordered = S.UniformSynchrotronSlab(; z, u0, ne0, B0=b, electrons)
+		(j_ordered, a_ordered) = S.emissivity_absorption_polarized(slab_ordered, x4, k′)
+
+		@test j_mixed.perp ≈ j_ordered.perp rtol=1e-14
+		@test j_mixed.par ≈ j_ordered.par rtol=1e-14
+		@test a_mixed.perp ≈ a_ordered.perp rtol=1e-14
+		@test a_mixed.par ≈ a_ordered.par rtol=1e-14
+	end
+
+	@testset "κ=2 intermediate polarization" begin
+		electrons = S.AnisotropicPowerLawElectrons(; p=2.5, η=0.5, Cj=0.7, Ca=0.3)
+		field = S.TangledOrderedMixture(b, 2.0)
+		slab = S.UniformSynchrotronSlab(; z, u0, ne0, B0=field, electrons)
+
+		(j, a) = S.emissivity_absorption_polarized(slab, x4, k′)
+		(jI, αI) = S.emissivity_absorption(slab, x4, k′)
+
+		# Should be polarized but not fully
+		@test j.perp > j.par
+		@test 0.1 < (j.perp - j.par) / (j.perp + j.par) < 0.9
+		@test (j.perp + j.par) ≈ jI rtol=5e-15 atol=0
+		@test (a.perp + a.par)/2 ≈ αI rtol=5e-15 atol=0
+
+		# Polarization should be less than fully ordered case
+		slab_ordered = S.UniformSynchrotronSlab(; z, u0, ne0, B0=b, electrons)
+		(j_ord, _) = S.emissivity_absorption_polarized(slab_ordered, x4, k′)
+		pol_frac = (j.perp - j.par) / (j.perp + j.par)
+		pol_frac_ord = (j_ord.perp - j_ord.par) / (j_ord.perp + j_ord.par)
+
+		@test 0.1 < pol_frac < 0.95pol_frac_ord
+	end
+
+	@testset "EVPA matches ordered field" begin
+		electrons = S.AnisotropicPowerLawElectrons(; p=2.5, η=0.5, Cj=0.7, Ca=0.3)
+		χ = 0.42
+		b_oblique = SVector(B0 * cos(χ), B0 * sin(χ), 0.0)
+
+		slab_ordered = S.UniformSynchrotronSlab(; z, u0, ne0, B0=b_oblique, electrons)
+		ray = S.RayZ(; x0=x4, k=k′, nz=40)
+		S_ordered = S.render(ray, slab_ordered, S.IntensityIQU())
+		evpa_ordered = S.evpa(S_ordered)
+
+		@testset for κ_test in [0.5, 2.0, 10.0]
+			field_mixed = S.TangledOrderedMixture(b_oblique, κ_test)
+			slab_mixed = S.UniformSynchrotronSlab(; z, u0, ne0, B0=field_mixed, electrons)
+			S_mixed = S.render(ray, slab_mixed, S.IntensityIQU())
+			evpa_mixed = S.evpa(S_mixed)
+
+			@test evpa_mixed ≈ evpa_ordered rtol=1e-12
+
+			pol_deg_ordered = √(S_ordered.Q^2 + S_ordered.U^2) / S_ordered.I
+			pol_deg_mixed = √(S_mixed.Q^2 + S_mixed.U^2) / S_mixed.I
+			@test 0.1 < pol_deg_mixed < 0.95pol_deg_ordered
+		end
+
+		# κ=0 should be fully depolarized
+		field_depol = S.TangledOrderedMixture(b_oblique, 0.0)
+		slab_depol = S.UniformSynchrotronSlab(; z, u0, ne0, B0=field_depol, electrons)
+		S_depol = S.render(ray, slab_depol, S.IntensityIQU())
+		pol_deg_depol = √(S_depol.Q^2 + S_depol.U^2) / S_depol.I
+		@test pol_deg_depol < 1e-10
+	end
+
+	@testset "Anisotropy effect on polarization" begin
+		# Test that different η values affect polarization degree correctly
+		p = 2.5
+		κ = 2.0
+		field = S.TangledOrderedMixture(b, κ)
+
+		# η < 1: electrons along field
+		electrons_along = S.AnisotropicPowerLawElectrons(; p, η=0.3, Cj=0.7, Ca=0.3)
+		slab_along = S.UniformSynchrotronSlab(; z, u0, ne0, B0=field, electrons=electrons_along)
+		(j_along, _) = S.emissivity_absorption_polarized(slab_along, x4, k′)
+
+		# η > 1: electrons perpendicular to field
+		electrons_perp = S.AnisotropicPowerLawElectrons(; p, η=3.0, Cj=0.7, Ca=0.3)
+		slab_perp = S.UniformSynchrotronSlab(; z, u0, ne0, B0=field, electrons=electrons_perp)
+		(j_perp, _) = S.emissivity_absorption_polarized(slab_perp, x4, k′)
+
+		# Both should be polarized but with different degrees
+		pol_frac_along = (j_along.perp - j_along.par) / (j_along.perp + j_along.par)
+		pol_frac_perp = (j_perp.perp - j_perp.par) / (j_perp.perp + j_perp.par)
+
+		@test pol_frac_along > 0.01
+		@test pol_frac_perp > 0.01
+		# The magnitudes should differ due to different anisotropies
+		@test abs(pol_frac_along - pol_frac_perp) > 0.01
+	end
+end
+
+
+@testitem "Polarized synchrotron coeffs - helpers" begin
+	import Synchray as S
+	using Test
+
+	@testset "Mode↔Stokes conversion" begin
+		m = S.ModePerpPar(3.0, 1.0)
+		IQ = S.stokes_IQ(m)
+		@test IQ.I ≈ 4.0
+		@test IQ.Q ≈ 2.0
+
+		m2 = S.modes_from_IQ(IQ.I, IQ.Q)
+		@test m2.perp ≈ m.perp
+		@test m2.par ≈ m.par
+	end
+
+	@testset "Polarized invariants" begin
+		ν = 2.0
+		x4 = S.FourPosition(0.0, 0.0, 0.0, 0.0)
+		k′ = S.photon_k(ν, SVector(0.0, 0.0, 1.0))
+		u0 = S.FourVelocity(SVector(0.0, 0.0, 0.0))
+		ne0 = 1.3
+		B0 = 0.9
+		z = 0.0..1.0
+
+		electrons = S.IsotropicPowerLawElectrons(; p=3.2, Cj=0.7, Ca=0.3)
+		slab = S.UniformSynchrotronSlab(; z, u0, ne0, B0=SVector(B0, 0.0, 0.0), electrons)
+		(j, a) = S.emissivity_absorption_polarized(slab, x4, k′)
+		(Jinv, Ainv) = S.emissivity_absorption_polarized_invariant(slab, x4, k′)
+		@test Jinv ≈ j / (ν^2)
+		@test Ainv ≈ a * ν
+	end
+end
+
+
+@testitem "Linear-polarized uniform slab transfer" begin
+	import Synchray as S
+	using Test
+
+	struct ConstPolarizedSlab{TZ,TU,TB,TJ,TA} <: S.AbstractMedium
+		z::TZ
+		u0::TU
+		B0::TB
+		j_mode::TJ
+		a_mode::TA
+	end
+
+	S.z_interval(obj::ConstPolarizedSlab, ray::S.Ray) = S._slab_z_interval(obj.z, ray)
+	S.four_velocity(obj::ConstPolarizedSlab, x4) = obj.u0
+	S.emissivity_absorption_polarized(obj::ConstPolarizedSlab, x4, k′) = (obj.j_mode, obj.a_mode, obj.B0)
+	S.emissivity_absorption(obj::ConstPolarizedSlab, x4, k′) = (obj.j_mode.perp + obj.j_mode.par, (obj.a_mode.perp + obj.a_mode.par) / 2)
+
+	ν = 2.0
+	# Pick χ so that e_perp (the +Q axis) is at angle χ from the camera x-axis.
+	χ = 0.31
+	B′ = SVector(-sin(χ), cos(χ), 0.0)
+	
+	z = 0.0 .. 1.0
+	u0 = S.FourVelocity(SVector(0.0, 0.0, 0.0))
+
+	# Choose coefficients so Δτ is safely above the linear threshold.
+	j_mode = S.ModePerpPar(1.7, 0.4)
+	a_mode = S.ModePerpPar(2.0, 1.0)
+	obj = ConstPolarizedSlab(z, u0, B′, j_mode, a_mode)
+
+	ray = S.RayZ(; x0=S.FourPosition(0.0, 0.0, 0.0, 0.0), k=S.photon_k(ν, SVector(0.0, 0.0, 1.0)), nz=40)
+
+	S_cam = S.render(ray, obj, S.IntensityIQU())
+	
+	# Analytic solution in invariant form, matching integrate_ray's stepping convention.
+	seg = S.z_interval(obj, ray)
+	Δz = S.width(seg) / (ray.nz - 1)
+	Δλ = (Δz / ν)
+	Λtot = ray.nz * Δλ
+
+	# u=0 => ν′=ν and invariants are simple.
+	Jinv = j_mode / (ν^2)
+	Ainv = a_mode * ν
+	Iinv_mode(m) = (m[1] / m[2]) * (1 - exp(-m[2] * Λtot))
+	Iinv_perp = Iinv_mode((Jinv.perp, Ainv.perp))
+	Iinv_par = Iinv_mode((Jinv.par, Ainv.par))
+	
+	# Field Stokes basis uses +Q along e_perp, so Q_f = I_perp - I_par and U_f=0.
+	S_f_inv = S.StokesIQU(Iinv_perp + Iinv_par, Iinv_perp - Iinv_par, 0.0)
+	R_cf = S.stokes_QU_rotation(χ)
+	R_fc = S.stokes_QU_rotation(-χ)
+	QU_cam_inv = S.rotate_QU(R_fc, @swiz S_f_inv.QU)
+	S_cam_inv = S.StokesIQU(S_f_inv.I, QU_cam_inv...)
+	S_cam_expected = S_cam_inv * ν^3
+
+	@test S_cam.I ≈ S_cam_expected.I rtol=1e-12
+	@test S_cam.Q ≈ S_cam_expected.Q rtol=1e-12
+	@test S_cam.U ≈ S_cam_expected.U rtol=1e-12
+	@test abs(S_cam.U) > 0
+
+	@testset "Depolarized limit matches scalar I" begin
+		j0 = 0.8
+		a0 = 1.3
+		obj0 = ConstPolarizedSlab(z, u0, B′, S.ModePerpPar(j0/2, j0/2), S.ModePerpPar(a0, a0))
+		I = S.render(ray, obj0, S.Intensity())
+		S0 = S.render(ray, obj0, S.IntensityIQU())
+		@test S0.I ≈ I
+		@test S0.Q ≈ 0 atol=1e-12
+		@test S0.U ≈ 0 atol=1e-12
+	end
+end
+
+
+@testitem "Synchrotron slab polarization limits (thin/thick, velocity invariance)" begin
+	import Synchray as S
+	using Test
+
+	p = 3.2
+	electrons = S.IsotropicPowerLawElectrons(; p, Cj=0.7, Ca=0.3)
+	ν = 2.0
+	z = 0.0 .. 1.0
+	ray = S.RayZ(; x0=S.FourPosition(0.0, 0.0, 0.0, 0.0), k=S.photon_k(ν, SVector(0.0, 0.0, 1.0)), nz=80)
+
+	Πj = S._Pi_j(p)
+	Πα = S._Pi_a(p)
+	Πthick = let
+		Sperp = (1 + Πj) / (1 + Πα)
+		Spar = (1 - Πj) / (1 - Πα)
+		(Sperp - Spar) / (Sperp + Spar)
+	end
+
+	# Stokes convention (matches the standard astronomy/IAU usage in a fixed sky basis):
+	# Q = I_x − I_y and U = I_{45°} − I_{135°}, where angles are measured in the camera
+	# screen plane from +x toward +y (right-handed). Therefore for a polarization angle χ
+	# relative to +x we expect (Q,U)/I = Π(cos(2χ), sin(2χ)).
+	#
+	# Here `χ` parameterizes the orientation of the field-aligned +Q axis (e_perp) relative
+	# to the camera x-axis.
+	# Choose B′ in the screen plane so the +Q axis (e_perp) aligns with camera x (U≈0).
+	Bmag = 0.9
+	B_align = SVector(0.0, Bmag, 0.0)
+	
+	# And a rotated field where the camera sees both Q and U.
+	χ = 0.23
+	B_rot = Bmag * SVector(-sin(χ), cos(χ), 0.0)
+
+	u_rest = S.FourVelocity(SVector(0.0, 0.0, 0.0))
+	u_move = S.FourVelocity(SVector(0.0, 0.0, 0.5))
+	us = [u_rest, u_move]
+
+	# Helper: scale ne0 so that the actual ray optical depth hits a target τ.
+	with_tau(u0, B0, τ_target) = begin
+		slab1 = S.UniformSynchrotronSlab(; z, u0, ne0=1.0, B0, electrons)
+		τ1 = S.render(ray, slab1, S.OpticalDepth())
+		@test τ1 > 0
+		ne0 = τ_target / τ1
+		S.UniformSynchrotronSlab(; z, u0, ne0, B0, electrons)
+	end
+
+	targets = (
+		(τ=1e-4, Π=Πj),
+		(τ=40.0, Π=Πthick),
+	)
+
+	@testset "Aligned field: U≈0, Q/I matches Π" begin
+		for (; τ, Π) in targets
+			vals = map(us) do u0
+				slab = with_tau(u0, B_align, τ)
+				S.render(ray, slab, S.IntensityIQU())
+			end
+			fracQ = map(s -> s.Q / s.I, vals)
+			fracU = map(s -> s.U / s.I, vals)
+			@test fracQ ≈ [Π, Π]  rtol=3e-3
+			@test fracU ≈ [0.0, 0.0]  atol=1e-12
+			@test fracQ[1] ≈ fracQ[2]
+		end
+	end
+
+	@testset "Rotated field: direction matches 2χ law" begin
+		for (; τ, Π) in targets
+			vals = map(us) do u0
+				slab = with_tau(u0, B_rot, τ)
+				S.render(ray, slab, S.IntensityIQU())
+			end
+			fracQ = map(s -> s.Q / s.I, vals)
+			fracU = map(s -> s.U / s.I, vals)
+			Qexp = Π * cos(2χ)
+			Uexp = Π * sin(2χ)
+			@test fracQ ≈ [Qexp, Qexp] rtol=3e-3
+			@test fracU ≈ [Uexp, Uexp] rtol=3e-3
+			@test fracQ[1] ≈ fracQ[2]
+			@test fracU[1] ≈ fracU[2]
+		end
+	end
+end
+
+@testitem "Stokes QU rotation" begin
+	import Synchray as S
+	using Test
+
+	@testset "R then R^{-1}" begin
+		QU0 = SVector(0.7, -1.2)
+		χ = 0.37
+		R = S.stokes_QU_rotation(χ)
+		Rinv = S.stokes_QU_rotation(-χ)
+		QU1 = S.rotate_QU(R, QU0)
+		QU2 = S.rotate_QU(Rinv, QU1)
+		@test QU2 ≈ QU0
+	end
+
+	@testset "45° rotation sign check" begin
+		# For χ = 45° (π/4), the Stokes rotation is by 2χ = 90°:
+		# Q' = U,  U' = -Q.
+		χ = π / 4
+		R = S.stokes_QU_rotation(χ)
+		@test R ≈ (@SMatrix [0 1; -1 0])
+
+		QU0 = SVector(3, 5)
+		QU1 = S.rotate_QU(R, QU0)
+		@test QU1[1] ≈ QU0[2]
+		@test QU1[2] ≈ -QU0[1]
+	end
+
+	@testset "Simple geometry gives identity" begin
+		ν = 2
+		k = S.photon_k(ν, SVector(0, 0, 1))
+		u = S.FourVelocity(SVector(0, 0, 0))
+		(n′, e1′, e2′) = S.comoving_screen_basis(u, k, SVector(1, 0, 0), SVector(0, 1, 0))
+
+		# Choose B′ so that e_perp aligns with e1′ up to a 180° flip.
+		(_, e_perp) = S.linear_polarization_basis_from_B(n′, SVector(0, 1, 0))
+		R = S.stokes_QU_rotation(e1′, e2′, e_perp)
+		@test R ≈ SMatrix{2,2}(I)
+	end
+
+	@testset "Known nonzero rotation in screen plane" begin
+		ν = 2
+		k = S.photon_k(ν, SVector(0, 0, 1))
+		u = S.FourVelocity(SVector(0, 0, 0))
+		(n′, e1′, e2′) = S.comoving_screen_basis(u, k, SVector(1, 0, 0), SVector(0, 1, 0))
+
+		# Choose B′ so that e_perp (the +Q axis) is at a known angle χ from e1′.
+		χ = 0.41
+		B′ = sin(χ) * e1′ - cos(χ) * e2′
+		(e_par, e_perp) = S.linear_polarization_basis_from_B(n′, B′)
+		@test dot(e_par, B′) ≈ norm(B′)
+
+		Rgeom = S.stokes_QU_rotation(e1′, e2′, e_perp)
+		Rana = S.stokes_QU_rotation(χ)
+		@test Rgeom ≈ Rana
+	end
+
+	@testset "Boosted screen basis + identity when B′ projects to e1′" begin
+		ν = 2
+		k = S.photon_k(ν, SVector(0, 0, 1))
+		u = S.FourVelocity(SVector(0.3, 0.2, 0.5))
+		(n′, e1′, e2′) = S.comoving_screen_basis(u, k, SVector(1, 0, 0), SVector(0, 1, 0))
+
+		# Basis should remain orthonormal and right-handed in the comoving frame.
+		@test norm(n′) ≈ 1
+		@test norm(e1′) ≈ 1
+		@test norm(e2′) ≈ 1
+		@test dot(n′, e1′) ≈ 0  atol=√eps(1.)
+		@test dot(n′, e2′) ≈ 0  atol=√eps(1.)
+		@test dot(e1′, e2′) ≈ 0  atol=√eps(1.)
+		@test cross(n′, e1′) ≈ e2′
+
+		# Construct B′ with a nonzero component along n′, while e_perp aligns with e1′ (up to a 180° flip).
+		B′ = -e2′ + 0.2 * n′
+		(_, e_perp) = S.linear_polarization_basis_from_B(n′, B′)
+		R = S.stokes_QU_rotation(e1′, e2′, e_perp)
+		@test R ≈ SMatrix{2,2}(I)
+	end
+
+	@testset "Edge cases (expected failures / non-finite outputs)" begin
+		ν = 2
+		u0 = S.FourVelocity(SVector(0, 0, 0))
+
+		@testset "Ray parallel to camera axes" begin
+			kx = S.photon_k(ν, SVector(1, 0, 0))
+			ky = S.photon_k(ν, SVector(0, 1, 0))
+			# Z-camera basis (x̂, ŷ) degenerates when ray is along x̂ or ŷ
+			@test_throws AssertionError S.comoving_screen_basis(u0, kx, SVector(1, 0, 0), SVector(0, 1, 0))
+			@test_throws AssertionError S.comoving_screen_basis(u0, ky, SVector(1, 0, 0), SVector(0, 1, 0))
+		end
+
+		@testset "Magnetic field degeneracies" begin
+			n = SVector(0, 0, 1)
+			(e_par, e_perp) = S.linear_polarization_basis_from_B(n, SVector(0, 0, 0))
+			@test norm(e_par) ≈ 1
+			@test norm(e_perp) ≈ 1
+
+			(e_par, e_perp) = S.linear_polarization_basis_from_B(n, n)
+			@test norm(e_par) ≈ 1
+			@test norm(e_perp) ≈ 1
+		end
+
+		@testset "Arbitrary basis for zero direction" begin
+			(e1, e2) = S._arbitrary_screen_basis(SVector(0, 0, 0))
+			@test any(!isfinite, e1) || any(!isfinite, e2)
+		end
+	end
+end
+
+@testitem "Polarized rendering: rotated screen basis and arbitrary-angle rays" begin
+	import Synchray as S
+	using Test
+
+	ν = 2.0
+	ne0 = 1.3
+	Bmag = 0.9
+	z = 0.0 .. 1.0
+	u0 = S.FourVelocity(SVector(0.0, 0.0, 0.0))
+	electrons = S.IsotropicPowerLawElectrons(; p=3.2, Cj=0.7, Ca=0.3)
+
+	@testset "Rotated screen basis: Stokes QU rotation" begin
+		# Slab with B along Y → in standard basis: Q > 0, U ≈ 0
+		B = SVector(0.0, Bmag, 0.0)
+		slab = S.UniformSynchrotronSlab(; z, u0, ne0, B0=B, electrons)
+
+		# Reference: standard Z-ray with default screen basis (e1=x̂, e2=ŷ)
+		ray_std = S.RayZ(; x0=S.FourPosition(0.0, 0.0, 0.0, 0.0), k=S.photon_k(ν, SVector(0.0, 0.0, 1.0)), nz=80)
+		S_std = S.render(ray_std, slab, S.IntensityIQU())
+		@test S_std.Q > 0
+		@test abs(S_std.U) < 1e-12
+
+		# Z-ray with rotated screen basis: e1 rotated by χ in the xy-plane
+		@testset "χ=$χ" for χ in [0.3, π/4, 1.1]
+			e1_rot = SVector(cos(χ), sin(χ), 0.0)
+			e2_rot = SVector(-sin(χ), cos(χ), 0.0)
+			k = S.photon_k(ν, SVector(0.0, 0.0, 1.0))
+			ray_rot = S.Ray(S.FourPosition(0.0, 0.0, 0.0, 0.0), k, e1_rot, e2_rot, 80)
+			S_rot = S.render(ray_rot, slab, S.IntensityIQU())
+
+			# I should be unchanged
+			@test S_rot.I ≈ S_std.I rtol=1e-12
+
+			# (Q, U) should rotate by the stokes_QU_rotation matrix
+			R = S.stokes_QU_rotation(χ)
+			QU_expected = R * SVector(S_std.Q, S_std.U)
+			@test S_rot.Q ≈ QU_expected[1] rtol=1e-12
+			@test S_rot.U ≈ QU_expected[2] rtol=1e-12
+		end
+	end
+
+	@testset "FullyTangled sphere: depolarized from any angle" begin
+		R = 1.0
+		center = S.FourPosition(0, 0, 0, 0)
+		sphere = S.UniformSynchrotronSphere(;
+			center, radius=R,
+			u0=S.FourVelocity(SVector(0, 0, 0)),
+			ne0=1.3, B0=0.9,
+			electrons=S.IsotropicPowerLawElectrons(; p=3.2, Cj=0.7, Ca=0.3),
+		)
+
+		# Reference: Z-direction
+		ray_z = S.RayZ(; x0=S.FourPosition(0.0, 0.0, 0.0, 0.0), k=S.photon_k(ν, SVector(0.0, 0.0, 1.0)), nz=256)
+		S_z = S.render(ray_z, sphere, S.IntensityIQU())
+
+		# Arbitrary directions: I should match, Q and U should be ≈ 0
+		dirs = [
+			SVector(1.0, 0.0, 0.0),
+			normalize(SVector(1.0, 0.0, 1.0)),
+			normalize(SVector(-0.3, 0.7, 0.5)),
+		]
+
+		@testset for n̂ in dirs
+			up = abs(dot(SVector(0.0, 1.0, 0.0), n̂)) < 0.9 ? SVector(0.0, 1.0, 0.0) : SVector(1.0, 0.0, 0.0)
+			e1 = normalize(cross(up, n̂))
+			e2 = cross(n̂, e1)
+			k = S.photon_k(ν, n̂)
+			origin = -10.0 * n̂
+			ray = S.Ray(S.FourPosition(0.0, origin), k, e1, e2, 256)
+			S_arb = S.render(ray, sphere, S.IntensityIQU())
+
+			# I should match Z-direction (sphere is symmetric)
+			@test S_arb.I ≈ S_z.I rtol=1e-6
+			# FullyTangled → Q≈0, U≈0
+			@test S_arb.Q ≈ 0 atol=1e-12
+			@test S_arb.U ≈ 0 atol=1e-12
+		end
+	end
+end
+
+@testitem "Unitful + EmissionRegion: works; Stokes I matches scalar when α=0" begin
+	import Synchray as S
+	using Test
+	using Unitful, UnitfulAstro
+	using RectiGrids
+
+	# For an ordered field, the polarized transfer generally differs from the scalar-I-only
+	# pipeline once polarized absorption is present (dichroism generates Q which feeds back
+	# into dI/ds). In the absorption-free limit (α=0), both must agree because I is just the
+	# line integral of j_I and j_I = j_⊥ + j_∥ by construction.
+	region = S.EmissionRegion(;
+		geometry=S.Geometries.Conical(axis=SVector(0, 0, 1), φj=2u"°", z=1e-3u"pc"..50u"pc"),
+		velocity=S.VelocitySpec(S.Directions.Axial(), S.beta, S.Profiles.Constant(0.0)),
+		emission=S.SynchrotronEmission(
+			ne=S.Profiles.Axial(S.PowerLaw(-2; val0=2u"cm^-3", s0=1u"pc")),
+			B=S.BFieldSpec(S.Profiles.Axial(S.PowerLaw(-1; val0=3u"Gauss", s0=1u"pc")), S.Directions.Axial(), b -> b),
+			electrons=S.IsotropicPowerLawElectrons(; p=2.5, Cj=1.0, Ca=0.0),
+		),
+	) |> ustrip
+
+	cam = ustrip(S.CameraZ(
+		xys=grid(SVector, range(0.01u"pc"..0.1u"pc", 2), range(-0.001u"pc"..0.001u"pc", 2)),
+		nz=40,
+		ν=230u"GHz",
+		t=0u"yr",
+	))
+
+	img_I = S.render(cam, region, S.Intensity())
+	img_IQU = S.render(cam, region, S.IntensityIQU())
+	@test getproperty.(img_IQU, :I) ≈ img_I
+
+	img_I_u = S.withunits(S.render, cam, region, S.Intensity())
+	img_IQU_u = S.withunits(S.render, cam, region, S.IntensityIQU())
+	@test getproperty.(img_IQU_u, :I) ≈ img_I_u
+end
