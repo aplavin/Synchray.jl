@@ -65,16 +65,13 @@ end
 	# Effective: Π_eff = Π * f * (A_ordered / A_mixed)
 	# For anisotropic electrons, A_ordered includes the pitch-angle factor φ(θ_Bn).
 
-	# Get intrinsic polarization fractions
 	p = _value(model.p)
 	Πj = _Pi_j(p)
 	Πα = _Pi_a(p)
 
-	# Compute mixing fraction
 	κ = field.kappa
 	f = κ == Inf ? one(float(κ)) : κ / (one(κ) + κ)
 
-	# Compute viewing angles
 	ν = frequency(k′)
 	b = field.b
 	B = norm(b)
@@ -83,7 +80,6 @@ end
 	sinθ = clamp(sinθ, 0, 1)
 	cosθ = dot(b, n) / B
 
-	# Compute angle-factor exponents
 	qj = _half(model.p + StaticNum{1}())
 	qa = _half(model.p + StaticNum{2}())
 

@@ -19,7 +19,6 @@
     
     nozzle_prepared = S.prepare_for_computations(nozzle)
     
-    # Test that unprepared and prepared nozzles give identical results
     x4_test = S.FourPosition(0.0, 0.0, 0.0, 10.0)
     @test nozzle(geom, x4_test, 1.0) ≈ nozzle_prepared(geom, x4_test, 1.0)
     
@@ -48,7 +47,7 @@ end
     nozzle = S.Patterns.PrecessingNozzle(
         θ_precession = 0.02,  # 0.02 rad from axis
         θ_nozzle = 0.005,  # narrow nozzle
-        period = 20.0,   # period
+        period = 20.0,
         φ0 = 0.0,
         β_flow = 1.0,
         profile = S.Patterns.TophatBump(10.0)
@@ -86,8 +85,7 @@ end
     # Point in -x direction should be enhanced
     x4_minus_x = S.FourPosition(0.0, -0.2, 0.0, 10.0)
     result = nozzle_prepared(geom, x4_minus_x, 1.0)
-    # Check if this point is near the nozzle axis
-    @test result > 1.0  # Should have some enhancement
+    @test result ≈ 10.0  # inside nozzle cone → TophatBump peak
     
     # Point far from nozzle axis should not be enhanced
     x4_far = S.FourPosition(0.0, 0.5, 0.5, 10.0)
@@ -126,7 +124,6 @@ end
     end
     
     # Results should vary due to rotation
-    # (Not all should be the same)
     @test !all(r ≈ results[1] for r in results)
     
     # Specific hardcoded test: check specific spatial point at different times
@@ -156,7 +153,6 @@ end
 @testitem "PrecessingNozzle - Integration with EmissionRegion" begin
     import Synchray as S
     
-    # Create a full emission region with precessing nozzle pattern
     region = S.EmissionRegion(
         geometry = S.Geometries.Conical(
             axis = SA[0.0, 0.0, 1.0],
@@ -189,12 +185,10 @@ end
     
     region_prepared = S.prepare_for_computations(region)
     
-    # Test that electron_density applies the pattern
     x4_test = S.FourPosition(0.0, 0.0, 0.0, 10.0)
     ne_val = S.electron_density(region_prepared, x4_test)
     
-    # Should be a valid positive number
-    @test ne_val > 0
+    @test ne_val ≈ 10.0  # base PowerLaw(1e3·10⁻²), off-cone → factor 1
     @test isfinite(ne_val)
 end
 

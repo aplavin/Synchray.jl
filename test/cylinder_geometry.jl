@@ -9,7 +9,6 @@
 	geom = S.Geometries.Cylindrical(; axis, radius, z)
 	@test S.geometry_axis(geom) == axis
 
-	# natural_coords on-axis
 	x4_on_axis = S.FourPosition(0, 0, 0, 2.0)
 	coords = S.natural_coords(geom, x4_on_axis)
 	@test coords.z ≈ 2.0
@@ -30,7 +29,6 @@
 	x4_off2 = S.FourPosition(0, 0.1, 0, 4.0)
 	@test S.natural_coords(geom, x4_off2).η ≈ coords_off.η
 
-	# is_inside
 	@test S.is_inside(geom, x4_on_axis)
 	# Outside z range
 	@test !S.is_inside(geom, S.FourPosition(0, 0, 0, 10.0))
@@ -39,14 +37,11 @@
 	# At radius boundary
 	@test S.is_inside(geom, S.FourPosition(0, radius, 0, 2.0))
 
-	# z_interval on-axis ray
 	ray = S.RayZ(; x0=S.FourPosition(0, 0, 0, 0), k=2, nz=1024)
 	@test S.z_interval(geom, ray) == z
 
-	# prepare_for_computations is identity for Cylindrical
 	@test S.prepare_for_computations(geom) === geom
 
-	# Accessors.set for geometry_axis
 	new_axis = normalize(SVector(1, 0, 1))
 	geom_new = @set S.geometry_axis(geom) = new_axis
 	@test S.geometry_axis(geom_new) ≈ new_axis
@@ -54,7 +49,6 @@
 	@test geom_new.radius == radius  # preserved
 	@test geom_new.z == z  # preserved
 
-	# rotation_local_to_lab
 	R = S.rotation_local_to_lab(geom)
 	@test size(R) == (3, 3)
 	@test det(R) ≈ 1
@@ -250,7 +244,6 @@ end
 @testitem "Cylindrical coordinate transformations" begin
 	import Synchray as S
 
-	# Roundtrip test with tilted axis
 	axis = normalize(SVector(1, 0, 1))
 	geom = S.Geometries.Cylindrical(; axis, radius=0.5, z=1.0 .. 5.0)
 

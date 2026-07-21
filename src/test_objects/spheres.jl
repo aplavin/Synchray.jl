@@ -47,11 +47,14 @@ _spatial_in_rest(u, v) = begin
 	return xyz + f * β
 end
 
-z_interval(obj::MovingUniformEllipsoid, ray::Ray) = begin
-	# Worldtube of a rigid axis-aligned ellipsoid moving with constant 4-velocity u.
-	# Ray: x(s) = ray.x0 + s·d, where d = direction4(ray).
-	u = obj.u0
-	Δ0 = ray.x0 - obj.center
+"""
+Worldtube of a rigid axis-aligned ellipsoid with rest-frame semi-axes `sizes`, whose center
+event `x_c0` moves with constant 4-velocity `u`. Returns the ray-parameter interval where the
+ray `x(s) = ray.x0 + s·direction4(ray)` is inside (`(Δx/sx)² + (Δy/sy)² + (Δz/sz)² ≤ 1` in the
+comoving frame). `sizes == SVector(R,R,R)` recovers the moving sphere.
+"""
+_ellipsoid_worldtube_interval(u::FourVelocity, x_c0::FourPosition, sizes::SVector{3}, ray::Ray) = begin
+	Δ0 = ray.x0 - x_c0
 	kdir = direction4(ray)
 
 	a = minkowski_dot(u, kdir)
@@ -62,7 +65,7 @@ z_interval(obj::MovingUniformEllipsoid, ray::Ray) = begin
 	p0 = _spatial_in_rest(u, P0)
 	p1 = _spatial_in_rest(u, P1)
 
-	s² = obj.sizes .^ 2
+	s² = sizes .^ 2
 	A = sum(p1 .^ 2 ./ s²)
 	B = 2 * sum(p0 .* p1 ./ s²)
 	C = sum(p0 .^ 2 ./ s²) - one(A)
@@ -78,6 +81,9 @@ z_interval(obj::MovingUniformEllipsoid, ray::Ray) = begin
 	s2 = (-B + sD) / (2 * A)
 	return min(s1, s2) .. max(s1, s2)
 end
+
+z_interval(obj::MovingUniformEllipsoid, ray::Ray) =
+	_ellipsoid_worldtube_interval(obj.u0, obj.center, obj.sizes, ray)
 
 four_velocity(obj::MovingUniformEllipsoid, x4) = obj.u0
 emissivity_absorption(obj::MovingUniformEllipsoid, x4, k′) = (obj.jν, obj.αν)

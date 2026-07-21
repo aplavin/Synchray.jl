@@ -21,7 +21,6 @@ using DispatchDoctor: @unstable
 	
     function LinearInterp(points)
         @assert !isempty(points)
-		# Sort points by x coordinate
 		sorted_pts = sort(collect(points); by=first) |> Tuple
 		new{typeof(sorted_pts)}(sorted_pts)
 	end

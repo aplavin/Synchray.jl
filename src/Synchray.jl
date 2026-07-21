@@ -39,7 +39,7 @@ include("test_objects/spheres.jl")
 include("transfer.jl")
 include("units.jl")
 
-# New modular architecture
+# Modular architecture
 include("geometries.jl")
 include("directions.jl")
 include("profiles.jl")
@@ -52,6 +52,9 @@ include("emission_region.jl")
 
 @unstable to_float_type(::Type{TF}, obj) where {TF<:AbstractFloat} =
     @modify(x -> to_float_type(TF, x), obj[∗ₚ])
+# Elements already in the target float type → return `x` unchanged (no copy), as `convert`/`float` do.
+to_float_type(::Type{TF}, x::AbstractArray{TF}) where {TF<:AbstractFloat} = x
+to_float_type(::Type{TF}, x::AbstractArray{<:AbstractArray{TF}}) where {TF<:AbstractFloat} = x
 @unstable to_float_type(::Type{TF}, x::AbstractArray) where {TF<:AbstractFloat} =
     # XXX: can be more efficient for RectiGrids
     map(y -> to_float_type(TF, y), x)
@@ -59,7 +62,7 @@ include("emission_region.jl")
 
 end
 
-# we only export a few things from this module, very minimal;
+# we only export a few things from this module;
 # the user is recommended to do `import Synchray as S`
 # and then access things as `S.SomeType` or `S.some_function`
 export Geometries, Directions, Profiles, Patterns

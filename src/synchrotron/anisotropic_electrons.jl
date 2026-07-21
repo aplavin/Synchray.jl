@@ -185,7 +185,7 @@ end
 	# Uses the identity: |b × n̂|² = |b|²|n̂|² - (b·n̂)² = |b|² - (b·n̂)² (since |n̂|=1).
 	b² = dot(b, b)
 	dotbn² = dot(b, n̂)^2
-	Bperp = √max(b² - dotbn², 0)
+	Bperp = sqrt₀(max(b² - dotbn², 0))   # sqrt₀: AD-safe at Bperp=0 (B ∥ line of sight); see power.jl
 
 	# Compute pitch-angle factor.
 	# For isotropic: _phi_theta returns 1 immediately (inlined, no cost).
@@ -195,7 +195,7 @@ end
 
 	B_over_ν = Bperp * invν
 	common = B_over_ν^_half(p)
-	j = Cj_ordered * n_e * common * √(Bperp * ν) * φ
+	j = Cj_ordered * n_e * common * sqrt₀(Bperp * ν) * φ
 	α = Ca_ordered * n_e * common * Bperp * invν^2 * φ
 	return j, α
 end

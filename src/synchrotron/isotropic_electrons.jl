@@ -70,7 +70,7 @@ function IsotropicPowerLawElectrons(; p, γmin=1, γmax=Inf, Cj=nothing, Ca=noth
 		Cj_ordered = c5 * K_per_ne
 		Ca_ordered = c6 * K_per_ne
 	else
-		# XXX: assume provided Cj/Ca are for tangled field, for backwards compatibility
+		# provided Cj/Ca are interpreted as tangled-field coefficients; convert to ordered-field
 		Cj_ordered = Cj / sinavg_j
 		Ca_ordered = Ca / sinavg_a
 	end
@@ -79,7 +79,7 @@ end
 
 # Average of sin^q θ for isotropically distributed directions.
 #
-# In this codebase's Stage-1 synchrotron, θ is the *viewing angle* θ_{Bn} between the
+# In this codebase's synchrotron, θ is the *viewing angle* θ_{Bn} between the
 # magnetic-field direction and the (comoving) photon propagation direction, so
 #   B_perp = |B'| sinθ_{Bn}.
 #
@@ -130,7 +130,7 @@ end
 end
 
 @inline _synchrotron_coeffs(model::IsotropicPowerLawElectrons, n_e, field::FullyTangled, k′::FourFrequency) = let
-	# Stage 1 (angle-averaged) power-law synchrotron, in the comoving frame.
+	# Angle-averaged power-law synchrotron, in the comoving frame.
 	# Returns (j_ν, α_ν) with ν measured in the plasma rest frame.
 	#
 	# Implemented scaling:

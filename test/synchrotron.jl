@@ -291,7 +291,6 @@ end
 		end
 	end
 
-	# Verify integer exponents
 	@testset "integer P=$P" for P in [0, 1, 2, 3]
 		fe = S.FixedExponent{P}()
 		for x in xs
@@ -484,4 +483,113 @@ end
 			@test α1 ≈ α2 rtol=0.5e-3
 		end
 	end
+end
+
+
+@testitem "Float32 coefficients at physical ν — no underflow (GPU dynamic-range guard)" begin
+	import Synchray as S
+
+	# At a physical observing frequency with Float32 emission coefficients (the Metal/GPU path),
+	# the transfer quantities must stay in Float32 range: the rendered image is finite and nonzero,
+	# and agrees with the Float64 reference. Guards against the j/ν² Float32 underflow.
+	mkslab(::Type{T}, electrons) where {T} = S.UniformSynchrotronSlab(;
+		z = T(0)..T(3), u0 = S.FourVelocity(SVector(T(0), T(0), T(0.3))),
+		ne0 = T(2e2), B0 = S.FullyTangled(T(1e-2)), electrons)
+
+	for ν in (1.5e9, 1.5e10, 1e14)  # radio → optical
+		slab64 = mkslab(Float64, S.IsotropicPowerLawElectrons(; p=3.0, γmin=1, γmax=1e5))
+		slab32 = mkslab(Float32, S.to_float_type(Float32, S.IsotropicPowerLawElectrons(; p=3.0, γmin=1, γmax=1e5)))
+		I64 = S.render(S.RayZ(; x0=S.FourPosition(0.0,0,0,0), k=ν,           nz=2000), slab64)
+		I32 = S.render(S.RayZ(; x0=S.FourPosition(0f0,0,0,0), k=Float32(ν),  nz=2000), slab32)
+		@test I32 isa Float32
+		@test isfinite(I32) && I32 > 0
+		@test I32 ≈ I64 rtol=1e-3
+	end
+end
+
+
+@testitem "FixedExponent power: AD-safe derivative at 0" begin
+	import Synchray as S
+	FD = S.ForwardDiff
+
+	# x^P through the FixedExponent operator must have a FINITE derivative at x=0 for P>1
+	# (true derivative of x^P at 0 is 0 for P>1). √-at-0 must stay finite under AD.
+	@testset for P in (1.25, 1.5, 2.5)
+		fe = S.FixedExponent{P}()
+		g = FD.derivative(x -> x^fe, 0.0)
+		@test isfinite(g)
+		@test g == 0.0
+		# forward values unchanged for x>0
+		@testset for x in (0.3, 1.0, 2.5)
+			@test x^fe ≈ x^P rtol=1e-12
+		end
+	end
+end
+
+
+@testitem "Ordered-B coefficient gradient is finite at B∥LOS" begin
+	import Synchray as S
+	FD = S.ForwardDiff
+
+	ν = 1.3; ne = 2.5; B0 = 0.6
+	k′ = S.photon_k(ν, SVector(0.0, 0.0, 1.0))            # photon along +z
+	models = (
+		S.IsotropicPowerLawElectrons(;  p=2.5,        Cj=1.0, Ca=1e-6),
+		S.AnisotropicPowerLawElectrons(; p=2.5, η=1.5, Cj=1.0, Ca=1e-6),
+		S.PitchyPowerLawElectrons(;      p=2.5, k=2.0, Cj=1.0, Ca=1e-6),
+	)
+	@testset for m0 in models
+		m = S.prepare_for_computations(m0)               # p → FixedExponent (the real render path)
+		bpar = SVector(0.0, 0.0, B0)                     # b ∥ photon ⇒ Bperp = 0 exactly
+		jpar, αpar = S._synchrotron_coeffs(m, ne, bpar, k′)
+		@test jpar ≈ 0 atol=1e-12
+		@test αpar ≈ 0 atol=1e-12
+
+		gj = FD.gradient(b -> S._synchrotron_coeffs(m, ne, b, k′)[1], bpar)
+		gα = FD.gradient(b -> S._synchrotron_coeffs(m, ne, b, k′)[2], bpar)
+		@test all(isfinite, gj) && all(isfinite, gα)
+		@test all(x -> abs(x) < 1e-10, gj) && all(x -> abs(x) < 1e-10, gα)   # true grad → 0 here
+
+		# near-singular: analytic gradient matches central finite differences of the forward
+		b0 = SVector(1e-3, 0.0, B0)                      # tiny ⟂ component
+		@testset for sel in (1, 2)
+			an = FD.gradient(b -> S._synchrotron_coeffs(m, ne, b, k′)[sel], b0)
+			h = 1e-7
+			fd = map(1:3) do i
+				bp = setindex(b0, b0[i]+h, i); bm = setindex(b0, b0[i]-h, i)
+				(S._synchrotron_coeffs(m, ne, bp, k′)[sel] - S._synchrotron_coeffs(m, ne, bm, k′)[sel]) / 2h
+			end
+			@test all(isfinite, an)
+			@test maximum(abs.(an .- fd)) / (maximum(abs, fd) + 1e-30) < 1e-3
+		end
+	end
+end
+
+
+@testitem "Ordered/mixture B∥LOS gradients stay finite" begin
+	import Synchray as S
+	FD = S.ForwardDiff
+	ν = 1.3; ne = 2.5; B0 = 0.6
+	k′ = S.photon_k(ν, SVector(0.0, 0.0, 1.0))
+	m = S.prepare_for_computations(S.IsotropicPowerLawElectrons(; p=2.5, Cj=1.0, Ca=1e-6))
+	bpar = SVector(0.0, 0.0, B0)                      # b ∥ photon
+
+	# ordered polarization only rescales jI/αI by constant Π fractions ⇒ finite once Stokes-I is fixed
+	gpol_ord = FD.gradient(bpar) do b
+		jI, αI = S._synchrotron_coeffs(m, ne, b, k′)
+		jp, ap = S._emissivity_absorption_polarized_field(m, jI, αI, b, k′)
+		jp.perp + jp.par + ap.perp + ap.par
+	end
+	@test all(isfinite, gpol_ord)
+
+	# TangledOrderedMixture is already AD-safe (StaticArrays `norm` guards the zero vector); guard it
+	gmix = FD.gradient(b -> S._synchrotron_coeffs(m, ne, S.TangledOrderedMixture(b, 2.0), k′)[1], bpar)
+	@test all(isfinite, gmix)
+	gpol_mix = FD.gradient(bpar) do b
+		fl = S.TangledOrderedMixture(b, 2.0)
+		jI, αI = S._synchrotron_coeffs(m, ne, fl, k′)
+		jp, ap = S._emissivity_absorption_polarized_field(m, jI, αI, fl, k′)
+		jp.perp + jp.par + ap.perp + ap.par
+	end
+	@test all(isfinite, gpol_mix)
 end

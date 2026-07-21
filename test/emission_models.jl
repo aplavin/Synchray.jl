@@ -9,8 +9,8 @@
 
 	ray = S.RayZ(; x0=S.FourPosition(0, 0, 0, 0), k=10.0, nz=256)
 
-	I_val = S.render(ray, region)
-	@test I_val > 0
+	I_val = @inferred S.render(ray, region)
+	@test I_val ≈ 0.048 rtol=1e-2
 
 	# frequency-independent: different k gives the same intensity
 	ray2 = S.RayZ(; x0=S.FourPosition(0, 0, 0, 0), k=1.0, nz=256)
@@ -44,7 +44,7 @@ end
 	ray_off = S.RayZ(; x0=S.FourPosition(0, 0, 0, 0), k=1.0, nz=256)
 
 	I_peak = S.render(ray_peak, region)
-	@test I_peak > 0
+	@test I_peak ≈ 0.048 rtol=1e-2
 
 	# off-peak intensity should be less
 	@test S.render(ray_off, region) < I_peak
@@ -60,13 +60,13 @@ end
 	region_thick = @set region.emission.α = S.Profiles.Constant(1e6)
 	I_thick_peak = S.render(ray_peak, region_thick)
 	I_thick_off = S.render(ray_off, region_thick)
-	@test I_thick_peak > 0
+	@test I_thick_peak ≈ 1.0 rtol=1e-2  # thick limit → S_ν=1 at peak
 	@test I_thick_off < I_thick_peak / 2  # off-peak should be significantly dimmer
 
 	# optically thick at peak: intensity saturates at source function value
 	region_abs = @set region.emission.α = S.Profiles.Constant(10.0)
 	@test S.render(ray_peak, region_abs) > I_peak  # thicker → closer to S_amp, higher than thin
-	@test S.render(ray_peak, region_abs, S.OpticalDepth()) > 0
+	@test S.render(ray_peak, region_abs, S.OpticalDepth()) ≈ 49.2 rtol=1e-2
 
 	# spectral index near peak should be close to zero
 	si = S.render(ray_peak, region, S.SpectralIndex())
@@ -76,5 +76,5 @@ end
 	region32 = S.to_float_type(Float32, S.prepare_for_computations(region))
 	ray32 = S.RayZ(; x0=S.FourPosition(0f0, 0f0, 0f0, 0f0), k=10f0, nz=64)
 	@test S.render(ray32, region32) isa Float32
-	@test S.render(ray32, region32) > 0
+	@test S.render(ray32, region32) ≈ 0.0486 rtol=1e-2
 end

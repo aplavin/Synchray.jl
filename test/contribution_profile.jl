@@ -10,11 +10,12 @@
 	ray = S.RayZ(; x0=S.FourPosition(0.0, 0.0, 0.0, 0.0), k=2.0, nz=2048)
 
 	prof = S.ray_contribution_profile(slab, ray)
-	Iν = S.render(ray, slab, S.Intensity())
+	Iν = @inferred S.render(ray, slab, S.Intensity())
 	τ = S.render(ray, slab, S.OpticalDepth())
 
-	@test Iν > 0
-	@test τ > 0
+	# stationary slab, δ=1: τ = a0·L = 3.9; Iν = (j0/a0)(1-e^{-a0 L})
+	@test Iν ≈ 0.528 rtol=1e-2
+	@test τ ≈ 3.9 rtol=1e-2
 	@test sum(prof.Δτ) ≈ τ rtol=2e-3
 	@test sum(prof.dIν_to_obs) ≈ Iν rtol=2e-3
 
@@ -49,7 +50,7 @@ end
 	ray = S.RayZ(; x0=S.FourPosition(0,0,0,0), k=2.0, nz=1_000)
 
 	@testset "Conservation: sum equals full integration" begin
-		S_direct = S.render(ray, medium, S.IntensityIQU())
+		S_direct = @inferred S.render(ray, medium, S.IntensityIQU())
 		profile = S.ray_contribution_profile_IQU(medium, ray)
 		S_sum = sum(profile.dIν_to_obs)
 
@@ -89,7 +90,7 @@ end
 		profile = S.ray_contribution_profile_IQU(medium_tangled, ray_tangled)
 		S_sum = sum(profile.dIν_to_obs)
 
-		@test S_direct.I > 0
+		@test S_direct.I ≈ 3.54e-4 rtol=1e-2
 		@test abs(S_direct.Q) < 1e-12
 		@test abs(S_direct.U) < 1e-12
 		@test S_sum ≈ S_direct rtol=1e-5

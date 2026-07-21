@@ -4,9 +4,10 @@ end
 AccValue{WHAT}(value) where {WHAT} = AccValue{WHAT, typeof(value)}(value)
 
 _init_acc(::Type{T}, ν0) where {T<:Tuple} = map(a -> _init_acc(a, ν0), fieldtypes(T))
-_init_acc(::Type{Intensity}, ν0) = AccValue{Intensity}(0)
-_init_acc(::Type{IntensityIQU}, ν0) = AccValue{IntensityIQU}(StokesIQU(0, 0, 0))
-_init_acc(::Type{OpticalDepth}, ν0) = AccValue{OpticalDepth}(0)
+# Float (not Int) init: Int seed makes `acc` type-unstable → Metal-throwing union-split
+_init_acc(::Type{Intensity}, ν0) = AccValue{Intensity}(zero(float(ν0)))
+_init_acc(::Type{IntensityIQU}, ν0) = let z = zero(float(ν0)); AccValue{IntensityIQU}(StokesIQU(z, z, z)) end
+_init_acc(::Type{OpticalDepth}, ν0) = AccValue{OpticalDepth}(zero(float(ν0)))
 struct AccSpectralIndex{TI, TS, DT}
 	Iinv::TI
 	s::TS
@@ -25,8 +26,9 @@ end
 
 
 _postprocess_acc(acc::Tuple, ν, what::Tuple) = map((a, w) -> _postprocess_acc(a, ν, w), acc, what)
-_postprocess_acc(Iinv::AccValue{Intensity}, ν, what::Intensity) = Iinv.value * ν^3
-_postprocess_acc(Iinv::AccValue{IntensityIQU}, ν, what::IntensityIQU) = Iinv.value * ν^3
+# The accumulator carries 𝓘̂ = I_ν·(ν_ref/ν)³, which equals the physical I_ν at the observer.
+_postprocess_acc(Iinv::AccValue{Intensity}, ν, what::Intensity) = Iinv.value
+_postprocess_acc(Iinv::AccValue{IntensityIQU}, ν, what::IntensityIQU) = Iinv.value
 # Optical depth is dimensionless and (with 𝓐 ≡ α_ν·ν and τ = ∫𝓐 dλ) is already
 # the quantity used in transfer; unlike intensity, it does not require a ν³ conversion.
 _postprocess_acc(τ::AccValue{OpticalDepth}, ν, what::OpticalDepth) = τ.value
@@ -35,11 +37,10 @@ _postprocess_acc(acc::AccSpectralIndex, ν, what::SpectralIndex) = begin
 	Iinv0 = ForwardDiff.value(DT, Iinv)
 	dIinv = ForwardDiff.extract_derivative(DT, Iinv)
 
-	# Frequency conversion (invariant → ordinary): I_ν = ν³ 𝓘.
-	# Therefore dI_ν/dν = ν³ d𝓘/dν + 3ν² 𝓘.
+	# Radio-convention spectral index α(ν) ≡ d ln I_ν / d ln ν = (ν/I_ν)·(dI_ν/dν).
+	# I0 and dI are I_ν and dI_ν/dν up to a common constant factor, which cancels in the ratio.
 	I0 = Iinv0 * ν^3
 	dI = dIinv * ν^3 + Iinv0 * (3 * ν^2)
-	# Spectral index (radio convention): α(ν) ≡ d ln I_ν / d ln ν = (ν/I_ν)·(dI_ν/dν).
 	return (ν / I0) * dI
 end
 _postprocess_acc(acc::AccSpectralIndex, ν, what::Tuple{Intensity,SpectralIndex}) = begin
@@ -47,20 +48,25 @@ _postprocess_acc(acc::AccSpectralIndex, ν, what::Tuple{Intensity,SpectralIndex}
 	Iinv0 = ForwardDiff.value(DT, Iinv)
 	dIinv = ForwardDiff.extract_derivative(DT, Iinv)
 
-	# Same math as above, but also return I_ν itself.
+	# Spectral index as above, plus the intensity itself: Iinv0 already equals physical I_ν.
 	I0 = Iinv0 * ν^3
 	dI = dIinv * ν^3 + Iinv0 * (3 * ν^2)
-	return I0, (ν / I0) * dI
+	return Iinv0, (ν / I0) * dI
 end
 
 const Δτ_THRESHOLD_LINEAR = 0.01f0
+
+# Reference frequency that normalizes the transfer quantities (see mediums.jl): the observer
+# frequency. For a flat `Ray` it is the photon frequency; GR geodesic states carry a
+# redshift-scaled `k` and override this accessor (in SynchrayGR).
+@inline _reference_frequency(ray::Ray) = frequency(ray.k)
 
 
 @inline _integrate_ray_step(acc::AccValue{Intensity}, obj, x4, ray, Δλ) = begin
 	k = ray.k
 	u = four_velocity(obj, x4)
 	k′ = lorentz_unboost(u, k)
-	(Jinv, Ainv) = emissivity_absorption_invariant(obj, x4, k′)
+	(Jinv, Ainv) = emissivity_absorption_invariant(obj, x4, k′, _reference_frequency(ray))
 
 	Iinv = acc.value
 	# Invariant transfer: 𝓘 ≡ I_ν/ν³, 𝓙 ≡ j_ν/ν², 𝓐 ≡ α_ν·ν
@@ -79,7 +85,6 @@ end
 
 @inline _rt_step_scalar(y, Jinv, Ainv, Δλ) = begin
 	Δτ = Ainv * Δλ
-	@boundscheck @assert Δτ ≥ 0
 	if Δτ < Δτ_THRESHOLD_LINEAR
 		return y + (Jinv - Ainv * y) * Δλ
 	end
@@ -91,7 +96,7 @@ end
 	k = ray.k
 	u = four_velocity(obj, x4)
 	k′ = lorentz_unboost(u, k)
-	(Jinv_m, Ainv_m, B′) = emissivity_absorption_polarized_invariant(obj, x4, k′)
+	(Jinv_m, Ainv_m, B′) = emissivity_absorption_polarized_invariant(obj, x4, k′, _reference_frequency(ray))
 
 	# Build the comoving camera screen basis and the field-aligned +Q axis.
 	(n′, e1′, e2′) = comoving_screen_basis(u, ray)
@@ -141,7 +146,8 @@ end
 	# Since k ∝ ν, scaling ν→ν·s implies λ-steps scale as Δλ→Δλ/s.
 	k′ = lorentz_unboost(u, k * acc.s)
 	Δλ′ = Δλ / acc.s
-	(Jinv, Ainv) = emissivity_absorption_invariant(obj, x4, k′)
+	# ν_ref is the unperturbed reference frequency (ray.k), not the AD-scaled k*acc.s.
+	(Jinv, Ainv) = emissivity_absorption_invariant(obj, x4, k′, _reference_frequency(ray))
 
 	Iinv = acc.Iinv
 	Δτ = Ainv * Δλ′
@@ -160,7 +166,7 @@ _integrate_ray_step(acc::Tuple{AccValue{Intensity}, AccValue{OpticalDepth}}, obj
 	k = ray.k
 	u = four_velocity(obj, x4)
 	k′ = lorentz_unboost(u, k)
-	(Jinv, Ainv) = emissivity_absorption_invariant(obj, x4, k′)
+	(Jinv, Ainv) = emissivity_absorption_invariant(obj, x4, k′, _reference_frequency(ray))
 
 	Iinv = acc[1].value
 	Δτ = Ainv * Δλ
@@ -270,18 +276,17 @@ end
 
 Compute the *per-ray* contribution of each ray step to the final observed intensity.
 
-Mathematically, for each step i the returned `dIinv_to_obs[i]` is the invariant source
-term for that step, attenuated by the optical depth *in front of it* (toward the observer):
+Mathematically, for each step i the returned `dIν_to_obs[i]` is the source term for that
+step, attenuated by the optical depth *in front of it* (toward the observer):
 
-    dIinv_to_obs[i] = dIinv_source[i] * exp(-τ_front[i])
+    dIν_to_obs[i] = dIinv_source[i] * exp(-τ_front[i])
 
 Returns a StructArray with columns:
 - `zs`: z-grid used for stepping
-- `Δτ`: per-step invariant optical-depth increments (same indexing as `zs`)
+- `Δτ`: per-step optical-depth increments (same indexing as `zs`)
 - `τ_front`: cumulative optical depth in front of each step (τ from next step to exit)
-- `dIinv_source`: per-step invariant source contribution before front attenuation
-- `dIinv_to_obs`: per-step invariant contribution to the final pixel
-- `dIν_to_obs`: same as `dIinv_to_obs`, converted to ordinary intensity via ν³
+- `dIinv_source`: per-step source contribution (physical intensity scale) before front attenuation
+- `dIν_to_obs`: per-step contribution to the final pixel (physical specific intensity)
 """
 ray_contribution_profile(obj::AbstractMedium, ray::Ray) = begin
 	seg = z_interval_clipped(obj, ray)
@@ -300,7 +305,7 @@ ray_contribution_profile(obj::AbstractMedium, ray::Ray) = begin
 		x4 = ray.x0 + s * k1
 		u = four_velocity(obj, x4)
 		k′ = lorentz_unboost(u, k)
-		(Jinv, Ainv) = emissivity_absorption_invariant(obj, x4, k′)
+		(Jinv, Ainv) = emissivity_absorption_invariant(obj, x4, k′, νobs)
 		Δτ = Ainv * Δλ
 		@boundscheck @assert Δτ ≥ 0
 		dIinv_source = if Δτ < Δτ_THRESHOLD_LINEAR
@@ -316,7 +321,7 @@ ray_contribution_profile(obj::AbstractMedium, ray::Ray) = begin
 
 	profile₃ = @insert profile₂.dIν_to_obs =
 		map(profile₂) do (; dIinv_source, τ_front)
-			dIinv_source * exp(-τ_front) * νobs^3
+			dIinv_source * exp(-τ_front)
 		end
 
 	return profile₃
@@ -358,15 +363,13 @@ ray_contribution_profile_IQU(obj::AbstractMedium, ray::Ray) = begin
 		k′ = lorentz_unboost(u, k)
 		ν′ = frequency(k′)
 
-		# Get polarized coefficients
+		# Per-mode 𝓙̂/𝓐 (see emissivity_absorption_polarized_invariant in mediums.jl).
 		(j_modes, α_modes, B′) = emissivity_absorption_polarized(obj, x4, k′)
-		Jinv_modes = j_modes / (ν′^2)
+		Jinv_modes = j_modes * νobs * (νobs / ν′)^2
 		Ainv_modes = α_modes * ν′
 
-		# Optical depth per step (mode-wise)
 		Δτ_modes = Ainv_modes * Δλ
 
-		# Get basis rotation: camera → field
 		(n′, e1′, e2′) = comoving_screen_basis(u, ray)
 		(e_par, e_perp) = linear_polarization_basis_from_B(n′, B′)
 		R_camera_to_field = stokes_QU_rotation(e1′, e2′, e_perp)
@@ -376,7 +379,7 @@ ray_contribution_profile_IQU(obj::AbstractMedium, ray::Ray) = begin
 
 	# Early return for empty profile (ray misses geometry)
 	if isempty(profile₁)
-		return StructArray((; s=eltype(ss)[], x4=eltype(profile₁.x4)[], Δs=eltype(profile₁.Δs)[], dIν_to_obs=StokesIQU{Float64}[]))
+		return StructArray((; s=eltype(ss)[], x4=eltype(profile₁.x4)[], Δs=eltype(profile₁.Δs)[], dIν_to_obs=StokesIQU{float(eltype(ss))}[]))
 	end
 
 	# Step 2: Cumulative front optical depth (mode-wise)
@@ -403,7 +406,6 @@ ray_contribution_profile_IQU(obj::AbstractMedium, ray::Ray) = begin
 			)
 		end
 
-		# Convert modes to field-frame Stokes
 		I_emit = dSinv_emit_modes.perp + dSinv_emit_modes.par
 		Q_emit = dSinv_emit_modes.perp - dSinv_emit_modes.par
 		U_emit = zero(I_emit)
@@ -424,12 +426,10 @@ ray_contribution_profile_IQU(obj::AbstractMedium, ray::Ray) = begin
 		I_atten = I_perp_atten + I_par_atten
 		Q_atten = I_perp_atten - I_par_atten
 
-		# Rotate to camera frame
 		R_field_to_camera = step.R_camera_to_field'
 		QU_camera = R_field_to_camera * SVector(Q_atten, U_atten)
 
-		# Convert to observer frequency
-		StokesIQU(I_atten, QU_camera[1], QU_camera[2]) * νobs^3
+		StokesIQU(I_atten, QU_camera[1], QU_camera[2])
 	end
 
 	return StructArray((; profile₁.s, profile₁.x4, profile₁.Δs, dIν_to_obs))

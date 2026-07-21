@@ -26,9 +26,6 @@ end
 StaticArrays.similar_type(::Type{TFV}, ::Type{T}, s::Size{(4,)}) where {TFV<:FourVector,T} =
     Base.typename(TFV).wrapper{T}
 
-# lower(v::FourVector) = typeof(v)(-v.t, @swiz v.xyz)
-# raise(v::FourVector) = lower(v)
-
 """
     minkowski_dot(a, b)
 
@@ -54,13 +51,26 @@ For a 4-velocity written as `u = (γ, γβ⃗)`:
 ```
 β⃗ = u⃗ / uᵗ
 ```
-
-Errors if `u.t == 0`.
 """
-@inline beta(u::FourVelocity) = begin
-    iszero(u.t) && error("beta(u): undefined for u.t == 0")
-    (@swiz u.xyz) / u.t
-end
+# no u.t==0 guard (u.t=γ≥1 always): the throw would force-inline the Metal geodesic kernel
+@inline beta(u::FourVelocity) = (@swiz u.xyz) / u.t
+
+"""
+    proper_velocity(u::FourVelocity)
+
+Spatial proper velocity (celerity) `w⃗ = γβ⃗` — the spatial part of the 4-velocity (`dx⃗/dτ`).
+Unconstrained in ℝ³ (unlike `β⃗`); the normalization fixes `uᵗ = γ = √(1+|w⃗|²)`.
+"""
+@inline proper_velocity(u::FourVelocity) = @swiz u.xyz
+
+"""
+    construct(FourVelocity, proper_velocity => w⃗)
+
+Cancellation-free 4-velocity from celerity: `u = (√(1+|w⃗|²), w⃗)` (no `1−β²`, no division).
+Well-conditioned as `β→1`. Complements `construct(FourVelocity, gamma=>γ, direction3=>dir)`.
+"""
+@inline construct(::Type{FourVelocity}, (_, w)::Pair{typeof(proper_velocity)}) =
+    FourVelocity(sqrt(1 + dot(w, w)), w)
 
 """
     direction3(u)
@@ -98,19 +108,18 @@ Supported inputs:
 @inline gamma(u::FourVelocity) = u.t
 @inline gamma(β::SVector{3}) = inv(√(1 - dot(β, β)))
 
-# Temporary helper functions for scalar beta <-> gamma conversion
-# TODO: Remove once API is standardized to use gamma everywhere
+# Scalar beta <-> gamma conversion.
 """
     _beta_from_gamma(γ)
 
-Convert Lorentz factor γ to speed β (temporary helper).
+Convert Lorentz factor γ to speed β.
 """
 @inline _beta_from_gamma(γ) = √(1 - γ^-2)
 
 """
     _gamma_from_beta(β)
 
-Convert speed β to Lorentz factor γ (temporary helper).
+Convert speed β to Lorentz factor γ.
 """
 @inline _gamma_from_beta(β) = inv(√(1 - β^2))
 
@@ -149,6 +158,16 @@ end
 	β = _beta_from_gamma(γ)
     return FourVelocity(γ, (γ * β) * dir)
 end
+
+"""
+    construct(FourVelocity, proper_velocity => w, direction3 => dir)
+
+Build a `FourVelocity` from a scalar celerity magnitude `w = |γβ⃗|` and a spatial unit
+direction `dir`, via the cancellation-free vector builder (`w⃗ = w·dir`). Complements the
+`beta`/`gamma` scalar+direction constructors but stays well-conditioned as `β→1`.
+"""
+@inline construct(::Type{FourVelocity}, (_, w)::Pair{typeof(proper_velocity)}, (_, dir)::Pair{typeof(direction3)}) =
+    construct(FourVelocity, proper_velocity => w * dir)
 
 """
     photon_k(ν, n)
@@ -271,28 +290,14 @@ This is the inverse of `lorentz_boost(u, ⋅)`.
 """
     lorentz_boost(u::FourVelocity, k::FourFrequency)
 
-Numerically-stable specialization of [`lorentz_boost`](@ref) for null
-4-vectors (photon four-frequencies, k·k = 0).
+Numerically-stable specialization of [`lorentz_boost`](@ref) for null 4-vectors
+(photon four-frequencies, k·k = 0). The Doppler factor is computed cancellation-free via
 
-The generic boost `t′ = γ(t + β·x)` subtracts two large nearly-equal numbers
-when a photon is closely aligned with `±β` (Doppler de-/boost regime,
-|β·n_photon| ≈ |β|). The relative error of the result is then much larger
-than the Float32 ulp — at γ ≈ 46 and small angle, |n′|² drifts ~3×10⁻⁴ off 1,
-large enough to break the unit-norm precondition of `_synchrotron_coeffs`.
+    D = 1 + β·n = (1/γ² + |β×n|²) / (1 − β·n)
 
-This specialization computes the Doppler factor `D = 1 + β·n` via the
-algebraic identity
-
-    1 + β·n = (1 − (β·n)²) / (1 − β·n)
-            = (1/γ² + |β×n|²) / (1 − β·n)
-
-(using 1 − β² = 1/γ² and β² − (β·n)² = |β×n|² for unit `n`). Both numerator
-summands are non-negative and the denominator is ≈ 2 in the regime that
-matters, so no catastrophic cancellation. `ν′` and `s` are then derived from
-this single well-conditioned `D`, giving `|x′| = ν′` exactly by construction.
-
-The corresponding `lorentz_unboost(u, k::FourFrequency)` is provided by the
-generic fallback at line above (β → −β), which dispatches into this method.
+(the generic `t′ = γ(t + β·x)` cancels catastrophically when |β·n| ≈ |β|). `ν′` and `s`
+derive from this single `D`, giving `|x′| = ν′` by construction. `lorentz_unboost(u, k)`
+uses the generic fallback (β → −β), which dispatches here.
 """
 @inline lorentz_boost(u::FourVelocity, k::FourFrequency) = let
     γ = gamma(u)

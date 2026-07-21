@@ -112,7 +112,7 @@
             jν=0.8, αν=0.3,
         )
         cm = S.CombinedMedium(ell_mov1, ell_mov2)
-        @test sum(S.render(cam, cm)) > 0
+        @test sum(S.render(cam, cm)) ≈ 117.6 rtol=1e-2
     end
 
     @testset "isbits" begin

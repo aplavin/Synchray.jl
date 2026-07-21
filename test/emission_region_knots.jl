@@ -3,7 +3,6 @@
 	using RectiGrids
 	using Accessors
 
-	# Base emission region (equivalent to the ConicalJet from patterns_knots.jl)
 	region = S.EmissionRegion(
 		geometry = S.Geometries.Conical(; axis = SVector(0, 0, 1), φj = 0.05, z = 1e-3..10),
 		velocity = S.VelocitySpec(S.Directions.Axial(), S.Profiles.Constant(1.0)),
@@ -22,7 +21,6 @@
 		profile = S.Patterns.GaussianBump(2.0),
 	)
 
-	# Create region with knot patterns
 	region_with_knot = @set region.emission.ne = S.Profiles.Modified(region.emission.ne, knot)
 	region_with_knot = @set region_with_knot.emission.B.scale = S.Profiles.Modified(region_with_knot.emission.B.scale, knot)
 
@@ -100,7 +98,6 @@
 	end
 
 	@testset "CrossSectionSizing knot" begin
-		# Test knot with CrossSectionSizing
 		knot_cs = S.Patterns.EllipsoidalKnot(
 			x_c0 = S.FourPosition(0.0, 0.0, 0.0, 2.0),
 			u = S.FourVelocity(SVector(0.0, 0.0, 0.1)),
@@ -114,7 +111,6 @@
 		x4c = knot_cs.x_c0
 		@test S.electron_density(region_cs, x4c) ≈ 2.5 * S.electron_density(region, x4c)
 		
-		# Check that sizes scale with position
 		# At z=2, a_perp should be 0.3 * 2 * tan(0.05) ≈ 0.0300
 		z_c = 2.0
 		expected_a_perp = 0.3 * z_c * tan(0.05)
@@ -179,7 +175,6 @@ end
 		profile = S.Patterns.GaussianBump(2.0),
 	)
 
-	# Default Z-camera for tests
 	cam_z = S.CameraZ(; xys=grid(SVector, x=[0.0], y=[0.0]), nz=4, ν=1.0, t=0.0)
 
 	@testset "worldline method" begin
@@ -191,7 +186,6 @@ end
 			ret = S.retarded_event(wl, cam)
 			# Null hyperplane condition: t - z = t_obs
 			@test ret.x.t - ret.x.z ≈ t_obs atol=1e-12
-			# Verify on worldline: x = x0 + u*tau
 			@test ret.x ≈ x0 + u * ret.tau atol=1e-12
 		end
 	end
@@ -250,7 +244,6 @@ end
 				ret = S.retarded_event(wl, cam)
 				# FastLight: event is at t = t_obs (simultaneity, not null hyperplane)
 				@test ret.x.t ≈ t_obs atol=1e-12
-				# Verify on worldline
 				@test ret.x ≈ x0 + u * ret.tau atol=1e-12
 			end
 		end
@@ -301,7 +294,6 @@ end
 			ret = S.retarded_event(wl, cam_arb)
 			# FastLight simultaneity: t = t_obs regardless of camera direction
 			@test ret.x.t ≈ cam_arb.t atol=1e-12
-			# On worldline
 			@test ret.x ≈ x0 + u * ret.tau atol=1e-12
 			# Roundtrip
 			anchor = S.camera_ray_anchor(cam_arb, ret.x)
@@ -339,7 +331,6 @@ end
 				r_emit = SVector(ret.x.x, ret.x.y, ret.x.z)
 				# Light cone: (t_obs - t_emit)² = |origin - r_emit|²
 				@test (cam.t - ret.x.t)^2 ≈ sum(abs2, cam.origin - r_emit) atol=1e-10
-				# On worldline
 				@test ret.x ≈ x0 + u * ret.tau atol=1e-12
 				# Causality: emission before observation
 				@test cam.t > ret.x.t

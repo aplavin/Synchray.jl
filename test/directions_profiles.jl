@@ -1,14 +1,6 @@
 @testitem "Directions module" begin
     import Synchray as S
 
-    @test Directions.Scalar() isa Directions.AbstractDirection
-    @test Directions.Axial() isa Directions.AbstractDirection
-    @test Directions.Radial() isa Directions.AbstractDirection
-    @test Directions.Toroidal() isa Directions.AbstractDirection
-    @test Directions.HelicalAT(π/4) isa Directions.AbstractDirection
-    @test Directions.HelicalRT(π/4) isa Directions.AbstractDirection
-
-    # Scalar returns 1
     geom = nothing  # not used for Scalar
     x4 = S.FourPosition(0, 0, 0, 1)
     @test S.field_direction(Directions.Scalar(), geom, x4) == 1
@@ -17,18 +9,15 @@ end
 @testitem "HelicalRT direction" begin
     import Synchray as S
 
-    # Setup: conical geometry with z-axis
     geom = S.Geometries.Conical(SVector(0, 0, 1), 0.1, 1.0 .. 10.0)
     axis = SVector(0.0, 0.0, 1.0)
 
-    # Test position off-axis: (x=1, y=0, z=5)
     x4 = S.FourPosition(0.0, 1.0, 0.0, 5.0)
     r = SVector(1.0, 0.0, 5.0)
 
     # Expected basis vectors at this position
     # Radial: from origin (NOT from axis!)
     e_r_expected = r / norm(r)  # ≈ (0.196, 0, 0.981)
-    # Toroidal: azimuthal around axis
     e_phi_expected = SVector(0.0, 1.0, 0.0)
 
     @testset "ψ=0 gives pure radial (from origin)" begin
@@ -71,20 +60,6 @@ end
     end
 end
 
-@testitem "Profiles module" begin
-    import Synchray as S
-    # Test profile types exist and are callable
-    @test Profiles.Axial(s -> s^-2) isa Profiles.Axial
-    @test Profiles.Transverse(η -> exp(-η^2)) isa Profiles.Transverse
-    @test Profiles.Radial(r -> exp(-r^2)) isa Profiles.Radial
-    @test Profiles.AxialTransverse(s -> s^-2, η -> exp(-η^2)) isa Profiles.AxialTransverse
-    @test Profiles.Natural(c -> c.z * c.η) isa Profiles.Natural
-    @test Profiles.Raw((g, x4) -> 1.0) isa Profiles.Raw
-    @test Profiles.Constant(42.0) isa Profiles.Constant
-    @test Profiles.Modified(Profiles.Constant(1.0), (g, x4, v) -> 2v) isa Profiles.Modified
-    @test Profiles.LinearInterp(((1.0, 10.0), (2.0, 20.0))) isa Profiles.LinearInterp
-end
-
 @testitem "Profile evaluation with geometry" begin
     import Synchray as S
     using Synchray.Geometries
@@ -92,37 +67,29 @@ end
     geom = Geometries.Conical(SVector(0, 0, 1), 0.1, 1.0 .. 5.0)
     x4 = S.FourPosition(0, 0.05, 0, 2.0)
     
-    # Constant profile
     p_const = Profiles.Constant(42.0)
     @test p_const(geom, x4) == 42.0
     
-    # Axial profile
     p_axial = Profiles.Axial(s -> s^2)
     @test p_axial(geom, x4) ≈ 4.0
     
-    # Transverse profile
     coords = S.natural_coords(geom, x4)
     p_trans = Profiles.Transverse(η -> 2η)
     @test p_trans(geom, x4) ≈ 2 * coords.η
     
-    # Radial profile
     r = norm(@swiz x4.xyz)
     p_radial = Profiles.Radial(r -> 3r)
     @test p_radial(geom, x4) ≈ 3 * r
     
-    # AxialTransverse profile
     p_prod = Profiles.AxialTransverse(s -> s^2, η -> 3η)
     @test p_prod(geom, x4) ≈ 4.0 * (3 * coords.η)
     
-    # Natural profile
     p_nat = Profiles.Natural(c -> c.z + c.η)
     @test p_nat(geom, x4) ≈ coords.z + coords.η
     
-    # Raw profile
     p_raw = Profiles.Raw((g, x4) -> dot(S.geometry_axis(g), SVector(x4.x, x4.y, x4.z)))
     @test p_raw(geom, x4) ≈ 2.0
     
-    # Modified profile
     p_base = Profiles.Constant(10.0)
     p_mod = Profiles.Modified(p_base, (g, x4, v) -> 2v)
     @test p_mod(geom, x4) == 20.0
@@ -131,10 +98,8 @@ end
 @testitem "LinearInterp profile" begin
     import Synchray as S
     
-    # Basic construction
     li = Profiles.LinearInterp(((1.0, 10.0), (3.0, 30.0), (5.0, 50.0)))
-    @test li isa Profiles.LinearInterp
-    
+
     # Auto-sorting: provide unsorted points
     li_unsorted = Profiles.LinearInterp(((5.0, 50.0), (1.0, 10.0), (3.0, 30.0)))
     @test li_unsorted == li  # Should be equal after sorting
@@ -176,14 +141,11 @@ end
     import Synchray as S
     using Synchray.Geometries
 
-    # Create geometry and position
     geom = Geometries.Conical(SVector(0, 0, 1), 0.1, 1.0 .. 5.0)
 
-    # Create LinearInterp and use with Axial
     li = Profiles.LinearInterp(((1.0, 100.0), (3.0, 200.0), (5.0, 150.0)))
     p_axial = Profiles.Axial(li)
 
-    # Test evaluation at different positions
     x4_at_2 = S.FourPosition(0, 0.05, 0, 2.0)
     @test p_axial(geom, x4_at_2) ≈ 150.0  # Interpolated between 100 and 200
 
@@ -195,15 +157,12 @@ end
     import Synchray as S
     using Synchray.Geometries
 
-    # Conical geometry with z-axis
     geom = Geometries.Conical(SVector(0, 0, 1), 0.1, 1.0 .. 10.0)
 
     # RigidRotation: β = β_ref × (ρ / ρ_ref)
     β_ref = 0.1
     ρ_ref = 2.0
     p = Profiles.RigidRotation(β_ref, ρ_ref)
-
-    @test p isa Profiles.RigidRotation
 
     @testset "β scales linearly with ρ" begin
         # At ρ = ρ_ref: β = β_ref
@@ -240,7 +199,6 @@ end
     import Synchray as S
     using Synchray.Geometries
 
-    # Conical geometry with axis along x-direction
     geom_x = Geometries.Conical(SVector(1, 0, 0), 0.1, 1.0 .. 10.0)
 
     β_ref = 0.2
@@ -272,7 +230,6 @@ end
     import Synchray as S
     using Synchray.Geometries, Synchray.Directions, Synchray.Profiles
 
-    # Conical geometry
     geom = Geometries.Conical(SVector(0, 0, 1), 0.1, 1.0 .. 10.0)
 
     @testset "VelocitySpec addition creates CombinedVelocity" begin
@@ -308,21 +265,17 @@ end
         x4 = S.FourPosition(0.0, 1.0, 0.0, 5.0)
         u_combined = S.four_velocity(combined, geom, x4)
 
-        # Extract combined β vector
         βv_combined = @swiz(u_combined.xyz) / u_combined.t
 
-        # Check individual components (hardcoded expected values)
         @test βv_combined[1] ≈ 0.3 / √26  # x component
         @test βv_combined[2] ≈ 0.4             # y component
         @test βv_combined[3] ≈ 1.5 / √26  # z component
 
-        # Check total speed and Lorentz factor
         @test norm(βv_combined) ≈ 0.5
         @test u_combined.t ≈ 2 / √3  # γ = 2/√3 ≈ 1.1547
     end
 
     @testset "CombinedVelocity with RigidRotation" begin
-        # Radial + constant angular velocity
         β_r = 0.9
         β_φ_ref = 0.1
         ρ_ref = 1.0
@@ -348,7 +301,6 @@ end
     @testset "Full computation with unitful CombinedVelocity" begin
         using UnitfulAstro: pc
 
-        # Create combined velocity: radial + unitful RigidRotation
         β_r = 0.3
         β_φ_ref = 0.4
         ρ_ref_unitful = 1.0pc
@@ -360,7 +312,6 @@ end
         # Strip units (as happens during actual computation)
         combined_stripped = S.ustrip(combined)
 
-        # Create geometry (z-aligned cone)
         geom = S.Geometries.Conical(; axis=SVector(0, 0, 1), φj=0.1, z=1.0 .. 10.0)
 
         # Position with unitful coordinates, then convert to code units
@@ -368,7 +319,6 @@ end
         x4_unitful = S.FourPosition(0.0, 1.0, 0.0, 5.0) * pc
         x4_code = S._u_to_code(x4_unitful, S.UCTX.L0)
 
-        # Compute velocity with unit-stripped spec and code-unit position
         u = S.four_velocity(combined_stripped, geom, x4_code)
         βv = @swiz(u.xyz) / u.t
 

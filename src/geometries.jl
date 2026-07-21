@@ -63,7 +63,7 @@ struct Conical{TR, Tφ, Tz} <: AbstractGeometry
 	z::Tz
 
 	# Inner constructor: validate that R_local_to_lab is a matrix, not a vector
-	# This prevents old code from creating Conical with an axis instead of rotation matrix
+	# This prevents creating Conical with an axis instead of rotation matrix
 	function Conical(R_local_to_lab::SMatrix{3,3}, φj, z)
 		return new{typeof(R_local_to_lab), typeof(φj), typeof(z)}(R_local_to_lab, φj, z)
 	end
@@ -258,7 +258,7 @@ ustrip(g::Geometries.Cylindrical) = @p let
 	@modify(_u_to_code(_, UCTX.L0), __.radius)
 end
 
-prepare_for_computations(g::Geometries.Parabolic) = @modify(FixedExponent, g.a)
+@unstable prepare_for_computations(g::Geometries.Parabolic) = @modify(FixedExponent, g.a)
 ustrip(g::Geometries.Parabolic) = @p let
 	g
 	@modify(_u_to_code(_, UCTX.L0), __.z)
@@ -372,40 +372,8 @@ end
 end
 
 function z_interval(g::Geometries.Ellipsoid, ray::Ray)
-	# Worldtube of a rigid axis-aligned ellipsoid moving with constant 4-velocity u.
-	# In the comoving frame, define Δ⊥ as the displacement orthogonal to u, and require
-	# (Δx/sx)^2 + (Δy/sy)^2 + (Δz/sz)^2 ≤ 1.
-	# `sizes == SVector(R,R,R)` recovers the moving sphere.
-	# Ray: x(s) = ray.x0 + s·d, where d = direction4(ray).
-	# For SlowLight d = (1, n̂) (null); for FastLight d = (0, n̂) (spatial).
 	@assert g.center isa Geometries.InertialWorldline
-	u = g.center.u
-	Δ0 = ray.x0 - g.center.x0
-	kdir = direction4(ray)
-
-	a = minkowski_dot(u, kdir)
-	b = minkowski_dot(u, Δ0)
-	P0 = Δ0 + u * b
-	P1 = kdir + u * a
-
-	p0 = _spatial_in_rest(u, P0)
-	p1 = _spatial_in_rest(u, P1)
-
-	s² = g.sizes .^ 2
-	A = sum(p1 .^ 2 ./ s²)
-	B = 2 * sum(p0 .* p1 ./ s²)
-	C = sum(p0 .^ 2 ./ s²) - one(A)
-	D = B^2 - 4 * A * C
-
-	if !(D > 0) || iszero(A)
-		s0 = zero(A)
-		return s0 .. (s0 - eps(oneunit(s0)))
-	end
-
-	sD = √(D)
-	s1 = (-B - sD) / (2 * A)
-	s2 = (-B + sD) / (2 * A)
-	return min(s1, s2) .. max(s1, s2)
+	_ellipsoid_worldtube_interval(g.center.u, g.center.x0, g.sizes, ray)
 end
 
 """Extract the axis vector (third column of rotation matrix) from a Conical geometry"""
@@ -954,7 +922,7 @@ end
 	return (r ∈ g.r_range) && abs(z) ≤ _disk_half_thickness(g, r)
 end
 
-prepare_for_computations(g::Geometries.PowerLawDisk) = @modify(FixedExponent, g.a)
+@unstable prepare_for_computations(g::Geometries.PowerLawDisk) = @modify(FixedExponent, g.a)
 
 @inline is_inside(gu::Geometries.GeometryUnion, x4) = any(g -> is_inside(g, x4), gu.geometries)
 @inline is_time_independent(gu::Geometries.GeometryUnion) = all(is_time_independent, gu.geometries)

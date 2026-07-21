@@ -8,7 +8,6 @@
 	geom = Geometries.Conical(axis, φj, z)
 	@test S.geometry_axis(geom) == axis
 	
-	# Test natural_coords
 	x4_on_axis = S.FourPosition(0, 0, 0, 2.0)
 	coords = S.natural_coords(geom, x4_on_axis)
 	@test coords.z ≈ 2.0
@@ -25,7 +24,6 @@
 	@test coords_off.ρ ≈ 0.1
 	@test coords_off.η ≈ 0.1 / (2.0 * tan(φj))
 	
-	# Test is_inside
 	@test S.is_inside(geom, x4_on_axis)
 	# Point outside s_range
 	x4_out = S.FourPosition(0, 0, 0, 10.0)
@@ -34,7 +32,6 @@
 	x4_wide = S.FourPosition(0, 1.0, 0, 2.0)
 	@test !S.is_inside(geom, x4_wide)
 	
-	# Test z_interval (on-axis ray)
 	ray = S.RayZ(; x0=S.FourPosition(0, 0, 0, 0), k=2, nz=1024)
 	@test S.z_interval(geom, ray) == z
 	
@@ -43,7 +40,6 @@
 	@test tan(geom_prepared.φj) ≈ tan(φj)
 	@test cos(geom_prepared.φj) ≈ cos(φj)
 	
-	# Test Accessors.set for geometry_axis
 	new_axis = normalize(SVector(1, 0, 1))
 	geom_new = @set S.geometry_axis(geom) = new_axis
 	@test S.geometry_axis(geom_new) == new_axis
@@ -53,16 +49,13 @@ end
 @testitem "Coordinate transformations" begin
     import Synchray as S
 
-	# Basic roundtrip test
 	axis = normalize(SVector(1, 0, 1))
 	geom = S.Geometries.Conical(; axis, φj=0.1, z=1.0 .. 5.0)
-	
-	# Test rotation matrix
+
 	R = S.rotation_local_to_lab(geom)
 	@test size(R) == (3, 3)
 	@test det(R) ≈ 1  # proper rotation
-	
-	# Test roundtrip
+
 	r_lab = SVector(1.0, 2.0, 3.0)
 	r_local = S.rotate_lab_to_local(geom, r_lab)
 	r_back = S.rotate_local_to_lab(geom, r_local)
@@ -113,7 +106,6 @@ end
 	geom = Geometries.Conical(axis, φj, 1.0 .. 10.0)
 	s_range = 0.0 .. 20.0
 
-	# Test ray_in_local_coords
 	ray = S.RayZ(; x0=S.FourPosition(0.0, 1.0, 0.0, 0.0), k=1.0, nz=16)
 	pts = S.ray_in_local_coords(ray, geom; s_range)
 
@@ -122,7 +114,6 @@ end
 	# Line should have different s values at endpoints (s is z-component in local frame)
 	@test pts[1][3] != pts[2][3]
 
-	# Test camera_fov_in_local_coords
 	cam = S.CameraZ(; xys=grid(SVector, x=range(-1.0, 1.0, 8), y=range(-1.0, 1.0, 8)), nz=16, ν=1.0, t=0.0)
 	corners = S.camera_fov_in_local_coords(cam, geom; s_range)
 	
@@ -142,12 +133,10 @@ end
 	ray = S.Ray(x0, k, SVector(1.0, 0.0, 0.0), SVector(0.0, 1.0, 0.0), 64)
 	@test isbits(ray)
 
-	# RayZ produces a Ray
 	rayz = S.RayZ(x0, k, 64)
 	@test rayz isa S.Ray
 	@test isbits(rayz)
 
-	# direction3 extracts the unit spatial direction
 	@test S.direction3(ray) ≈ SVector(0.0, 0.0, 1.0)
 
 	# Arbitrary direction
@@ -235,10 +224,8 @@ end
 	sizes = SVector(1.0, 1.0, 1.0)
 	geom = S.Geometries.Ellipsoid(wl, sizes)
 
-	# four_velocity returns the worldline velocity
 	@test S.four_velocity(geom, S.FourPosition(0,0,0,0)) === u0
 
-	# prepare_for_computations is identity
 	@test S.prepare_for_computations(geom) === geom
 
 	# z_interval: ray through center of stationary unit sphere
@@ -283,10 +270,8 @@ end
 	wl = S.Geometries.InertialWorldline(S.FourPosition(0.0, 0.0, 0.0, 0.0), u0)
 	geom = S.Geometries.Ball(wl, 1.0)
 
-	# four_velocity returns the worldline velocity
 	@test S.four_velocity(geom, S.FourPosition(0,0,0,0)) === u0
 
-	# prepare_for_computations is identity
 	@test S.prepare_for_computations(geom) === geom
 
 	# z_interval: ray through center of stationary unit ball

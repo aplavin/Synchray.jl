@@ -124,8 +124,6 @@ end
 		(j_oblique, _) = S.emissivity_absorption_polarized(slab, x4, k_oblique)
 		pol_frac_oblique = (j_oblique.perp - j_oblique.par) / (j_oblique.perp + j_oblique.par)
 
-		@test pol_frac_perp > 0
-		@test pol_frac_oblique > 0
 		@test 0.1 < pol_frac_perp < 0.6
 		@test 0.1 < pol_frac_oblique < 0.6
 	end
@@ -175,14 +173,12 @@ end
 
 	@testset "η=1 matches IsotropicPowerLawElectrons" begin
 		p = 3.2
-		# Create both models with same parameters
 		electrons_iso = S.IsotropicPowerLawElectrons(; p, Cj=0.7, Ca=0.3)
 		electrons_aniso = S.AnisotropicPowerLawElectrons(; p, η=1.0, Cj=0.7, Ca=0.3)
 
 		for κ in [0.0, 2.0, Inf]
 			field = S.TangledOrderedMixture(b, κ)
 
-			# Test Stokes-I coefficients
 			slab_iso = S.UniformSynchrotronSlab(; z, u0, ne0, B0=field, electrons=electrons_iso)
 			slab_aniso = S.UniformSynchrotronSlab(; z, u0, ne0, B0=field, electrons=electrons_aniso)
 
@@ -192,7 +188,6 @@ end
 			@test jI_aniso ≈ jI_iso rtol=1e-12
 			@test αI_aniso ≈ αI_iso rtol=1e-12
 
-			# Test polarized coefficients
 			(j_iso, a_iso) = S.emissivity_absorption_polarized(slab_iso, x4, k′)
 			(j_aniso, a_aniso) = S.emissivity_absorption_polarized(slab_aniso, x4, k′)
 
@@ -289,7 +284,6 @@ end
 	end
 
 	@testset "Anisotropy effect on polarization" begin
-		# Test that different η values affect polarization degree correctly
 		p = 2.5
 		κ = 2.0
 		field = S.TangledOrderedMixture(b, κ)
@@ -343,9 +337,10 @@ end
 		electrons = S.IsotropicPowerLawElectrons(; p=3.2, Cj=0.7, Ca=0.3)
 		slab = S.UniformSynchrotronSlab(; z, u0, ne0, B0=SVector(B0, 0.0, 0.0), electrons)
 		(j, a) = S.emissivity_absorption_polarized(slab, x4, k′)
-		(Jinv, Ainv) = S.emissivity_absorption_polarized_invariant(slab, x4, k′)
-		@test Jinv ≈ j / (ν^2)
-		@test Ainv ≈ a * ν
+		ν_ref = 3.0  # reference frequency (≠ local ν=2) to exercise the ν_ref³ renormalization
+		(Jinv, Ainv) = S.emissivity_absorption_polarized_invariant(slab, x4, k′, ν_ref)
+		@test Jinv ≈ j * ν_ref^3 / (ν^2)   # 𝓙̂ = j·ν_ref³/ν′² (ν′=ν here, slab at rest)
+		@test Ainv ≈ a * ν                  # 𝓐 = α·ν′ unchanged
 	end
 end
 

@@ -25,12 +25,12 @@
 		ray = S.RayZ(; x0=S.FourPosition(0, 0, 0, 0), k=2, nz=1024)
 		# On-axis ray should see the full truncation segment for axis=ẑ.
 		@test S.z_interval(region, ray) == region.geometry.z
-		@test S.render(ray, region) > 0
+		@test S.render(ray, region) ≈ 3.48 rtol=1e-2
 		# Off-axis ray within cone should also see a non-empty segment.
 		xoff = 0.5 * maximum(region.geometry.z) * tan(region.geometry.φj)
 		hit_ray = @set ray.x0.x = xoff
 		@test S.z_interval(region, hit_ray) ≈ 2.5..5
-		@test S.render(hit_ray, region) > 0
+		@test S.render(hit_ray, region) ≈ 0.200 rtol=1e-2
 
 		# A ray outside the projected cone should miss entirely.
 		xmiss = 1.1 * maximum(region.geometry.z) * tan(region.geometry.φj)
@@ -189,7 +189,7 @@ end
 			sum(img)
 		end
 
-		@test flux(1) > 0
+		@test flux(1) ≈ 12.2 rtol=1e-2
 		@test flux(1) / flux(2) ≈ 1  rtol=0.02
 		@test flux(0.5) / flux(1) ≈ 1  rtol=0.07
 	end

@@ -11,7 +11,7 @@ end
 const UCTX = UnitsContext()
 
 _u_to_code(x::Number, scale::Real) = let
-	@assert scale == 1  # what else can it mean?..
+	@assert scale == 1
 	NoUnits(x)
 end
 _u_to_code(x::Number, scale::AbstractQuantity) = NoUnits(x / scale)

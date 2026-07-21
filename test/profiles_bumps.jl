@@ -110,7 +110,6 @@ end
 	end
 
 	@testset "Suppression profiles (f_peak < 1)" begin
-		# Test that suppressions work correctly
 		g_suppress = S.Patterns.GaussianBump(f_peak=0.5)  # Suppression
 		g_enhance = inv(g_suppress)  # Inverted suppression = enhancement
 
@@ -135,7 +134,6 @@ end
 			profile = inv(knot_enhance.profile),  # Inverted profile
 		)
 
-		# Create a simple geometry for testing
 		geom = S.Geometries.Conical(; axis = SVector(0, 0, 1), φj = 0.05, z = 1e-3..10)
 
 		# At the center, enhancement and suppression should be exact inverses
@@ -156,7 +154,6 @@ end
 		b = S.Patterns.TophatBump(3.0)
 		bc = S.Patterns.complement(b)
 
-		# Test complement relation at key χ values
 		# Relation: complement(χ) = original(χ) / f_peak
 
 		# Inside (χ < 1): original enhanced, complement normal
@@ -188,7 +185,6 @@ end
 		g = S.Patterns.GaussianBump(f_peak=5.0, χ_threshold=16.0)
 		gc = S.Patterns.complement(g)
 
-		# Test complement relation at key χ values
 		# Relation: complement(χ) = original(χ) / f_peak
 
 		# At center (χ = 0): original at peak, complement normal

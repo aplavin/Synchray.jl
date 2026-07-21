@@ -98,16 +98,30 @@
 	end
 end
 
+@testitem "proper_velocity (celerity)" begin
+    import Synchray as S
+
+    β = S.SVector(0.1, -0.2, 0.3)
+    u = S.FourVelocity(β)                                   # existing ctor (γ, γβ⃗)
+    w = S.proper_velocity(u)
+    @test w ≈ u.t * β
+    @test S.beta(u) ≈ w / u.t
+    # cancellation-free reconstruction round-trips:
+    @test S.proper_velocity(S.construct(S.FourVelocity, S.proper_velocity => w)) ≈ w
+    @test S.construct(S.FourVelocity, S.proper_velocity => w) ≈ S.FourVelocity(β)
+    # high-γ: build from celerity stays well-conditioned where β→1 is ill-represented
+    γ = 50.0; βmag = sqrt(1 - 1/γ^2); whi = (γ*βmag) * S.SVector(1.0, 0.0, 0.0)
+    uhi = S.construct(S.FourVelocity, S.proper_velocity => whi)
+    @test uhi.t ≈ γ
+end
+
 @testitem "Float32 lorentz_unboost null-vector stability" begin
     import Synchray as S
 
-    # For a null FourFrequency, |k.xyz| = k.t. After unboost, |x'| must equal ν'
-    # exactly (the boost preserves nullness). In Float32 the generic boost has
-    # catastrophic cancellation when γ is large and the photon is roughly
-    # aligned with β — drift in |n|² off 1 hits ~3e-4 at γ=46/Δθ=0°.
-    #
-    # This test asserts that Float32 and Float64 paths agree to ~Float32
-    # precision across γ ∈ {5, 30, 46, 100} and angle Δθ ∈ {0°, 1°, 2°, 6°, 90°}.
+    # For a null FourFrequency, |k.xyz| = k.t; unboost must preserve this exactly.
+    # In Float32 the generic boost suffers catastrophic cancellation when γ is large
+    # and the photon is roughly aligned with β. Assert Float32 and Float64 agree to
+    # ~Float32 precision.
 
     @testset "γ=$γ, Δθ=$(Δθ)°" for γ in (5.0, 30.0, 46.0, 100.0),
                                     Δθ in (0.0, 1.0, 2.0, 6.0, 90.0)
@@ -123,9 +137,8 @@ end
         kp64 = S.lorentz_unboost(u64, k64)
         kp32 = S.lorentz_unboost(u32, k32)
 
-        # Null condition preserved → |xyz'|² == t'². rtol is set tighter than
-        # the default `≈` (= √eps(Float32) ≈ 3.5e-4) so the test still catches
-        # the γ=46 cancellation regime where drift was ~3e-4 before the fix.
+        # Null condition preserved → |xyz'|² == t'². rtol tighter than the default `≈`
+        # (√eps(Float32) ≈ 3.5e-4) to catch the γ=46 cancellation regime.
         x64 = SVector(kp64.x, kp64.y, kp64.z)
         x32 = SVector(kp32.x, kp32.y, kp32.z)
         @test dot(x64, x64) ≈ kp64.t^2  rtol=1e-12

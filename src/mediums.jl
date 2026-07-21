@@ -3,29 +3,31 @@ abstract type AbstractMedium end
 # Primary API (what the raytracer should prefer calling): compute both comoving j_ν and α_ν
 # (they typically share expensive intermediate computations).
 #
-# Radiative-transfer invariants used by the integrator:
-#   𝓘 ≡ I_ν / ν^3
-#   𝓙 ≡ j_ν / ν^2
-#   𝓐 ≡ α_ν · ν
-# so along an affine parameter λ:
-#   d𝓘/dλ = 𝓙 - 𝓐 𝓘.
+# The integrator works in frequency-scaled transfer quantities, normalized by a per-ray
+# reference frequency ν_ref (the observer frequency) so they sit at the physical-intensity
+# scale and stay within Float32 range:
+#   𝓘̂ ≡ I_ν·(ν_ref/ν)³   (carried; equals physical I_ν at the observer, where ν = ν_ref)
+#   𝓙̂ ≡ j_ν·ν_ref³/ν²    (emission)
+#   𝓐  ≡ α_ν·ν            (absorption / optical depth; independent of ν_ref)
+# along the affine parameter λ:  d𝓘̂/dλ = 𝓙̂ - 𝓐·𝓘̂.
 #
-# This helper takes (j_ν, α_ν) at the frequency ν measured in the medium rest frame
-# and returns the invariant pair (𝓙, 𝓐) used for integration.
-@inline emissivity_absorption_invariant(obj::AbstractMedium, x4, k′) = begin
+# Returns (𝓙̂, 𝓐) from the comoving (j_ν, α_ν) at the local frequency ν′ = frequency(k′).
+# 𝓙̂ is grouped as j·ν_ref·(ν_ref/ν′)² to keep every intermediate in range — the expanded
+# j·ν_ref³/ν′² under/overflows in Float32. Keep this grouping.
+@inline emissivity_absorption_invariant(obj::AbstractMedium, x4, k′, ν_ref) = begin
 	ν′ = frequency(k′)
 	(j, α) = emissivity_absorption(obj, x4, k′)
-	return (j / (ν′^2), α * ν′)
+	return (j * ν_ref * (ν_ref / ν′)^2, α * ν′)
 end
 
-@inline emissivity_absorption_polarized_invariant(obj::AbstractMedium, x4, k′) = begin
+@inline emissivity_absorption_polarized_invariant(obj::AbstractMedium, x4, k′, ν_ref) = begin
 	ν′ = frequency(k′)
 	(j, α, B′) = emissivity_absorption_polarized(obj, x4, k′)
-	return (j / (ν′^2), α * ν′, B′)
+	return (j * ν_ref * (ν_ref / ν′)^2, α * ν′, B′)
 end
 
 # if a medium defines only `emissivity_absorption`, the generic `emissivity`/`absorption` wrappers below will work
-# `absorption` is used in optical depth calculation, maybe can drop this in future?..
+# `absorption` is used in optical depth calculation
 @inline emissivity_invariant(obj::AbstractMedium, x4, k′) = emissivity(obj, x4, k′) / frequency(k′)^2
 @inline absorption_invariant(obj::AbstractMedium, x4, k′) = absorption(obj, x4, k′) * frequency(k′)
 @inline emissivity(obj::AbstractMedium, x4, k′) = emissivity_absorption(obj, x4, k′)[1]
@@ -93,7 +95,7 @@ end
 TangledOrderedMixture(b; kappa) = TangledOrderedMixture(b, kappa)
 
 Base.:≈(a::TangledOrderedMixture, b::TangledOrderedMixture; kwargs...) =
-	# XXX: we propagate atol and rtol to both fields, but this don't really make sense...
+	# atol/rtol (if given) are applied independently to both fields
 	isapprox(a.b, b.b; kwargs...) && isapprox(a.kappa, b.kappa; kwargs...)
 
 Base.:*(a::Number, f::TangledOrderedMixture) = TangledOrderedMixture(a * f.b, f.kappa)

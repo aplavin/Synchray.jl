@@ -332,11 +332,9 @@ Compute sizes for CrossSectionSizing with Conical geometry.
 As the knot moves outward, it expands to keep a fixed fraction of the local jet radius.
 """
 @inline _knot_sizes(sizing::Patterns.CrossSectionSizing, τ, x_c, geom::Geometries.Conical) = begin
-	# Get axial coordinate of the current center position
 	z_c = natural_coords(geom, x_c, Val(:z))
 	
 	# Compute rest-frame semi-axes from the local jet radius
-	# Intuitively: as the knot moves outward, it expands to keep a fixed fraction of the local jet radius.
 	a_perp = sizing.f_perp * (z_c * tan(geom.φj))
 	a_parallel = sizing.q * a_perp
 	

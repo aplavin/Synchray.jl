@@ -61,7 +61,6 @@ struct VelocitySpec{Tdir, Tkind, Tscale}
     scale::Tscale
 end
 
-# Default constructor with gamma
 VelocitySpec(dir, scale) = VelocitySpec(dir, gamma, scale)
 
 """

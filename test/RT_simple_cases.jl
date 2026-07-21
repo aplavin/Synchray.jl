@@ -141,12 +141,9 @@ end
 	)
 	t0s = (-1, 0, 0.75)
 
-	# Stationary reference: for an orthographic camera (+z), motion should not change the image
-	# apart from:
-	# - a Terrell shift of the apparent center in the image plane, and
-	# - an overall intensity scaling that depends only on the Doppler factor δ.
-	#
-	# We avoid rendering full images: just compare a small set of representative rays.
+	# For an orthographic camera (+z), motion should not change the image apart from
+	# a Terrell shift of the apparent center and an intensity scaling by the Doppler factor δ.
+	# Compare a few representative rays rather than full images.
 	ref_sphere = S.MovingUniformEllipsoid(
 		center=S.FourPosition(0, 0, 0, z0),
 		sizes=SVector(R, R, R),
@@ -179,7 +176,6 @@ end
 			δ = S.doppler_factor(sphere.u0, SVector(0, 0, 1))
 			
 			# The apparent brightness profile should match the stationary one, up to a constant factor.
-			# Keep tolerances tight; this should be nearly exact for the same ray discretization.
 			curcam = @set cam.xys[∗] += xyc
 			Icur = S.render(curcam, sphere)
 			@test Icur ≈ δ^3 * Iref rtol=3e-6

@@ -80,20 +80,16 @@ For vector directions, returns a unit 3-vector derived from the geometry at posi
 """
 function field_direction end
 
-# Scalar case: return 1
 @inline field_direction(::Directions.Scalar, geom, x4) = 1
 
-# Axial: along geometry axis
 @inline field_direction(::Directions.Axial, geom, x4) = geometry_axis(geom)
 
-# Radial: outward from origin (normalized position vector)
 @inline field_direction(::Directions.Radial, geom, x4) = begin
     r = @swiz x4.xyz
     r_norm = norm(r)
     return iszero(r_norm) ? zero(r) : r / r_norm
 end
 
-# Toroidal: azimuthal around axis
 @inline field_direction(::Directions.Toroidal, geom, x4) = begin
     axis = geometry_axis(geom)
     (; r_perp, ρ) = _cylindrical_coords(rotation_local_to_lab(geom), x4)
@@ -104,7 +100,6 @@ end
 prepare_for_computations(h::Directions.HelicalAT) = @modify(Geometries.AngleTrigCached_fromangle, h.ψ)
 prepare_for_computations(h::Directions.HelicalRT) = @modify(Geometries.AngleTrigCached_fromangle, h.ψ)
 
-# HelicalAT: mix of axial and toroidal
 @inline field_direction(h::Directions.HelicalAT, geom, x4) = begin
     axis = geometry_axis(geom)
     (; r_perp, ρ) = _cylindrical_coords(rotation_local_to_lab(geom), x4)
@@ -116,7 +111,6 @@ prepare_for_computations(h::Directions.HelicalRT) = @modify(Geometries.AngleTrig
     return iszero(v) ? zero(v) : v / norm(v)
 end
 
-# HelicalRT: mix of radial (from origin) and toroidal
 @inline field_direction(h::Directions.HelicalRT, geom, x4) = begin
     axis = geometry_axis(geom)
     r = @swiz x4.xyz

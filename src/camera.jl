@@ -154,22 +154,6 @@ RayZ(; x0, k, nz::Int, light=SlowLight()) = _ray_z(x0, k, nz, light)
 _ray_z(x0::FourPosition, k::FourFrequency, nz::Int, light=SlowLight()) = RayZ(x0, k, nz; light)
 _ray_z(x0::FourPosition, k::Number, nz::Int, light=SlowLight()) = RayZ(x0, photon_k(k, SVector(0, 0, 1)), nz; light)
 
-"""Compute a unit vector perpendicular to `n` (preferring to stay close to `hint`)."""
-@inline _perpendicular_basis_vector(n::SVector{3,T}, hint::SVector{3,T}) where T = begin
-	v = cross(hint, n)
-	nv = norm(v)
-	eps = T(1e-8)
-	if nv < eps  # hint parallel to n; pick arbitrary perpendicular
-		v = cross(SVector{3,T}(0, 0, 1), n)
-		nv = norm(v)
-		if nv < eps
-			v = cross(SVector{3,T}(1, 0, 0), n)
-			nv = norm(v)
-		end
-	end
-	v / nv
-end
-
 @unstable ustrip(cam::CameraOrtho) = @p let
     cam
 	@modify(_u_to_code(_, UCTX.L0), __.origin)

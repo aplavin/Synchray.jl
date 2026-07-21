@@ -24,8 +24,8 @@
 	# Edge-adjacent pixel should be reduced due to partial coverage.
 	Iedge0 = img0(0.9, 0)
 	Iedge3 = img3(0.9, 0)
-	@test Iedge0 > 0
-	@test Iedge3 > 0
+	@test Iedge0 ≈ 0.873 rtol=1e-2
+	@test Iedge3 ≈ 0.737 rtol=1e-2
 	@test Iedge3 / Iedge0 < 0.9
 
 	# Fully outside remains zero.
