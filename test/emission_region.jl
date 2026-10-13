@@ -121,7 +121,7 @@ end
 
 	cam = ustrip(S.CameraZ(;
 		xys=grid(SVector, range(0.01u"pc"..0.1u"pc", 2), range(-0.001u"pc"..0.001u"pc", 2)),
-		nz=20,
+		nz=5120,  # resolve the steep emissivity near the cone entrance
 		ν=230u"GHz",
 		t=0u"yr",
 	))
@@ -131,7 +131,21 @@ end
 	Iν = S.withunits(S.render, cam, region, S.Intensity())
 	@test unit(eltype(Iν)) == u"erg/s/cm^2/Hz/sr"
 	@test ustrip.(Iν) == Iν_nou
-	@test ustrip.(u"Jy/mas^2", Iν) ≈ [129 129; 0.0255 0.0255]  rtol=1e-2
+	# Independent formal solution: at rest with p=2.5, ne ∝ z^-2 and B ∝ z^-1
+	# give j ∝ z^-3.75 and α ∝ z^-4.25. Integrate foreground opacity analytically
+	# and the emitted contribution adaptively, without the rendering stepper.
+	I_ref = map(cam.xys) do uv
+		ray = S.camera_ray(cam, uv)
+		seg = S.z_interval_clipped(region, ray)
+		xlo = ray.x0 + leftendpoint(seg) * S.direction4(ray)
+		zlo = xlo.z
+		ratio = (zlo + width(seg)) / zlo
+		jlo, αlo = S.emissivity_absorption(region, xlo, ray.k)
+		τ_front(ξ) = αlo * zlo * (ξ^(-3.25) - ratio^(-3.25)) / 3.25
+		integrand(ξ) = jlo * zlo * ξ^(-3.75) * exp(-τ_front(ξ))
+		first(S.quadgk(integrand, 1.0, ratio; rtol=1e-10))
+	end
+	@test ustrip.(u"Jy/mas^2", Iν) ≈ ustrip.(u"Jy/mas^2", I_ref * u"erg/s/cm^2/Hz/sr") rtol=1e-2
 
 	res = S.withunits(S.render, cam, region, (S.Intensity(), S.SpectralIndex()))
 	@test res[1] == Iν
@@ -189,7 +203,8 @@ end
 			sum(img)
 		end
 
-		@test flux(1) ≈ 12.2 rtol=1e-2
+		# Midpoint renders at nz=20, 80, 320, 1280 agree with 11.57 within 0.04%.
+		@test flux(1) ≈ 11.57 rtol=1e-2
 		@test flux(1) / flux(2) ≈ 1  rtol=0.02
 		@test flux(0.5) / flux(1) ≈ 1  rtol=0.07
 	end

@@ -67,6 +67,6 @@ end
 # and then access things as `S.SomeType` or `S.some_function`
 export Geometries, Directions, Profiles, Patterns
 
-using .Profiles: PowerLaw
+using .Profiles: PowerLaw, DoublePowerLaw
 
 end

@@ -11,6 +11,11 @@ import FastPower
 	return ForwardDiff.Dual{T}(sv, deriv * ForwardDiff.partials(d))
 end
 
+# Inverse with inv₀(0) = 0. For field-direction factors like (b·n)/|b|: at zero field the direction is
+# undefined but every coefficient carries a positive power of |b| and vanishes, so any finite angle works.
+@inline inv₀(x::Real) = iszero(x) ? zero(inv(x)) : inv(x)
+@inline inv₀(d::ForwardDiff.Dual) = iszero(ForwardDiff.value(d)) ? zero(d) : inv(d)
+
 struct FixedExponent{P} end
 @unstable FixedExponent(p) = FixedExponent{p}()
 @inline _half(x::Real) = x / 2

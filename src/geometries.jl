@@ -290,9 +290,9 @@ prepare_for_computations(g::Geometries.Ball) = g
 @inline function is_inside(g::Geometries.Ball, x4)
 	u = g.center.u
 	Δ = x4 - g.center.x0
-	# Project out the worldline direction: Δ_perp = Δ + (η(Δ,u)) u
+	# Project out the worldline direction: Δ_perp = Δ + η(Δ,u) u, so η(Δ_perp,u) = 0.
 	τ_offset = -minkowski_dot(Δ, u)
-	Δ_perp = Δ + τ_offset * u
+	Δ_perp = Δ - τ_offset * u
 	# Rest-frame spatial distance²
 	return minkowski_dot(Δ_perp, Δ_perp) ≤ g.size^2
 end

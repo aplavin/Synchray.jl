@@ -274,6 +274,17 @@ end
 
 	@test S.prepare_for_computations(geom) === geom
 
+	# Point containment must use distance from the simultaneous center event.
+	# A resting ball stays the same size at every time, regardless of which
+	# reference event on its worldline is stored in x0.
+	x_out = S.FourPosition(20.0, 2.0, 0.0, 0.0)
+	@test !S.is_inside(geom, x_out)
+	geom_later_origin = S.Geometries.Ball(
+		S.Geometries.InertialWorldline(S.FourPosition(10.0, 0.0, 0.0, 0.0), u0), 1.0)
+	x_out_earlier = S.FourPosition(0.0, 2.0, 0.0, 0.0)
+	@test S.is_inside(geom_later_origin, x_out_earlier) == S.is_inside(geom, x_out_earlier)
+	@test S.is_inside(geom, S.FourPosition(20.0, 0.5, 0.0, 0.0))
+
 	# z_interval: ray through center of stationary unit ball
 	ray_center = S.RayZ(; x0=S.FourPosition(0.0, 0.0, 0.0, 0.0), k=1.0, nz=64)
 	zi = S.z_interval(geom, ray_center)
@@ -301,6 +312,17 @@ end
 	zi_moving = S.z_interval(geom_moving, ray_center)
 	@test !isempty(zi_moving)
 	@test S.four_velocity(geom_moving, S.FourPosition(0,0,0,0)) === u_moving
+
+	# At proper-time offset 2, the center is at (2uᵗ, 0, 0, 2uᶻ).
+	# Transverse x=2 is outside a unit ball; x=0.5 is inside.
+	x_center_t2 = S.FourPosition(2u_moving.t, 0.0, 0.0, 2u_moving.z)
+	@test !S.is_inside(geom_moving, x_center_t2 + S.FourPosition(0.0, 2.0, 0.0, 0.0))
+	@test S.is_inside(geom_moving, x_center_t2 + S.FourPosition(0.0, 0.5, 0.0, 0.0))
+
+	# A ray that never intersects the worldtube cannot contain an inside event.
+	ray_outside = S.RayZ(; x0=S.FourPosition(0.0, 2.0, 0.0, 0.0), k=1.0, nz=64)
+	@test isempty(S.z_interval(geom, ray_outside))
+	@test !S.is_inside(geom, ray_outside.x0 + 2.0 * S.direction4(ray_outside))
 
 	# Ball matches Ellipsoid with equal sizes
 	sizes = SVector(1.0, 1.0, 1.0)
@@ -386,6 +408,33 @@ end
 	h_tor = S.Directions.HelicalAT(π/2) |> S.prepare_for_computations
 	fd = S.field_direction(h_tor, geom, S.FourPosition(0.0, 1.0, 0.0, 1.0))
 	@test fd ≈ SVector(0, 1, 0)
+end
+
+@testitem "PowerLawDisk is_inside" begin
+	import Synchray as S
+
+	disk = S.Geometries.PowerLawDisk(r_range=3.0..20.0, h_ref=1.0, r_ref=10.0, a=0.5)
+	# h(r) = 1.0 * (r/10)^0.5
+
+	# At r=10: h=1.0
+	@test S.is_inside(disk, S.FourPosition(0.0, 10.0, 0.0, 0.0))      # z=0 < h=1
+	@test S.is_inside(disk, S.FourPosition(0.0, 10.0, 0.0, 0.9))      # z=0.9 < h=1
+	@test !S.is_inside(disk, S.FourPosition(0.0, 10.0, 0.0, 1.1))     # z=1.1 > h=1
+
+	# At r=4: h = 1.0 * (4/10)^0.5 ≈ 0.632
+	@test S.is_inside(disk, S.FourPosition(0.0, 4.0, 0.0, 0.0))
+	@test !S.is_inside(disk, S.FourPosition(0.0, 4.0, 0.0, 0.7))
+
+	# Outside r_range
+	@test !S.is_inside(disk, S.FourPosition(0.0, 2.0, 0.0, 0.0))
+	@test !S.is_inside(disk, S.FourPosition(0.0, 25.0, 0.0, 0.0))
+
+	# Constant thickness (a=0)
+	slab = S.Geometries.PowerLawDisk(r_range=5.0..15.0, h_ref=2.0, r_ref=10.0, a=0)
+	@test S.is_inside(slab, S.FourPosition(0.0, 10.0, 0.0, 1.9))
+	@test !S.is_inside(slab, S.FourPosition(0.0, 10.0, 0.0, 2.1))
+	# a=0: h(r) = 2.0 for all r in range
+	@test S.is_inside(slab, S.FourPosition(0.0, 7.0, 0.0, 1.9))
 end
 
 @testitem "SlowLight/FastLight basics" begin

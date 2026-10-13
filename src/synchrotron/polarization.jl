@@ -76,9 +76,9 @@ end
 	b = field.b
 	B = norm(b)
 	n = (@swiz k′.xyz) / ν
-	sinθ = norm(cross(b, n)) / B
-	sinθ = clamp(sinθ, 0, 1)
-	cosθ = dot(b, n) / B
+	invB = inv₀(B)
+	sinθ = clamp(norm(cross(b, n)) * invB, 0, 1)
+	cosθ = dot(b, n) * invB
 
 	qj = _half(model.p + StaticNum{1}())
 	qa = _half(model.p + StaticNum{2}())
@@ -175,9 +175,8 @@ Returns `(n′, e1′, e2′)` where all are unit 3-vectors in the comoving fram
 	return (n′, e1′, e2′)
 end
 
-"""Convenience: extract `k`, `e1`, `e2` from a `Ray` to avoid mismatched basis vectors."""
-@inline comoving_screen_basis(u::FourVelocity, ray::Ray) =
-	comoving_screen_basis(u, ray.k, ray.e1, ray.e2)
+@inline comoving_screen_basis(u::FourVelocity, st::RayState) =
+	comoving_screen_basis(u, st.k, st.e1, st.e2)
 
 """
 	linear_polarization_basis_from_B(n′, B′)

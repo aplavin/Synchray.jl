@@ -31,7 +31,7 @@ that passes through `origin`. Each pixel `(u, v)` in `xys` corresponds to a ray 
   as the lab-frame polarization reference frame: Stokes Q is measured along `e1`. Derived from
   `up × n` (and then `n × e1`).
 - `xys`: pixel coordinates — each element `(u, v)` is a 2D offset in the `(e1, e2)` basis.
-- `nz`: number of integration steps per ray.
+- `nz`: positive number of midpoint integration cells per intersected medium segment.
 - `ν`: observing frequency.
 - `t`: observer time — the time coordinate assigned to light arriving at the screen plane.
 - `light`: light propagation mode (`SlowLight()` or `FastLight()`).
@@ -132,6 +132,24 @@ Ray(x0::FourPosition, k::FourFrequency, e1::SVector{3}, e2::SVector{3}, nz::Int)
 Ray(x0::FourPosition, k::FourFrequency, e1::SVector{3}, e2::SVector{3}, nz::Int, light::AbstractLightMode) =
     Ray(x0, k, e1, e2, nz, light, nothing)
 
+"""
+    RayState(k, e1, e2, ν_ref)
+
+Photon state consumed by one radiative-transfer step: the local photon 4-frequency `k`, the
+lab-frame polarization basis `e1`, `e2` (⊥ the photon direction), and the reference frequency
+`ν_ref` that normalizes the invariant transfer quantities (the observer frequency).
+
+Along a flat-space `Ray` the state is constant, `RayState(ray)`; curved-space integrators build
+one per step, with a redshifted `k` and a transported basis, but the same `ν_ref`.
+"""
+struct RayState{TK<:FourFrequency, TE<:SVector{3}, Tν}
+    k::TK
+    e1::TE
+    e2::TE
+    ν_ref::Tν
+end
+@inline RayState(ray::Ray) = RayState(ray.k, ray.e1, ray.e2, frequency(ray.k))
+
 """Unit spatial direction of ray propagation."""
 @inline direction3(ray::Ray) = direction3(ray.k)
 
@@ -183,6 +201,19 @@ struct Intensity end
 struct IntensityIQU end
 struct OpticalDepth end
 struct SpectralIndex end
+
+"""
+	needs_polarization_basis(what) -> Bool
+
+Whether transfer steps for render target `what` (or a tuple of targets) read the photon
+polarization basis (`RayState` `e1`, `e2`). Integrators that construct the basis per step can
+skip it when `false`. Defined per target: an unknown target is a `MethodError`.
+"""
+needs_polarization_basis(::Intensity) = false
+needs_polarization_basis(::IntensityIQU) = true
+needs_polarization_basis(::OpticalDepth) = false
+needs_polarization_basis(::SpectralIndex) = false
+needs_polarization_basis(what::Tuple) = any(needs_polarization_basis, what)
 
 render(ray::Ray, obj::AbstractMedium, what=Intensity()) = integrate_ray(obj, ray, what)
 

@@ -190,7 +190,7 @@ end
 	# Compute pitch-angle factor.
 	# For isotropic: _phi_theta returns 1 immediately (inlined, no cost).
 	# For anisotropic: computes φ(θ_Bn) = [1 + (η-1)cos²θ]^(-p/2) / Pnorm.
-	cos²θ = dotbn² / b²
+	cos²θ = dotbn² * inv₀(b²)
 	φ = _phi_theta(model, cos²θ)
 
 	B_over_ν = Bperp * invν
@@ -220,9 +220,9 @@ end
 	# Ordered viewing angle from the preferred direction.
 	n = (@swiz k′.xyz) * invν
 	@boundscheck @assert dot(n, n) ≈ 1
-	sinθ = norm(cross(b, n)) / B
-	sinθ = clamp(sinθ, 0, 1)
-	cosθ = dot(b, n) / B
+	invB = inv₀(B)
+	sinθ = clamp(norm(cross(b, n)) * invB, 0, 1)
+	cosθ = dot(b, n) * invB
 
 	# Minimal ordering model: mix between isotropic-direction average (κ=0) and fully ordered (κ→∞).
 	FT = promote_type(typeof(κ), typeof(sinavg_j))
@@ -243,7 +243,7 @@ end
 
 	B_over_ν = B * invν
 	common = B_over_ν^_half(p)
-	j = Cj_ordered * n_e * common * √(B * ν) * Aj
+	j = Cj_ordered * n_e * common * sqrt₀(B * ν) * Aj   # sqrt₀: AD-safe at B=0; see power.jl
 	α = Ca_ordered * n_e * common * B * invν^2 * Aa
 	return j, α
 end

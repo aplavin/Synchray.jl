@@ -15,6 +15,21 @@ struct PowerLaw{Texp,Tval,Ts0}
 end
 PowerLaw(exp; val0, s0=one(val0)) = PowerLaw(exp, val0, s0)
 
+"""
+    DoublePowerLaw(exp1, exp2; val0, s0)
+
+Smooth double power law `val0 * (s/s0)^exp1 / (1 + (s/s0)^(exp1+exp2))`:
+rises as `s^exp1` for `s ≪ s0`, falls as `s^-exp2` for `s ≫ s0`,
+peaks at `s0 * (exp1/exp2)^(1/(exp1+exp2))`.
+"""
+struct DoublePowerLaw{Texp1,Texp2,Tval,Ts0}
+	exp1::Texp1
+	exp2::Texp2
+	val0::Tval
+	s0::Ts0
+end
+DoublePowerLaw(exp1, exp2; val0, s0=one(val0)) = DoublePowerLaw(exp1, exp2, val0, s0)
+
 using DispatchDoctor: @unstable
 @unstable struct LinearInterp{Tpts}
 	points::Tpts  # Tuple of (x, y) pairs, sorted by x
@@ -178,6 +193,13 @@ end # module Profiles
 
 @inline (pl::Profiles.PowerLaw)(s) = s > 0 ? pl.val0 * (s / pl.s0)^pl.exp : zero(s / pl.s0)
 
+# s^(exp1+exp2) computed as s^exp1 * s^exp2: the exponents may be FixedExponents, which don't add
+@inline function (pl::Profiles.DoublePowerLaw)(s)
+	rat = s / pl.s0
+	v1 = rat^pl.exp1
+	return s > 0 ? pl.val0 * v1 / (1 + v1 * rat^pl.exp2) : zero(s / pl.s0)
+end
+
 @inline (li::Profiles.LinearInterp)(s) = _linterp(li, s)  # so that @stable handles it
 function _linterp(li::Profiles.LinearInterp, s)
 	pts = li.points
@@ -245,6 +267,7 @@ end
 @unstable begin
 
 prepare_for_computations(pl::Profiles.PowerLaw) = @modify(FixedExponent, pl.exp)
+prepare_for_computations(pl::Profiles.DoublePowerLaw) = modify(FixedExponent, pl, @o _.exp1 _.exp2)
 prepare_for_computations(p::Profiles.Modified) = modify(prepare_for_computations, p, @o _.base _.modifier)
 prepare_for_computations(p::Profiles.Axial) = modify(prepare_for_computations, p, @o _.f)
 prepare_for_computations(p::Profiles.Transverse) = modify(prepare_for_computations, p, @o _.f)
@@ -254,6 +277,7 @@ prepare_for_computations(p::Profiles.RigidRotation) = p
 
 ustrip(p::Profiles.Constant; valu) = Profiles.Constant(_u_to_code(p.val, valu))
 ustrip(pl::Profiles.PowerLaw; argu, valu) = Profiles.PowerLaw(pl.exp; val0=_u_to_code(pl.val0, valu), s0=_u_to_code(pl.s0, argu))
+ustrip(pl::Profiles.DoublePowerLaw; argu, valu) = Profiles.DoublePowerLaw(pl.exp1, pl.exp2; val0=_u_to_code(pl.val0, valu), s0=_u_to_code(pl.s0, argu))
 ustrip(li::Profiles.LinearInterp; argu, valu) = Profiles.LinearInterp(map(((x, y),) -> (_u_to_code(x, argu), _u_to_code(y, valu)), li.points))
 ustrip(p::Profiles.Axial; valu) = @modify(f -> ustrip(f; valu, argu=UCTX.L0), p.f)
 ustrip(p::Profiles.Transverse; valu) = @modify(f -> ustrip(f; valu, argu=1), p.f)

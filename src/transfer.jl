@@ -56,17 +56,37 @@ end
 
 const Δτ_THRESHOLD_LINEAR = 0.01f0
 
-# Reference frequency that normalizes the transfer quantities (see mediums.jl): the observer
-# frequency. For a flat `Ray` it is the photon frequency; GR geodesic states carry a
-# redshift-scaled `k` and override this accessor (in SynchrayGR).
-@inline _reference_frequency(ray::Ray) = frequency(ray.k)
+
+# One transfer step at x4 over Δλ. A `CombinedMedium` applies the step of each component containing
+# x4, in object order (overlaps: sequential splitting, exact as Δλ → 0). Per-component steps keep
+# `acc` type-stable for heterogeneous components. `@propagate_inbounds`: a caller's `@inbounds`
+# must reach the `@boundscheck`s of the single-medium steps.
+Base.@propagate_inbounds _integrate_ray_step(acc, obj, x4, st::RayState, Δλ) = _integrate_ray_step_single(acc, obj, x4, st, Δλ)
+Base.@propagate_inbounds _integrate_ray_step(acc, cm::CombinedMedium, x4, st::RayState, Δλ) = _step_each_inside(acc, cm.objects, x4, st, Δλ)
+
+# Heterogeneous tuple: recursive unrolling (no dynamic dispatch, GPU-safe).
+@inline _step_each_inside(acc, ::Tuple{}, x4, st, Δλ) = acc
+Base.@propagate_inbounds _step_each_inside(acc, objs::Tuple, x4, st, Δλ) = begin
+	obj = first(objs)
+	acc = is_inside(obj, x4) ? _integrate_ray_step(acc, obj, x4, st, Δλ) : acc
+	_step_each_inside(acc, Base.tail(objs), x4, st, Δλ)
+end
+# Homogeneous tuples and vectors: a loop, so the step body is compiled once, not per component.
+Base.@propagate_inbounds _step_each_inside(acc, objs::NTuple{N,T} where {N,T}, x4, st, Δλ) = _step_each_inside_loop(acc, objs, x4, st, Δλ)
+Base.@propagate_inbounds _step_each_inside(acc, objs::AbstractVector, x4, st, Δλ) = _step_each_inside_loop(acc, objs, x4, st, Δλ)
+Base.@propagate_inbounds _step_each_inside_loop(acc, objs, x4, st, Δλ) = begin
+	for obj in objs
+		is_inside(obj, x4) && (acc = _integrate_ray_step(acc, obj, x4, st, Δλ))
+	end
+	acc
+end
 
 
-@inline _integrate_ray_step(acc::AccValue{Intensity}, obj, x4, ray, Δλ) = begin
-	k = ray.k
+@inline _integrate_ray_step_single(acc::AccValue{Intensity}, obj, x4, st, Δλ) = begin
+	k = st.k
 	u = four_velocity(obj, x4)
 	k′ = lorentz_unboost(u, k)
-	(Jinv, Ainv) = emissivity_absorption_invariant(obj, x4, k′, _reference_frequency(ray))
+	(Jinv, Ainv) = emissivity_absorption_invariant(obj, x4, k′, st.ν_ref)
 
 	Iinv = acc.value
 	# Invariant transfer: 𝓘 ≡ I_ν/ν³, 𝓙 ≡ j_ν/ν², 𝓐 ≡ α_ν·ν
@@ -92,14 +112,14 @@ end
 	return y * E + (Jinv / Ainv) * (1 - E)
 end
 
-@inline _integrate_ray_step(acc::AccValue{IntensityIQU}, obj::AbstractMedium, x4, ray, Δλ) = begin
-	k = ray.k
+@inline _integrate_ray_step_single(acc::AccValue{IntensityIQU}, obj::AbstractMedium, x4, st, Δλ) = begin
+	k = st.k
 	u = four_velocity(obj, x4)
 	k′ = lorentz_unboost(u, k)
-	(Jinv_m, Ainv_m, B′) = emissivity_absorption_polarized_invariant(obj, x4, k′, _reference_frequency(ray))
+	(Jinv_m, Ainv_m, B′) = emissivity_absorption_polarized_invariant(obj, x4, k′, st.ν_ref)
 
 	# Build the comoving camera screen basis and the field-aligned +Q axis.
-	(n′, e1′, e2′) = comoving_screen_basis(u, ray)
+	(n′, e1′, e2′) = comoving_screen_basis(u, st)
 	(_, e_perp) = linear_polarization_basis_from_B(n′, B′)
 	R_cf = stokes_QU_rotation(e1′, e2′, e_perp)  # (Q,U)_field = R_cf * (Q,U)_cam
 	R_fc = R_cf'  # (Q,U)_cam = R_fc * (Q,U)_field
@@ -127,8 +147,8 @@ end
 	return AccValue{IntensityIQU}(S_cam_out)
 end
 
-@inline _integrate_ray_step(acc::AccValue{OpticalDepth}, obj, x4, ray, Δλ) = begin
-	k = ray.k
+@inline _integrate_ray_step_single(acc::AccValue{OpticalDepth}, obj, x4, st, Δλ) = begin
+	k = st.k
 	u = four_velocity(obj, x4)
 	k′ = lorentz_unboost(u, k)
 	Ainv = absorption_invariant(obj, x4, k′)
@@ -139,15 +159,15 @@ end
 	return AccValue{OpticalDepth}(acc.value + Δτ)
 end
 
-@inline _integrate_ray_step(acc::AccSpectralIndex, obj, x4, ray, Δλ) = begin
-	k = ray.k
+@inline _integrate_ray_step_single(acc::AccSpectralIndex, obj, x4, st, Δλ) = begin
+	k = st.k
 	u = four_velocity(obj, x4)
 	# Spectral index via AD: scale ν by s and rescale affine step.
 	# Since k ∝ ν, scaling ν→ν·s implies λ-steps scale as Δλ→Δλ/s.
 	k′ = lorentz_unboost(u, k * acc.s)
 	Δλ′ = Δλ / acc.s
-	# ν_ref is the unperturbed reference frequency (ray.k), not the AD-scaled k*acc.s.
-	(Jinv, Ainv) = emissivity_absorption_invariant(obj, x4, k′, _reference_frequency(ray))
+	# st.ν_ref is the unperturbed reference frequency, not the AD-scaled k*acc.s.
+	(Jinv, Ainv) = emissivity_absorption_invariant(obj, x4, k′, st.ν_ref)
 
 	Iinv = acc.Iinv
 	Δτ = Ainv * Δλ′
@@ -162,11 +182,11 @@ end
 	return AccSpectralIndex(Iinv, acc.s, acc.DT)
 end
 
-_integrate_ray_step(acc::Tuple{AccValue{Intensity}, AccValue{OpticalDepth}}, obj, x4, ray, Δλ) = begin
-	k = ray.k
+_integrate_ray_step_single(acc::Tuple{AccValue{Intensity}, AccValue{OpticalDepth}}, obj, x4, st, Δλ) = begin
+	k = st.k
 	u = four_velocity(obj, x4)
 	k′ = lorentz_unboost(u, k)
-	(Jinv, Ainv) = emissivity_absorption_invariant(obj, x4, k′, _reference_frequency(ray))
+	(Jinv, Ainv) = emissivity_absorption_invariant(obj, x4, k′, st.ν_ref)
 
 	Iinv = acc[1].value
 	Δτ = Ainv * Δλ
@@ -182,24 +202,33 @@ _integrate_ray_step(acc::Tuple{AccValue{Intensity}, AccValue{OpticalDepth}}, obj
 end
 
 
+# Each midpoint represents one full cell; the nz cell widths sum to the clipped
+# segment length. Shared by rendering and contribution profiles.
+@inline _segment_midpoints(seg, nz) = begin
+	@boundscheck @assert nz ≥ 1 "nz must be ≥ 1"
+	Δs = width(seg) / nz
+	StepRangeLen(leftendpoint(seg) + Δs / 2, Δs, isempty(seg) ? 0 : nz)
+end
+
+
 integrate_ray(obj::AbstractMedium, ray::Ray, what=Intensity()) = begin
 	seg = z_interval_clipped(obj, ray)
 
 	ν = frequency(ray)
 	k1 = direction4(ray)
+	st = RayState(ray)
 
 	acc = if isempty(seg)
 		s = leftendpoint(seg)
-		_integrate_ray_step(_init_acc(typeof(what), frequency(ray)), obj, ray.x0 + s * k1, ray, zero(float(s)))
+		_integrate_ray_step(_init_acc(typeof(what), frequency(ray)), obj, ray.x0 + s * k1, st, zero(float(s)))
 	else
-		@boundscheck @assert ray.nz ≥ 2  "nz must be ≥ 2 for meaningful integration"
-		ss = StepRangeLen(leftendpoint(seg), width(seg) / (ray.nz - 1), ray.nz)
+		ss = _segment_midpoints(seg, ray.nz)
 		Δs = step(ss)
 		Δλ = Δs / ν
-		acc = _integrate_ray_step(_init_acc(typeof(what), frequency(ray)), obj, ray.x0 + first(ss) * k1, ray, Δλ)
+		acc = _integrate_ray_step(_init_acc(typeof(what), frequency(ray)), obj, ray.x0 + first(ss) * k1, st, Δλ)
 		for s in Iterators.drop(ss, 1)  # cannot use ss[2:end] because StepRangeLen indexing can throw, failing in Metal
 			x = ray.x0 + s * k1
-			acc = _integrate_ray_step(acc, obj, x, ray, Δλ)
+			acc = _integrate_ray_step(acc, obj, x, st, Δλ)
 		end
 		acc
 	end
@@ -214,13 +243,13 @@ end
 	isempty(seg) && return acc
 	ν = frequency(ray)
 	k1 = direction4(ray)
-	@boundscheck @assert ray.nz ≥ 2  "nz must be ≥ 2 for meaningful integration"
-	ss = StepRangeLen(leftendpoint(seg), width(seg) / (ray.nz - 1), ray.nz)
+	st = RayState(ray)
+	ss = _segment_midpoints(seg, ray.nz)
 	Δs = step(ss)
 	Δλ = Δs / ν
 	for s in ss
 		x = ray.x0 + s * k1
-		acc = _integrate_ray_step(acc, obj, x, ray, Δλ)
+		acc = _integrate_ray_step(acc, obj, x, st, Δλ)
 	end
 	return acc
 end
@@ -237,7 +266,7 @@ integrate_ray(cm::CombinedMedium{<:Tuple}, ray::Ray, what=Intensity()) = begin
 	obj1 = first(cm.objects)
 	seg1 = z_interval_clipped(obj1, ray)
 	s_init = leftendpoint(seg1)
-	acc = _integrate_ray_step(_init_acc(typeof(what), frequency(ray)), obj1, ray.x0 + s_init * k1, ray, zero(float(s_init)))
+	acc = _integrate_ray_step(_init_acc(typeof(what), frequency(ray)), obj1, ray.x0 + s_init * k1, RayState(ray), zero(float(s_init)))
 
 	acc = _integrate_combined_recursive(acc, cm.objects, ray)
 
@@ -260,7 +289,7 @@ integrate_ray(cm::CombinedMedium{<:AbstractVector}, ray::Ray, what=Intensity()) 
 	obj1 = first(cm.objects)
 	seg1 = z_interval_clipped(obj1, ray)
 	s_init = leftendpoint(seg1)
-	acc = _integrate_ray_step(_init_acc(typeof(what), frequency(ray)), obj1, ray.x0 + s_init * k1, ray, zero(float(s_init)))
+	acc = _integrate_ray_step(_init_acc(typeof(what), frequency(ray)), obj1, ray.x0 + s_init * k1, RayState(ray), zero(float(s_init)))
 
 	for obj in cm.objects
 		seg = z_interval_clipped(obj, ray)
@@ -271,8 +300,47 @@ integrate_ray(cm::CombinedMedium{<:AbstractVector}, ray::Ray, what=Intensity()) 
 end
 
 
+# Source of one constant-coefficient step as seen at its exit: ∫₀^Δλ 𝓙̂·e^(−𝓐·(Δλ−λ)) dλ.
+@inline _step_source(Jinv, Ainv, Δλ) = begin
+	Δτ = Ainv * Δλ
+	Δτ < Δτ_THRESHOLD_LINEAR ? Jinv * Δλ : (Jinv / Ainv) * (1 - exp(-Δτ))
+end
+
 """
-	ray_contribution_profile(obj, ray) -> NamedTuple
+	step_contribution(obj, x4, st::RayState, Δλ) -> (; Δτ, dIinv_source)
+
+Optical depth `Δτ` of one transfer step of `obj` at `x4` over `Δλ`, and the step's source
+`dIinv_source` (physical intensity scale) before attenuation by the medium in front of it.
+Uses the pointwise coefficients of `obj`.
+"""
+@inline step_contribution(obj, x4, st::RayState, Δλ) = begin
+	u = four_velocity(obj, x4)
+	(Jinv, Ainv) = emissivity_absorption_invariant(obj, x4, lorentz_unboost(u, st.k), st.ν_ref)
+	Δτ = Ainv * Δλ
+	@boundscheck @assert Δτ ≥ 0
+	(; Δτ, dIinv_source = _step_source(Jinv, Ainv, Δλ))
+end
+
+"""
+	attenuate_to_observer(profile) -> StructArray
+
+Add the columns `τ_front` (optical depth in front of each step, toward the observer) and
+`dIν_to_obs = dIinv_source·exp(−τ_front)` (the step's contribution to the observed intensity)
+to a per-step profile with columns `Δτ` and `dIinv_source`, ordered from source to observer.
+"""
+attenuate_to_observer(profile) = begin
+	profile₁ = @insert profile.τ_front = _front_optical_depth(profile.Δτ)
+	@insert profile₁.dIν_to_obs = map(profile₁) do (; dIinv_source, τ_front)
+		dIinv_source * exp(-τ_front)
+	end
+end
+
+# τ_front[i] = Σ_{j>i} Δτ[j]
+_front_optical_depth(Δτ) = reverse(cumsum(reverse(Δτ))) .- Δτ
+
+
+"""
+	ray_contribution_profile(obj, ray) -> StructArray
 
 Compute the *per-ray* contribution of each ray step to the final observed intensity.
 
@@ -282,49 +350,30 @@ step, attenuated by the optical depth *in front of it* (toward the observer):
     dIν_to_obs[i] = dIinv_source[i] * exp(-τ_front[i])
 
 Returns a StructArray with columns:
-- `zs`: z-grid used for stepping
-- `Δτ`: per-step optical-depth increments (same indexing as `zs`)
-- `τ_front`: cumulative optical depth in front of each step (τ from next step to exit)
+- `s`: ray-parameter cell midpoints used for stepping
+- `x4`: cell midpoint 4-positions
+- `Δτ`: per-cell optical-depth increments (same indexing as `s`)
+- `Δs`: cell widths
 - `dIinv_source`: per-step source contribution (physical intensity scale) before front attenuation
+- `τ_front`: cumulative optical depth in front of each step (τ from next step to exit)
 - `dIν_to_obs`: per-step contribution to the final pixel (physical specific intensity)
 """
 ray_contribution_profile(obj::AbstractMedium, ray::Ray) = begin
 	seg = z_interval_clipped(obj, ray)
-	k = ray.k
-	ν = frequency(ray)
 	k1 = direction4(ray)
-
-	νobs = frequency(ray)
+	st = RayState(ray)
 
 	# Same grid and step sizing as integrate_ray.
-	ss = StepRangeLen(leftendpoint(seg), width(seg) / (ray.nz - 1), isempty(seg) ? 0 : ray.nz)
+	ss = _segment_midpoints(seg, ray.nz)
 	Δs = step(ss)
-	Δλ = Δs / ν
+	Δλ = Δs / frequency(ray)
 
-	profile₁ = map(StructArray(; s=ss)) do (;s)
+	profile = map(StructArray(; s=ss)) do (; s)
 		x4 = ray.x0 + s * k1
-		u = four_velocity(obj, x4)
-		k′ = lorentz_unboost(u, k)
-		(Jinv, Ainv) = emissivity_absorption_invariant(obj, x4, k′, νobs)
-		Δτ = Ainv * Δλ
-		@boundscheck @assert Δτ ≥ 0
-		dIinv_source = if Δτ < Δτ_THRESHOLD_LINEAR
-			Jinv * Δλ
-		else
-			( Jinv / Ainv ) * (1 - exp(-Δτ))
-		end
+		(; Δτ, dIinv_source) = step_contribution(obj, x4, st, Δλ)
 		(; s, x4, Δτ, Δs, dIinv_source)
 	end
-
-	# τ_front[i] = Σ_{j>i} Δτ[j]
-	profile₂ = @insert profile₁.τ_front = reverse(cumsum(reverse(profile₁.Δτ))) .- profile₁.Δτ
-
-	profile₃ = @insert profile₂.dIν_to_obs =
-		map(profile₂) do (; dIinv_source, τ_front)
-			dIinv_source * exp(-τ_front)
-		end
-
-	return profile₃
+	return attenuate_to_observer(profile)
 end
 
 
@@ -345,92 +394,31 @@ Returns a StructArray with the same structure as `ray_contribution_profile`, but
 """
 ray_contribution_profile_IQU(obj::AbstractMedium, ray::Ray) = begin
 	seg = z_interval_clipped(obj, ray)
-	k = ray.k
-	ν = frequency(ray)
 	k1 = direction4(ray)
+	st = RayState(ray)
 
-	νobs = frequency(ray)
-
-	# Same grid and step sizing as integrate_ray
-	ss = StepRangeLen(leftendpoint(seg), width(seg) / (ray.nz - 1), isempty(seg) ? 0 : ray.nz)
+	# Same grid and step sizing as integrate_ray.
+	ss = _segment_midpoints(seg, ray.nz)
 	Δs = step(ss)
-	Δλ = Δs / ν
+	Δλ = Δs / frequency(ray)
 
-	# Step 1: Forward pass - collect geometry, coefficients, and basis rotations
-	profile₁ = map(StructArray(; s=ss)) do (;s)
+	# Per step: mode-wise optical depth and source, and the camera → field (Q,U) rotation.
+	profile = map(StructArray(; s=ss)) do (; s)
 		x4 = ray.x0 + s * k1
 		u = four_velocity(obj, x4)
-		k′ = lorentz_unboost(u, k)
-		ν′ = frequency(k′)
-
-		# Per-mode 𝓙̂/𝓐 (see emissivity_absorption_polarized_invariant in mediums.jl).
-		(j_modes, α_modes, B′) = emissivity_absorption_polarized(obj, x4, k′)
-		Jinv_modes = j_modes * νobs * (νobs / ν′)^2
-		Ainv_modes = α_modes * ν′
-
-		Δτ_modes = Ainv_modes * Δλ
-
-		(n′, e1′, e2′) = comoving_screen_basis(u, ray)
-		(e_par, e_perp) = linear_polarization_basis_from_B(n′, B′)
-		R_camera_to_field = stokes_QU_rotation(e1′, e2′, e_perp)
-
-		(; s, x4, Δs, Jinv_modes, Ainv_modes, Δτ_modes, R_camera_to_field)
+		(Jinv_modes, Ainv_modes, B′) = emissivity_absorption_polarized_invariant(obj, x4, lorentz_unboost(u, st.k), st.ν_ref)
+		(n′, e1′, e2′) = comoving_screen_basis(u, st)
+		(_, e_perp) = linear_polarization_basis_from_B(n′, B′)
+		(; s, x4, Δs,
+		   Δτ_modes = Ainv_modes * Δλ,
+		   dSinv_modes = _step_source.(Jinv_modes, Ainv_modes, Δλ),
+		   R_camera_to_field = stokes_QU_rotation(e1′, e2′, e_perp))
 	end
 
-	# Early return for empty profile (ray misses geometry)
-	if isempty(profile₁)
-		return StructArray((; s=eltype(ss)[], x4=eltype(profile₁.x4)[], Δs=eltype(profile₁.Δs)[], dIν_to_obs=StokesIQU{float(eltype(ss))}[]))
+	# Each mode is attenuated by its own front optical depth; the emitted field-frame U is zero.
+	dIν_to_obs = map(profile.dSinv_modes, _front_optical_depth(profile.Δτ_modes), profile.R_camera_to_field) do dS, τ_front, R
+		(; I, Q) = stokes_IQ(dS .* exp.(-τ_front))
+		StokesIQU(I, (R' * SVector(Q, zero(Q)))...)
 	end
-
-	# Step 2: Cumulative front optical depth (mode-wise)
-	Δτ_perp_vec = [step.Δτ_modes.perp for step in profile₁]
-	Δτ_par_vec = [step.Δτ_modes.par for step in profile₁]
-	τ_front_perp = reverse(cumsum(reverse(Δτ_perp_vec))) .- Δτ_perp_vec
-	τ_front_par = reverse(cumsum(reverse(Δτ_par_vec))) .- Δτ_par_vec
-
-	# Step 3-5: Emission, attenuation, rotation to camera frame
-	dIν_to_obs = map(eachindex(profile₁)) do i
-		step = profile₁[i]
-
-		# Emission term accounting for step's internal opacity
-		dSinv_emit_modes = if all(step.Δτ_modes .< Δτ_THRESHOLD_LINEAR)
-			step.Jinv_modes * Δλ
-		else
-			ModePerpPar(
-				step.Δτ_modes.perp < Δτ_THRESHOLD_LINEAR ?
-					step.Jinv_modes.perp * Δλ :
-					(step.Jinv_modes.perp / step.Ainv_modes.perp) * (1 - exp(-step.Δτ_modes.perp)),
-				step.Δτ_modes.par < Δτ_THRESHOLD_LINEAR ?
-					step.Jinv_modes.par * Δλ :
-					(step.Jinv_modes.par / step.Ainv_modes.par) * (1 - exp(-step.Δτ_modes.par))
-			)
-		end
-
-		I_emit = dSinv_emit_modes.perp + dSinv_emit_modes.par
-		Q_emit = dSinv_emit_modes.perp - dSinv_emit_modes.par
-		U_emit = zero(I_emit)
-
-		# Front material attenuation (mode-wise)
-		E_perp = exp(-τ_front_perp[i])
-		E_par = exp(-τ_front_par[i])
-
-		I_perp_emit = (I_emit + Q_emit) / 2
-		I_par_emit = (I_emit - Q_emit) / 2
-
-		I_perp_atten = I_perp_emit * E_perp
-		I_par_atten = I_par_emit * E_par
-
-		τ_U_front = (τ_front_perp[i] + τ_front_par[i]) / 2
-		U_atten = U_emit * exp(-τ_U_front)
-
-		I_atten = I_perp_atten + I_par_atten
-		Q_atten = I_perp_atten - I_par_atten
-
-		R_field_to_camera = step.R_camera_to_field'
-		QU_camera = R_field_to_camera * SVector(Q_atten, U_atten)
-
-		StokesIQU(I_atten, QU_camera[1], QU_camera[2])
-	end
-
-	return StructArray((; profile₁.s, profile₁.x4, profile₁.Δs, dIν_to_obs))
+	return StructArray((; profile.s, profile.x4, profile.Δs, dIν_to_obs))
 end

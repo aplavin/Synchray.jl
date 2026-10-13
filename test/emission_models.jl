@@ -44,7 +44,8 @@ end
 	ray_off = S.RayZ(; x0=S.FourPosition(0, 0, 0, 0), k=1.0, nz=256)
 
 	I_peak = S.render(ray_peak, region)
-	@test I_peak ≈ 0.048 rtol=1e-2
+	I_exact = -expm1(-0.01 * (5.0 - 0.1))  # uniform source function 1 at the peak
+	@test I_peak ≈ I_exact rtol=1e-2
 
 	# off-peak intensity should be less
 	@test S.render(ray_off, region) < I_peak
@@ -76,5 +77,5 @@ end
 	region32 = S.to_float_type(Float32, S.prepare_for_computations(region))
 	ray32 = S.RayZ(; x0=S.FourPosition(0f0, 0f0, 0f0, 0f0), k=10f0, nz=64)
 	@test S.render(ray32, region32) isa Float32
-	@test S.render(ray32, region32) ≈ 0.0486 rtol=1e-2
+	@test S.render(ray32, region32) ≈ I_exact rtol=1e-2
 end

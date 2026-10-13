@@ -19,6 +19,18 @@
 	@test sum(prof.Δτ) ≈ τ rtol=2e-3
 	@test sum(prof.dIν_to_obs) ≈ Iν rtol=2e-3
 
+	@testset "Midpoint cells, nz=$nz" for nz in (1, 2, 8)
+		ray_cells = @set ray.nz = nz
+		profile = S.ray_contribution_profile(slab, ray_cells)
+		@test length(profile) == nz
+		@test all(s -> 0 < s < L, profile.s)
+		@test sum(profile.Δs) ≈ L
+		@test sum(profile.Δτ) ≈ a0 * L
+		@test first(profile.s) ≈ L / (2nz)
+		@test last(profile.s) ≈ L - L / (2nz)
+		@test sum(profile.dIν_to_obs) ≈ S.render(ray_cells, slab)
+	end
+
 	@testset "missed rays return empty/zero" begin
 		R = 1.3
 		sphere = S.UniformSphere(; center=S.FourPosition(0.0, 0.0, 0.0, 0.0), radius=R, u0=S.FourVelocity(SVector(0.0, 0.0, 0.0)), jν=1.0, αν=2.0)
@@ -72,10 +84,14 @@ end
 		end
 	end
 
-	@testset "Minimal steps (nz=2)" begin
-		ray_min = S.RayZ(; x0=S.FourPosition(0,0,0,0), k=2.0, nz=2)
+	@testset "Midpoint cells, nz=$nz" for nz in (1, 2, 8)
+		ray_min = S.RayZ(; x0=S.FourPosition(0,0,0,0), k=2.0, nz)
 		profile = S.ray_contribution_profile_IQU(medium, ray_min)
-		@test length(profile) == 2
+		profile_scalar = S.ray_contribution_profile(medium, ray_min)
+		@test length(profile) == nz
+		@test profile.s == profile_scalar.s
+		@test profile.Δs == profile_scalar.Δs
+		@test sum(profile.Δs) ≈ L
 
 		S_direct = S.render(ray_min, medium, S.IntensityIQU())
 		S_sum = sum(profile.dIν_to_obs)
@@ -135,4 +151,25 @@ end
 		profile = S.ray_contribution_profile_IQU(region, ray_miss)
 		@test isempty(profile)
 	end
+end
+@testitem "step_contribution" begin
+	import Synchray as S
+
+	# stationary ball with constant (j, α) = (0.7, 1.3); ν = 2, Δλ = 0.05 ⇒ Δτ = 0.13 (exponential branch)
+	ball = S.EmissionRegion(geometry=S.Geometries.Ball(S.Geometries.StationaryAtOrigin(), 5.0), emission=S.FixedEmission(S=0.7 / 1.3, α=1.3))
+	st = S.RayState(S.RayZ(; x0=S.FourPosition(0.0, 0.0, 0.0, 0.0), k=2.0, nz=1))
+	c = @inferred S.step_contribution(ball, S.FourPosition(0.0, 0.0, 0.0, 2.0), st, 0.05)
+	@test c.Δτ ≈ 0.13
+	@test c.dIinv_source ≈ 0.06564092181200544
+	# equals one rendering step from zero intensity
+	@test c.dIinv_source ≈ S._integrate_ray_step(S.AccValue{S.Intensity}(0.0), ball, S.FourPosition(0.0, 0.0, 0.0, 2.0), st, 0.05).value
+end
+
+@testitem "attenuate_to_observer" begin
+	import Synchray as S
+
+	p = S.attenuate_to_observer(S.StructArray(; s=[1, 2, 3], Δτ=[0.1, 0.2, 0.3], dIinv_source=[1.0, 2.0, 3.0]))
+	@test p.s == [1, 2, 3]
+	@test p.τ_front ≈ [0.5, 0.3, 0.0]
+	@test p.dIν_to_obs ≈ [0.6065306597126334, 1.4816364413634358, 3.0]
 end

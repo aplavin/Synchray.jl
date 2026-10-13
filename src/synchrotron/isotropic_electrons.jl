@@ -154,7 +154,7 @@ end
 	invν = inv(ν)
 	B_over_ν = B * invν
 	common = B_over_ν^_half(p)
-	j = Cj_tangled * n_e * common * √(B*ν)
+	j = Cj_tangled * n_e * common * sqrt₀(B * ν)   # sqrt₀: AD-safe at B=0; see power.jl
 	α = Ca_tangled * n_e * common * B * invν^2
 	return j, α
 end

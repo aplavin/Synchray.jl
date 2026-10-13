@@ -1,3 +1,73 @@
+@testitem "Midpoint segment quadrature" begin
+	import Synchray as S
+
+	@testset "Constant slab, $T, nz=$nz" for T in (Float32, Float64), nz in (1, 2, 8, 32)
+		u0 = S.FourVelocity(SVector{3,T}(0, 0, 0))
+		ray = S.RayZ(; x0=S.FourPosition(zero(T), zero(T), zero(T), zero(T)), k=T(2), nz)
+		thin = S.UniformSlab(zero(T)..one(T), u0, one(T), zero(T))
+		slab = S.UniformSlab(zero(T)..one(T), u0, one(T), one(T))
+		rtol = 16eps(T)
+
+		@test (@inferred S.render(ray, thin)) ≈ one(T) rtol=rtol
+		@test (@inferred S.render(ray, slab, S.OpticalDepth())) ≈ one(T) rtol=rtol
+		# All these optical-depth steps exceed the linear-branch threshold.
+		@test (@inferred S.render(ray, slab)) ≈ -expm1(-one(T)) rtol=rtol
+		intensity, optical_depth = @inferred S.render(ray, slab, (S.Intensity(), S.OpticalDepth()))
+		@test intensity ≈ -expm1(-one(T)) rtol=rtol
+		@test optical_depth ≈ one(T) rtol=rtol
+		@test S.render(ray, slab, S.SpectralIndex()) ≈ zero(T) atol=64eps(T)
+
+		# Half-ray clipping must integrate only [0, 1/2].
+		clipped_ray = @set ray.s_max = T(0.5)
+		@test S.render(clipped_ray, thin) ≈ T(0.5) rtol=rtol
+		@test S.render(clipped_ray, slab, S.OpticalDepth()) ≈ T(0.5) rtol=rtol
+
+		# Splitting the same constant material exercises _integrate_segment,
+		# including both tuple and vector CombinedMedium traversal.
+		left = @set slab.z = zero(T)..T(0.5)
+		right = @set slab.z = T(0.5)..one(T)
+		for combined in (S.CombinedMedium(left, right), S.CombinedMedium([left, right]))
+			@test S.render(ray, combined) ≈ -expm1(-one(T)) rtol=rtol
+			@test S.render(ray, combined, S.OpticalDepth()) ≈ one(T) rtol=rtol
+		end
+	end
+
+	# An independent analytic integral detects midpoint sampling, not only
+	# corrected total length: ∫₀¹ z² dz = 1/3, with second-order quadrature error.
+	struct QuadraticSlab{T} <: S.AbstractMedium
+		slab::T
+	end
+	S.z_interval(obj::QuadraticSlab, ray::S.Ray) = S.z_interval(obj.slab, ray)
+	S.four_velocity(obj::QuadraticSlab, x4) = S.four_velocity(obj.slab, x4)
+	S.emissivity_absorption(::QuadraticSlab, x4, k′) = (x4.z^2, zero(x4.z))
+
+	u0 = S.FourVelocity(SVector(0.0, 0.0, 0.0))
+	quadratic = QuadraticSlab(S.UniformSlab(0.0..1.0, u0, 1.0, 0.0))
+	make_ray(nz) = S.RayZ(; x0=S.FourPosition(0.0, 0.0, 0.0, 0.0), k=1.0, nz)
+	errors = map((4, 8, 16)) do nz
+		1/3 - S.render(make_ray(nz), quadratic)
+	end
+	@test all(>(0), errors)
+	@test errors[1] / errors[2] ≈ 4
+	@test errors[2] / errors[3] ≈ 4
+	@test S.render(make_ray(1), quadratic) ≈ 1/4
+	@test_throws AssertionError S.render(make_ray(0), quadratic)
+
+	@testset "Missed and tangent rays" begin
+		sphere = S.UniformSphere(; center=S.FourPosition(0.0, 0.0, 0.0, 0.0), radius=1.0, u0, jν=1.0, αν=1.0)
+		for x in (1.0, 2.0), nz in (1, 2)
+			ray = make_ray(nz)
+			ray = @set ray.x0.x = x
+			@test S.render(ray, sphere) == 0
+			@test S.render(ray, sphere, S.OpticalDepth()) == 0
+			profile = S.ray_contribution_profile(sphere, ray)
+			@test all(iszero, profile.Δτ)
+			@test all(iszero, profile.dIν_to_obs)
+		end
+	end
+end
+
+
 @testitem "Uniform slab transfer" begin
     import Synchray as S
 
@@ -515,4 +585,22 @@ end
 	@test S.render(ray_ortho, sphere_front) ≈ jν * 4.0 rtol=1e-2
 	@test S.render(ray_ortho, sphere_behind) ≈ jν * 4.0 rtol=1e-2
 	@test S.render(ray_ortho, sphere_straddling) ≈ jν * 10.0 rtol=1e-2
+end
+
+@testitem "RayState: photon state of a transfer step" begin
+	import Synchray as S
+
+	ray = S.RayZ(; x0=S.FourPosition(0.0, 0.0, 0.0, 0.0), k=2.0, nz=1)
+	st = S.RayState(ray)
+	@test st.k === ray.k
+	@test (st.e1, st.e2) === (ray.e1, ray.e2)
+	@test st.ν_ref === 2.0
+
+	ball = S.EmissionRegion(geometry=S.Geometries.Ball(S.Geometries.StationaryAtOrigin(), 5.0), emission=S.FixedEmission(S=0.7 / 1.3, α=1.3))
+	x4 = S.FourPosition(0.0, 0.0, 0.0, 2.0)
+	acc = S.AccValue{S.Intensity}(0.0)
+	@test_throws MethodError S._integrate_ray_step(acc, ball, x4, ray, 0.05)
+	# redshifted photon (ν′ = 1) normalized at ν_ref = 2: 𝓙̂ = j·ν_ref·(ν_ref/ν′)² = 5.6, 𝓐 = α·ν′ = 1.3
+	st_z = S.RayState(S.FourFrequency(1.0, 0.0, 0.0, 1.0), ray.e1, ray.e2, 2.0)
+	@test (@inferred S._integrate_ray_step(acc, ball, x4, st_z, 0.05)).value ≈ 0.27109400391272365
 end

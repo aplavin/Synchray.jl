@@ -379,11 +379,9 @@ end
 
 	S_cam = S.render(ray, obj, S.IntensityIQU())
 	
-	# Analytic solution in invariant form, matching integrate_ray's stepping convention.
+	# Analytic solution over the physical slab length, independent of sampling.
 	seg = S.z_interval(obj, ray)
-	Δz = S.width(seg) / (ray.nz - 1)
-	Δλ = (Δz / ν)
-	Λtot = ray.nz * Δλ
+	Λtot = S.width(seg) / ν
 
 	# u=0 => ν′=ν and invariants are simple.
 	Jinv = j_mode / (ν^2)
@@ -689,6 +687,52 @@ end
 	end
 end
 
+@testitem "polarization EVPA handedness anchor (diagonal B)" begin
+	# Pins the ABSOLUTE Stokes-U sign / EVPA rotation sense of the flat Synchray polarized
+	# render against physics — ipole-independent. A cardinal-axis anchor is handedness-
+	# BLIND (φ_B=90° ⇒ χ=0≡0 under a U→−U flip); a DIAGONAL projected B breaks the degeneracy.
+	#
+	# Screen convention (Synchray src): e1 = up×n, e2 = n×e1 (right-handed,
+	# e1×e2=n); +Q along e1 (camera.jl); χ = ½·atan2(U,Q) is the E-vector angle measured
+	# FROM e1 TOWARD e2 (the +sense fixed by stokes_QU_rotation, polarization.jl).
+	# Thin synchrotron ⇒ E ⊥ projected-B ⇒ χ = φ_B + 90° (mod 180), φ_B = B's screen angle (e1→e2).
+	#
+	# Geometry: LOS n=x̂, up=ẑ ⇒ e1=ŷ, e2=ẑ. B=(ŷ+ẑ)/√2 lies in the screen plane at φ_B=45°.
+	# DERIVED physics: χ = 45° + 90° = 135° ≡ −45°. A global U→−U flip would give +45° instead;
+	# 135° ≢ 45° (mod 180), so this value is handedness-sensitive.
+	import Synchray as S
+	using RectiGrids
+
+	Δχ180(a, b) = rem(a - b, 180, RoundNearest)
+	function slab_evpa(Bwrap)                       # flat thin synchrotron slab, single pixel
+		n = SVector(1.0, 0.0, 0.0); up = SVector(0.0, 0.0, 1.0)
+		ball = S.EmissionRegion(;
+			geometry = S.Geometries.Ball(S.Geometries.StationaryAtOrigin(), 400.0),
+			velocity = nothing,
+			emission = S.SynchrotronEmission(
+				ne = S.Profiles.Constant(1e5),
+				B = S.BFieldSpec(S.Profiles.Constant(30.0), S.Directions.Scalar(), Bwrap),
+				electrons = S.IsotropicPowerLawElectrons(; p=2.5, γmin=10.0, γmax=1e5)),
+		) |> S.prepare_for_computations
+		cam = S.CameraOrtho(; photon_direction=n, up, xys=grid(SVector, x=[0.0], y=[0.0]), nz=400, ν=1e9, t=0.0)
+		τ = S.render(S.camera_ray(cam, SVector(0.0, 0.0)), ball, S.OpticalDepth())
+		s = collect(S.render(cam, ball, S.IntensityIQU()))[1]
+		(; τ, Π = hypot(s.Q, s.U) / s.I, χ = rad2deg(atan(s.U, s.Q)) / 2)
+	end
+
+	diag = slab_evpa(b -> b * normalize(SVector(0.0, 1.0, 1.0)))   # φ_B = 45°
+	@test diag.τ < 1e-2                                            # optically thin
+	@test diag.Π > 0.7                                             # strongly polarized (non-vacuous)
+	@test abs(Δχ180(diag.χ, 135.0)) ≤ 2.0    # DERIVED physics: χ = φ_B+90 = 135° (≡−45°); flip ⇒ +45°
+
+	# Metamorphic sensitivity: rotate projected B to φ_B=90° (B=ẑ, the cardinal case) ⇒ χ=0°≡180°.
+	# As φ_B rises 45°→90°, χ rises 135°→180° in the SAME e1→e2 sense ⇒ signed Δχ = +45°.
+	# A global U→−U flip reverses this to −45°; +45° is safely off the ±90° rem(·,180) branch cut.
+	rot = slab_evpa(b -> b * SVector(0.0, 0.0, 1.0))              # φ_B = 90°
+	@test abs(Δχ180(rot.χ, 0.0)) ≤ 2.0
+	@test Δχ180(rot.χ, diag.χ) ≈ 45.0 atol=2.0   # N→E sense: χ ↑ with φ_B (handedness-locked; flip ⇒ −45°)
+end
+
 @testitem "Unitful + EmissionRegion: works; Stokes I matches scalar when α=0" begin
 	import Synchray as S
 	using Test
@@ -723,4 +767,21 @@ end
 	img_I_u = S.withunits(S.render, cam, region, S.Intensity())
 	img_IQU_u = S.withunits(S.render, cam, region, S.IntensityIQU())
 	@test getproperty.(img_IQU_u, :I) ≈ img_I_u
+end
+
+@testitem "needs_polarization_basis" begin
+	import Synchray as S
+
+	struct UnknownTarget end
+
+	# Val(...) of the answer is a compile-time constant, so integrators can gate the basis on it.
+	gate(what) = Val(S.needs_polarization_basis(what))
+	@testset for (what, expected) in [
+			(S.Intensity(), false), (S.IntensityIQU(), true), (S.OpticalDepth(), false), (S.SpectralIndex(), false),
+			((S.Intensity(), S.SpectralIndex()), false), ((S.Intensity(), S.OpticalDepth()), false),
+			((S.Intensity(), S.IntensityIQU()), true), ((S.OpticalDepth(), S.Intensity(), S.IntensityIQU()), true)]
+		@test (@inferred gate(what)) === Val(expected)
+	end
+	@test_throws MethodError S.needs_polarization_basis(UnknownTarget())
+	@test_throws MethodError S.needs_polarization_basis((S.Intensity(), UnknownTarget()))
 end

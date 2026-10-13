@@ -332,3 +332,23 @@ end
         @test norm(βv) ≈ 0.5 atol=1e-10
     end
 end
+
+@testitem "DoublePowerLaw profile" begin
+    import Synchray as S
+
+    pl = S.DoublePowerLaw(1.0, 4.0; val0=1.0, s0=4.0)
+    @test pl(0.0) == 0
+    @test (@inferred pl(2.0)) ≈ 16/33
+    @test pl(4.0) ≈ 1/2
+    @test pl(8.0) ≈ 2/33
+    # peak location s0 * (exp1/exp2)^(1/(exp1+exp2))
+    @test pl(4.0 * (1/4)^(1/5)) ≈ maximum(pl, range(0, 50, length=10_000)) rtol=1e-5
+
+    plp = S.prepare_for_computations(pl)
+    @test (@inferred plp(2.0)) ≈ 16/33
+    @test plp(8.0) ≈ 2/33
+
+    pl32 = S.to_float_type(Float32, pl)
+    @test (@inferred pl32(2f0)) isa Float32
+    @test pl32(2f0) ≈ 16/33
+end

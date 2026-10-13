@@ -106,7 +106,10 @@ Base.:*(f::TangledOrderedMixture, a::Number) = TangledOrderedMixture(f.b * a, f.
     CombinedMedium <: AbstractMedium
 
 Multiple non-overlapping media rendered as a single object.
-Each component gets `ray.nz` integration steps.
+
+Flat-space `integrate_ray` gives each intersected component `ray.nz` equal-width midpoint
+integration cells. Pointwise (e.g. GR geodesic stepping) it acts as the component containing
+the point; a transfer step applies the step of every component containing the point.
 
 Objects must be ordered back-to-front (increasing z, i.e. from source toward observer).
 This is the direction of photon propagation: the first object in the tuple is furthest
@@ -127,23 +130,28 @@ CombinedMedium(objs...) = CombinedMedium(objs)
 
 @inline is_inside(cm::CombinedMedium, x4) = any(obj -> is_inside(obj, x4), cm.objects)
 
-@inline function four_velocity(cm::CombinedMedium, x4)
-	for obj in cm.objects
-		is_inside(obj, x4) && return four_velocity(obj, x4)
-	end
-	return four_velocity(first(cm.objects), x4)
-end
+# Pointwise: the first component containing x4 (one frame cannot represent overlapping components
+# moving differently). Outside all: vacuum coefficients in the first component's frame.
+@inline four_velocity(cm::CombinedMedium, x4) =
+	_with_inside(obj -> four_velocity(obj, x4), cm.objects, x4, () -> four_velocity(first(cm.objects), x4))
 
-@inline function emissivity_absorption(cm::CombinedMedium, x4, k′)
-	j_tot = zero(frequency(k′))
-	α_tot = zero(frequency(k′))
-	for obj in cm.objects
-		if is_inside(obj, x4)
-			(j, α) = emissivity_absorption(obj, x4, k′)
-			j_tot += j
-			α_tot += α
-		end
-	end
-	return (j_tot, α_tot)
-end
+@inline emissivity_absorption(cm::CombinedMedium, x4, k′) =
+	_with_inside(obj -> emissivity_absorption(obj, x4, k′), cm.objects, x4, () -> (zero(frequency(k′)), zero(frequency(k′))))
 
+@inline emissivity_absorption_polarized(cm::CombinedMedium, x4, k′) =
+	_with_inside(obj -> emissivity_absorption_polarized(obj, x4, k′), cm.objects, x4, () -> begin
+		(j, α, B′) = emissivity_absorption_polarized(first(cm.objects), x4, k′)
+		(zero(j), zero(α), B′)
+	end)
+
+# f(first component containing x4), or orelse() if none. Tuples unroll: no dynamic dispatch for
+# heterogeneous components (GPU).
+@inline _with_inside(f, ::Tuple{}, x4, orelse) = orelse()
+@inline _with_inside(f, objs::Tuple, x4, orelse) =
+	is_inside(first(objs), x4) ? f(first(objs)) : _with_inside(f, Base.tail(objs), x4, orelse)
+@inline _with_inside(f, objs::AbstractVector, x4, orelse) = begin
+	for obj in objs
+		is_inside(obj, x4) && return f(obj)
+	end
+	orelse()
+end
